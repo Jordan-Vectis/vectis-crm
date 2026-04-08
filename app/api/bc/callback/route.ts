@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { cookies } from "next/headers"
-import { EncryptJWT } from "jose"
-
-function encKey() {
-  const buf = Buffer.alloc(32)
-  Buffer.from(process.env.AUTH_SECRET!).copy(buf)
-  return buf
-}
+import { prisma } from "@/lib/prisma"
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -62,40 +56,25 @@ export async function GET(req: NextRequest) {
 
   const tokens = await tokenRes.json()
 
-  const payload = {
-    access_token:  tokens.access_token,
-    refresh_token: tokens.refresh_token ?? "",
-    expires_at:    Date.now() + (tokens.expires_in ?? 3600) * 1000,
-  }
-
-  const encrypted = await new EncryptJWT(payload)
-    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
-    .setExpirationTime("8h")
-    .encrypt(encKey())
-
-  const cookieHeader = [
-    `bc_token=${encrypted}`,
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax",
-    `Max-Age=${60 * 60 * 8}`,
-    "Path=/",
-  ].join("; ")
-
-  const clearState = "bc_oauth_state=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/"
-
-  // Return a 200 HTML page that sets the cookie then JS-redirects.
-  // Browsers reliably honour Set-Cookie on 200 responses; they often
-  // silently drop them on 3xx redirects (which was causing no_cookie).
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-<script>window.location.replace("https://vectis-crm-production.up.railway.app/tools/bc-reports?bc_connected=1")</script>
-</head><body>Connecting…</body></html>`
-
-  return new Response(html, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/html",
-      "Set-Cookie":   [cookieHeader, clearState].join(", "),
+  // Store tokens in DB against the user — avoids cookie size limits entirely
+  await prisma.bCToken.upsert({
+    where:  { userId: session.user.id },
+    create: {
+      userId:       session.user.id,
+      accessToken:  tokens.access_token,
+      refreshToken: tokens.refresh_token ?? "",
+      expiresAt:    new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000),
+    },
+    update: {
+      accessToken:  tokens.access_token,
+      refreshToken: tokens.refresh_token ?? "",
+      expiresAt:    new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000),
     },
   })
+
+  const response = NextResponse.redirect(
+    new URL("https://vectis-crm-production.up.railway.app/tools/bc-reports?bc_connected=1")
+  )
+  response.cookies.delete("bc_oauth_state")
+  return response
 }

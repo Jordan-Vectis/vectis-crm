@@ -53,6 +53,18 @@ model User {
   createdSubmissions  Submission[] @relation("CreatedBy")
   valuations          Valuation[]
   contactLogs         ContactLog[]
+  bcToken             BCToken?
+}
+
+model BCToken {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Department {

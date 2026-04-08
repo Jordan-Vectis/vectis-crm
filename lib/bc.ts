@@ -1,52 +1,21 @@
 /**
- * Business Central OData client — delegated OAuth2 (user token from cookie)
+ * Business Central OData client — delegated OAuth2 (user token from DB)
  */
 
-import { jwtDecrypt, EncryptJWT } from "jose"
-import { cookies } from "next/headers"
+import { auth } from "@/auth"
+import { prisma } from "@/lib/prisma"
 
 const BC_BASE =
   "https://api.businesscentral.dynamics.com/v2.0/{tenantId}/{environment}/ODataV4/Company('{company}')/"
 
-function encKey() {
-  const buf = Buffer.alloc(32)
-  Buffer.from(process.env.AUTH_SECRET!).copy(buf)
-  return buf
+function baseUrl(): string {
+  return BC_BASE
+    .replace("{tenantId}",    process.env.BC_TENANT_ID ?? "")
+    .replace("{environment}", process.env.BC_ENVIRONMENT ?? "production")
+    .replace("{company}",     encodeURIComponent(process.env.BC_COMPANY ?? "Vectis"))
 }
 
-export interface BCTokenPayload {
-  access_token:  string
-  refresh_token: string
-  expires_at:    number
-}
-
-export async function getBCTokenFromCookie(): Promise<string | null> {
-  const cookieStore = await cookies()
-  const raw = cookieStore.get("bc_token")?.value
-  if (!raw) return null
-
-  try {
-    const { payload } = await jwtDecrypt(raw, encKey())
-    const data = payload as unknown as BCTokenPayload
-
-    // Token still valid
-    if (data.expires_at > Date.now() + 60_000) {
-      return data.access_token
-    }
-
-    // Try refresh
-    if (data.refresh_token) {
-      const refreshed = await refreshBCToken(data.refresh_token)
-      if (refreshed) return refreshed
-    }
-
-    return null
-  } catch {
-    return null
-  }
-}
-
-async function refreshBCToken(refreshToken: string): Promise<string | null> {
+async function refreshBCToken(userId: string, refreshToken: string): Promise<string | null> {
   try {
     const res = await fetch(
       `https://login.microsoftonline.com/${process.env.BC_TENANT_ID}/oauth2/v2.0/token`,
@@ -65,24 +34,13 @@ async function refreshBCToken(refreshToken: string): Promise<string | null> {
     if (!res.ok) return null
     const tokens = await res.json()
 
-    const payload: BCTokenPayload = {
-      access_token:  tokens.access_token,
-      refresh_token: tokens.refresh_token ?? refreshToken,
-      expires_at:    Date.now() + (tokens.expires_in ?? 3600) * 1000,
-    }
-
-    const encrypted = await new EncryptJWT(payload as any)
-      .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
-      .setExpirationTime("8h")
-      .encrypt(encKey())
-
-    const cookieStore = await cookies()
-    cookieStore.set("bc_token", encrypted, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      maxAge: 60 * 60 * 8,
-      path: "/",
+    await prisma.bCToken.update({
+      where: { userId },
+      data: {
+        accessToken:  tokens.access_token,
+        refreshToken: tokens.refresh_token ?? refreshToken,
+        expiresAt:    new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000),
+      },
     })
 
     return tokens.access_token
@@ -91,11 +49,24 @@ async function refreshBCToken(refreshToken: string): Promise<string | null> {
   }
 }
 
-function baseUrl(): string {
-  return BC_BASE
-    .replace("{tenantId}",   process.env.BC_TENANT_ID ?? "")
-    .replace("{environment}", process.env.BC_ENVIRONMENT ?? "production")
-    .replace("{company}",    encodeURIComponent(process.env.BC_COMPANY ?? "Vectis"))
+export async function getBCToken(): Promise<string | null> {
+  const session = await auth()
+  if (!session) return null
+
+  const record = await prisma.bCToken.findUnique({ where: { userId: session.user.id } })
+  if (!record) return null
+
+  // Token still valid (with 60s buffer)
+  if (record.expiresAt.getTime() > Date.now() + 60_000) {
+    return record.accessToken
+  }
+
+  // Try refresh
+  if (record.refreshToken) {
+    return refreshBCToken(session.user.id, record.refreshToken)
+  }
+
+  return null
 }
 
 export async function bcPage(
@@ -107,9 +78,9 @@ export async function bcPage(
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
   const res = await fetch(url.toString(), {
     headers: {
-      Accept: "application/json",
+      Accept:            "application/json",
       "OData-MaxVersion": "4.0",
-      Authorization: `Bearer ${token}`,
+      Authorization:     `Bearer ${token}`,
     },
   })
   if (!res.ok) throw new Error(`BC API ${res.status}: ${await res.text()}`)

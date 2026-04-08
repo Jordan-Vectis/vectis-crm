@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getBCTokenFromCookie, bcFetchAll, bcPage } from "@/lib/bc"
+import { getBCToken, bcFetchAll, bcPage } from "@/lib/bc"
 
 export const maxDuration = 300
 
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  const token = await getBCTokenFromCookie()
+  const token = await getBCToken()
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
 
   const { searchParams } = req.nextUrl
