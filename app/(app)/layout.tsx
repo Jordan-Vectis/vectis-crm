@@ -12,7 +12,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex flex-col h-full min-h-screen">
-      <TopBar userRole={session.user.role} userName={session.user.name} />
+      <TopBar userName={session.user.name} />
       <main className="flex-1 overflow-auto bg-gray-50">{children}</main>
     </div>
   )
