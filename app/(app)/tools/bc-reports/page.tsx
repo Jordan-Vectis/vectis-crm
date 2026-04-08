@@ -30,7 +30,7 @@ type WhData = {
   meta:         { total: number; openTotes: number; categoryCount: number; largestCategory: string }
 }
 
-type Report = "cataloguing" | "packing" | "warehouse"
+type Report = "cataloguing" | "packing" | "warehouse" | "explorer"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -368,6 +368,115 @@ function WarehouseTab() {
   )
 }
 
+// ─── Data Explorer tab ────────────────────────────────────────────────────────
+
+const ENDPOINTS: Record<string, string> = {
+  "Auction Receipt Lines":  "Auction_Receipt_Lines_Excel",
+  "Shipment Requests":      "ShipmentRequestAPI",
+  "Collection List":        "CollectionList",
+  "Posted Collection List": "PostedCollectionList",
+  "Receipt Totes":          "Receipt_Totes_Excel",
+}
+
+function DataExplorerTab() {
+  const [endpoint, setEndpoint] = useState(Object.keys(ENDPOINTS)[0])
+  const [filter,   setFilter]   = useState("")
+  const [orderby,  setOrderby]  = useState("")
+  const [rows,     setRows]     = useState<any[] | null>(null)
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+
+  async function fetch() {
+    setLoading(true); setError(null); setRows(null)
+    try {
+      const params = new URLSearchParams({ endpoint: ENDPOINTS[endpoint] })
+      if (filter)  params.set("filter",  filter)
+      if (orderby) params.set("orderby", orderby)
+      const res  = await window.fetch(`/api/bc/explorer?${params}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? res.statusText)
+      setRows(json.rows)
+    } catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const columns = rows && rows.length > 0
+    ? Object.keys(rows[0]).filter(k => !k.startsWith("@odata"))
+    : []
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-white mb-4">Data Explorer</h2>
+
+      <div className="flex gap-3 mb-3">
+        <div className="flex-1">
+          <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Endpoint</label>
+          <select
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            className="w-full bg-[#0d0f1a] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+          >
+            {Object.keys(ENDPOINTS).map((k) => <option key={k}>{k}</option>)}
+          </select>
+        </div>
+        <div className="flex-1">
+          <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">OData $filter (optional)</label>
+          <input
+            type="text" value={filter} onChange={(e) => setFilter(e.target.value)}
+            placeholder="e.g. Status eq 'Open'"
+            className="w-full bg-[#0d0f1a] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Order by (optional)</label>
+        <input
+          type="text" value={orderby} onChange={(e) => setOrderby(e.target.value)}
+          placeholder="e.g. No desc"
+          className="w-full max-w-sm bg-[#0d0f1a] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+        />
+      </div>
+
+      <button
+        onClick={fetch} disabled={loading}
+        className="mb-5 px-5 py-2 bg-[#0078D4] hover:bg-blue-500 text-white text-sm font-medium rounded transition-colors disabled:opacity-50"
+      >
+        {loading ? "Loading…" : "Fetch Data"}
+      </button>
+
+      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+
+      {rows && (
+        <>
+          <p className="text-xs text-gray-500 mb-3">{rows.length.toLocaleString()} rows × {columns.length} columns</p>
+          <div className="overflow-x-auto rounded border border-gray-800 mb-3" style={{ maxHeight: 520 }}>
+            <table className="w-full text-xs">
+              <thead className="bg-[#0d0f1a] text-gray-500 uppercase sticky top-0">
+                <tr>
+                  {columns.map((c) => (
+                    <th key={c} className="px-3 py-2 text-left whitespace-nowrap font-semibold tracking-wider">{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {rows.map((r, i) => (
+                  <tr key={i} className="hover:bg-[#0d0f1a]">
+                    {columns.map((c) => (
+                      <td key={c} className="px-3 py-1.5 text-gray-300 whitespace-nowrap">{String(r[c] ?? "")}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ExportBtn onClick={() => exportXlsx(rows, ENDPOINTS[endpoint])} />
+        </>
+      )}
+    </div>
+  )
+}
+
 function ExportBtn({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -382,9 +491,10 @@ function ExportBtn({ onClick }: { onClick: () => void }) {
 // ─── Sidebar nav items ────────────────────────────────────────────────────────
 
 const reports: { id: Report; label: string; color: string; dot: string }[] = [
-  { id: "cataloguing", label: "Cataloguing", color: "text-red-400",    dot: "bg-red-500"    },
-  { id: "packing",     label: "Packing",     color: "text-orange-400", dot: "bg-orange-500" },
-  { id: "warehouse",   label: "Warehouse",   color: "text-green-400",  dot: "bg-green-500"  },
+  { id: "cataloguing", label: "Cataloguing",   color: "text-red-400",    dot: "bg-red-500"    },
+  { id: "packing",     label: "Packing",       color: "text-orange-400", dot: "bg-orange-500" },
+  { id: "warehouse",   label: "Warehouse",     color: "text-green-400",  dot: "bg-green-500"  },
+  { id: "explorer",    label: "Data Explorer", color: "text-purple-400", dot: "bg-purple-500" },
 ]
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -487,6 +597,7 @@ export default function BCReportsPage() {
             {activeReport === "cataloguing" && <CataloguingTab />}
             {activeReport === "packing"     && <PackingTab />}
             {activeReport === "warehouse"   && <WarehouseTab />}
+            {activeReport === "explorer"    && <DataExplorerTab />}
           </div>
         )}
       </main>
