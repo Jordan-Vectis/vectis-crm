@@ -26,18 +26,6 @@ const apps = [
     soon:        true,
   },
   {
-    href:        "/tools/barcode-sorter",
-    label:       "Barcode Sorter",
-    description: "Upload auction photos and sort them into lot folders by barcode.",
-    icon:        "📷",
-    color:       "green",
-    border:      "border-green-500",
-    iconBg:      "text-green-400",
-    btnBg:       "bg-green-600 hover:bg-green-500",
-    glow:        "hover:shadow-green-900/40",
-    soon:        true,
-  },
-  {
     href:        "/tools/bc-reports",
     label:       "BC Reports",
     description: "Business Central reporting — cataloguing, packing and warehouse.",
