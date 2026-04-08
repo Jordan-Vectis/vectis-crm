@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saleroom Clerking Trainer</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  -webkit-font-smoothing: antialiased;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  background: rgb(230,230,230);
+  color: black;
+  font-size: 2vmin;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ── BUTTONS ── */
+.btn {
+  background: linear-gradient(white, rgb(230,230,230));
+  border: 1px solid rgb(179,179,179);
+  border-radius: 5px;
+  box-shadow: black 0.25vh 0.25vh 0.5vh -0.5vh;
+  margin: 1px;
+  padding: 2px 10px;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  width: 7vw;
+}
+.btn:hover { filter: brightness(0.96); }
+.btn:active { filter: brightness(0.91); }
+.btn:disabled { color: rgb(179,179,179); background: rgb(246,246,246); box-shadow: none; cursor: default; }
+.btn:focus { outline: rgb(77,144,254) auto 5px; outline-offset: -2px; }
+
+/* ── CARD ── */
+.card {
+  background-color: white;
+  border: 1px solid rgb(179,179,179);
+  border-radius: 5px;
+  box-shadow: black 0.5vh 0.5vh 1vh -1vh;
+  padding: 1vh;
+  width: 100%;
+}
+
+/* ── HRs ── */
+.tbl-hr { border-top: 1px solid rgb(204,204,204); border-bottom: 0; margin: 0; }
+.row-hr  { border-top: 1px solid rgb(219,219,219); border-bottom: 0; margin: 0; }
+
+/* ── GUIDANCE BAR ── */
+#gbar {
+  background: #1c3a5c; color: white;
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px; min-height: 28px; flex-shrink: 0;
+  border-bottom: 2px solid #0d2035;
+  font-size: 1.8vmin;
+}
+#gt { flex: 1; }
+.dots { display: flex; gap: 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #3a5070; }
+.dot.done { background: #27ae60; }
+.dot.now  { background: #f39c12; }
+#si  { font-size: 1.6vmin; color: #9ab; white-space: nowrap; }
+#fb  { padding: 2px 10px; font-size: 1.6vmin; font-weight: bold; border-radius: 3px; white-space: nowrap; }
+.fb-good { background: #27ae60; color: white; }
+.fb-bad  { background: #e74c3c; color: white; }
+.fb-info { background: #2980b9; color: white; }
+.fb-warn { background: #f39c12; color: #111; }
+
+/* ── WRAPPER / MAIN ── */
+#wrapper { display: flex; flex-direction: column; height: 100vh; }
+#main {
+  display: flex;
+  gap: 1vh;
+  flex: 1;
+  padding: 2vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── LEFT: AUCTION GRID ── */
+#auction {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: 1fr 2fr 1fr;
+  gap: 1vh;
+  flex: 2;
+  min-height: 0;
+}
+#cell-curlot   { grid-column: 1 / span 3; min-height: 0; display: flex; flex-direction: column; }
+#cell-bidlog   { grid-column: 4 / span 3; min-height: 0; display: flex; flex-direction: column; }
+#cell-controls { grid-column: 1 / span 6; min-height: 0; display: flex; flex-direction: column; }
+#cell-chat     { grid-column: 1 / span 6; min-height: 0; display: flex; flex-direction: column; }
+
+/* ── CURRENT LOT ── */
+#cell-curlot .card {
+  flex: 1; display: flex; flex-direction: column; padding: 0.5vh; min-height: 0;
+}
+.curlot-top {
+  display: grid;
+  grid-template: "image info" 1fr "desc desc" 1fr / 1fr 1fr;
+  gap: 0.5vh; flex: 1; min-height: 0;
+}
+.curlot-img {
+  grid-area: image;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 4vmin; background: #f5f5f5;
+  border: 1px solid rgb(179,179,179); overflow: hidden;
+}
+.curlot-info {
+  grid-area: info;
+  display: flex; flex-direction: column; justify-content: center;
+  font-size: 1.9vmin; line-height: 1.5; overflow: hidden;
+}
+.curlot-desc {
+  grid-area: desc;
+  font-size: 1.7vmin; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.action-row {
+  display: flex; border-top: 1px solid rgb(179,179,179); margin-top: 0.5vh; flex-shrink: 0;
+}
+.action-row .btn {
+  flex: 1; border-radius: 0; margin: 0; width: auto;
+  border-top: none; border-bottom: none; border-right: none;
+  border-left: 1px solid rgb(179,179,179);
+  padding: 0.6vmin 2px;
+}
+.action-row .btn:first-child { border-left: none; }
+
+/* ── BID LOG ── */
+#cell-bidlog .card {
+  flex: 1; padding: 0; display: flex; flex-direction: column; min-height: 0;
+}
+.blog-head {
+  display: grid; grid-template-columns: 33% 33% 34%;
+  font-weight: bold; font-size: 1.8vmin;
+  box-shadow: black 0px 0.5vh 1vh -1vh; flex-shrink: 0;
+  padding: 2px 0;
+}
+.blog-head span { overflow: hidden; padding: 0 0 0 10px; white-space: nowrap; }
+.blog-body { flex: 1; overflow-y: auto; font-size: 1.5vmin; }
+.blog-row {
+  display: grid; grid-template-columns: 33% 33% 34%;
+  padding: 1px 0; white-space: nowrap;
+}
+.blog-row span { overflow: hidden; padding: 0 0 0 10px; text-overflow: ellipsis; }
+.blog-row.cur  { background: rgb(93,173,236); }
+.blog-row.sold { background: #d0f5d0; font-weight: bold; }
+.blog-row.room { background: #ede; }
+@keyframes rowflash { from { background: #ffffc0; } }
+.blog-row.new  { animation: rowflash 0.4s; }
+
+/* ── CONTROLS ── */
+#cell-controls .card {
+  flex: 1; padding: 0.5vh 1vh; min-height: 0; display: flex; flex-direction: column; gap: 0.5vh;
+}
+.ctrl-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: 1fr;
+  gap: 0.5vh 1.5vh;
+  flex: 1; min-height: 0;
+}
+/* Left col: Fair warn, Bid, Undo, Room, AV Check */
+.ctrl-left {
+  display: flex; flex-direction: column; gap: 0.4vh; align-self: start;
+}
+.ctrl-left .btn { width: 9vw; padding: 0.5vmin 0.5vw; font-size: 1.9vmin; }
+
+/* Centre col: Provisional + H + A + table + manual + notif — stretches full height */
+.ctrl-center {
+  display: flex; flex-direction: column; gap: 0.4vh;
+  align-self: stretch; min-height: 0; overflow: hidden;
+}
+.prov-row { display: flex; align-items: center; gap: 4px; font-size: 1.7vmin; white-space: nowrap; }
+.ha-row   { display: flex; align-items: center; gap: 4px; }
+.ha-lbl   { font-weight: bold; font-size: 1.9vmin; width: 1.4vw; }
+.h-field  {
+  width: 6vw; text-align: right; font-family: inherit;
+  font-size: inherit; font-weight: bold;
+  border: 1px solid rgb(153,153,153); padding: 0 2px;
+}
+.amt-disp {
+  min-width: 6vw; text-align: right; font-weight: bold; font-size: 2.2vmin;
+  border: 1px solid rgb(153,153,153); padding: 0 3px; background: white;
+  transition: background 0.3s; display: inline-block;
+}
+.amt-disp.lit { background: #c8eeff; }
+.bid-override {
+  width: 4vw; text-align: right; font-family: inherit;
+  font-size: inherit; font-weight: bold;
+  border: 1px solid rgb(153,153,153); padding: 0 2px;
+}
+.stepper { display: flex; gap: 1px; }
+.stepper .btn { width: auto; min-width: 3vw; padding: 0.2vmin 0.6vw; font-size: 1.8vmin; }
+
+/* Increment table — grows to fill remaining height */
+.inc-scroll {
+  flex: 1; overflow-x: hidden; overflow-y: scroll; min-height: 0;
+  border: 1px solid rgb(200,200,200); background: white;
+}
+.inc-tbl {
+  width: 100%; border-collapse: collapse; font-size: 1.6vmin;
+}
+.inc-tbl td {
+  padding: 0 6px; text-align: right; line-height: 1.65;
+  white-space: nowrap; border: none; color: #222;
+}
+.inc-tbl tr.hi td { background: rgb(173,216,230); }
+.inc-tbl tr.lon td {
+  background: #c55; color: white; font-weight: bold;
+  text-align: center; white-space: nowrap;
+}
+.man-chk { font-size: 1.6vmin; flex-shrink: 0; }
+
+/* Notif bar */
+.notif-bar {
+  border: 1px solid rgb(176,176,176); background: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5vmin; font-weight: bold; transition: background 0.2s;
+  padding: 1px 0; flex-shrink: 0;
+}
+.notif-bar.ng { background: #4caf50; color: white; }
+.notif-bar.nr { background: #f44336; color: white; }
+.notif-bar.np { background: #e91e63; color: white; }
+
+/* Right col: Pause, Once */
+.ctrl-right { display: flex; flex-direction: column; gap: 0.4vh; align-self: start; }
+.ctrl-right .btn { width: 9vw; padding: 0.5vmin 0.5vw; font-size: 1.9vmin; }
+
+/* ── CHAT ── */
+#cell-chat .card {
+  flex: 1; padding: 0; display: grid;
+  grid-template-columns: 1fr auto; min-height: 0; overflow: hidden;
+}
+.chat-left { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid rgb(179,179,179); }
+.ann-list  {
+  list-style-type: none; line-height: 3.7vmin; white-space: nowrap;
+  padding-inline-start: 0; margin: 0; overflow-y: auto; flex: 1;
+}
+.ann-item { padding-left: 1vh; padding-right: 1vh; background: white; }
+.ann-item:hover { background: lightblue; }
+.chat-foot {
+  display: flex; padding: 0.5vh; border-top: 1px solid rgb(179,179,179); gap: 0.5vh;
+  background: white; position: relative; flex-shrink: 0;
+}
+.chat-inp { flex: 1; font-family: inherit; font-size: inherit; border: none; }
+.chat-inp:focus { outline: none; }
+.chat-right {
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 0.5vh; gap: 0.5vh;
+}
+.chat-right .btn { width: auto; padding: 2px 10px; }
+
+/* ── RIGHT: TABBED CONSOLES ── */
+#consoles { display: flex; flex-direction: column; flex: 3; min-height: 0; }
+
+.tab-row { display: flex; align-items: stretch; flex-shrink: 0; }
+.tab-active {
+  font-family: inherit; font-weight: 600; background: none; margin: 0;
+  font-size: 1em; cursor: pointer;
+  padding: calc(0.45vh) calc(-0.3vh + 0.8vw) 2vh;
+  outline: 0;
+  border-top: 0.3vh solid rgb(191,191,191);
+  border-right: 0.3vh solid rgb(191,191,191);
+  border-left: 0.3vh solid rgb(191,191,191);
+  border-bottom: none; white-space: nowrap;
+}
+.tab-active:focus { outline: 0; }
+.tab-inactive {
+  font-family: inherit; font-weight: 600; background: none;
+  border-top: none; border-right: none; border-left: none;
+  margin: 0; padding: 0.75vh 0.8vw 2vh;
+  border-bottom: 0.3vh solid rgb(191,191,191);
+  font-size: 1em; cursor: pointer; white-space: nowrap;
+}
+.tab-inactive:focus { outline: 0; }
+.tab-filler { flex: 1; border-bottom: 0.3vh solid rgb(191,191,191); }
+.logo {
+  background: #111; color: white; font-style: italic; font-weight: bold;
+  letter-spacing: 2px; padding: 0.5vh 1.5vw;
+  display: flex; align-items: center; white-space: nowrap;
+  border-bottom: 0.3vh solid rgb(191,191,191);
+}
+
+/* Tab content */
+.tab-content {
+  border-right: 0.3vh solid rgb(191,191,191);
+  border-bottom: 0.3vh solid rgb(191,191,191);
+  border-left: 0.3vh solid rgb(191,191,191);
+  border-top: none;
+  flex: 1; padding: 1.5vh;
+  box-shadow: black 0.5vh 0.5vh 1vh -1vh;
+  display: grid;
+  grid-template-areas: "findrow" "lotlist" "selected";
+  grid-template-rows: auto 6fr 4fr;
+  gap: 1.5vh; min-height: 0; overflow: hidden;
+}
+
+/* Find lot */
+.find-row {
+  grid-area: findrow;
+  display: flex; justify-content: flex-end; align-items: center; gap: 1vh;
+}
+.find-lbl { font-size: 2.2vh; white-space: nowrap; }
+.find-inp {
+  font-family: inherit; font-size: 1em;
+  border: 1px solid rgb(153,153,153); padding: 0.5vh;
+  font-weight: bold; min-width: 5vw; max-width: 6vw;
+}
+
+/* Lot list */
+.lot-list-area {
+  grid-area: lotlist; display: flex; flex-direction: column; min-height: 0;
+}
+.lot-list-card {
+  background-color: white; border: 1px solid rgb(179,179,179);
+  border-radius: 5px; box-shadow: black 0.5vh 0.5vh 1vh -1vh;
+  width: 100%; flex: 1; min-height: 0;
+  display: grid; grid-template-rows: auto 1fr;
+  list-style-type: none; user-select: none; overflow: hidden;
+}
+.ll-head-shadow { box-shadow: black 0px 0.5vh 1vh -1vh; }
+.ll-body { overflow-y: auto; font-size: 1.7vmin; }
+
+.ll-row {
+  display: grid; grid-template-columns: 16vmin 1fr;
+  height: 48px; cursor: pointer;
+}
+.ll-row:hover .ll-highlight { border-top-color: lightblue; background: lightblue; }
+.ll-row.cur .ll-highlight {
+  background: rgb(93,173,236);
+  border-top: 1px solid rgb(93,173,236);
+  border-bottom: 1px solid rgb(93,173,236);
+}
+.ll-highlight {
+  display: contents;
+}
+.ll-left {
+  display: grid; grid-template-columns: 1fr auto;
+  overflow: hidden; padding: 4px 6px 4px 8px; align-items: start;
+}
+.ll-num { font-size: 1.7vmin; font-weight: normal; }
+.ll-dot { color: rgb(255,51,85); font-size: 1.4vmin; }
+.ll-right { overflow: hidden; display: flex; flex-direction: column; justify-content: center; padding: 3px 6px; }
+.ll-status {
+  display: flex; justify-content: flex-end; gap: 8px;
+  font-weight: 600; font-size: 1.6vmin;
+}
+.ll-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1.6vmin; }
+.ll-row-border {
+  border-top: 1px solid white; border-bottom: 1px solid rgb(219,219,219);
+  display: contents;
+}
+
+/* Selected lot */
+.selected-area { grid-area: selected; min-height: 0; display: flex; flex-direction: column; }
+.selected-card {
+  background-color: white; border: 1px solid rgb(179,179,179);
+  border-radius: 5px; box-shadow: black 0.5vh 0.5vh 1vh -1vh;
+  padding: 1vh; flex: 1; min-height: 0;
+  display: grid;
+  grid-template: "img controls" auto "img table" 1fr / 1fr 1fr;
+  gap: 1.5vh;
+}
+.sel-img {
+  grid-area: img; display: flex; align-items: center; justify-content: center;
+  font-size: 6vmin; background: #f5f5f5; border: 1px solid rgb(179,179,179);
+}
+.sel-controls { grid-area: controls; display: flex; gap: 0.5vh; align-items: flex-start; }
+.sel-controls .btn { flex: 1; width: auto; padding: 2px 4px; font-size: 1.7vmin; }
+.sel-table { grid-area: table; min-height: 0; display: flex; flex-direction: column; gap: 0.5vh; }
+.sel-tbl-card {
+  background-color: white; border: 1px solid rgb(179,179,179);
+  border-radius: 5px; box-shadow: black 0.5vh 0.5vh 1vh -1vh;
+  flex: 1; min-height: 0; display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+}
+.sel-tbl-head {
+  display: grid; grid-template-columns: 33% 33% 34%;
+  font-weight: bold; font-size: 1.8vmin;
+  box-shadow: black 0px 0.5vh 1vh -1vh; padding: 2px 0;
+}
+.sel-tbl-head span { overflow: hidden; padding: 0 0 0 10px; white-space: nowrap; }
+.sel-tbl-body { overflow-y: auto; font-size: 1.5vmin; }
+.bid-notif {
+  height: 3vh; border: 1px solid rgb(176,176,176); background: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5vmin; font-weight: bold; transition: background 0.2s;
+}
+.bid-notif.ng { background: #4caf50; color: white; }
+.bid-notif.nr { background: #f44336; color: white; }
+.bid-notif.np { background: #e91e63; color: white; }
+
+/* ── OVERLAY ── */
+#overlay {
+  position: fixed; inset: 0; background: #18242e;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 9999; color: white;
+}
+#overlay h1 { font-size: 3.5vmin; margin-bottom: 0.5vh; font-style: italic; }
+#overlay > p { color: #aaa; margin-bottom: 3vh; font-size: 2vmin; }
+.sc-grid {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 2vh; max-width: 80vw;
+}
+.sc-card {
+  background: #22323f; border: 2px solid #3a4f60;
+  border-radius: 6px; padding: 2vh; cursor: pointer; transition: all 0.15s;
+}
+.sc-card:hover { border-color: #27ae60; background: #2a4055; transform: translateY(-2px); }
+.sc-card h3 { color: #4ade80; margin-bottom: 0.5vh; font-size: 2vmin; }
+.sc-card p  { color: #bbb; font-size: 1.7vmin; line-height: 1.6; }
+.diff { font-size: 1.5vmin; margin-top: 1vh; padding: 2px 7px; border-radius: 3px; display: inline-block; }
+.easy { background: #27ae60; } .med { background: #f39c12; } .hard { background: #e74c3c; }
+.overlay-footer { margin-top: 2.5vh; display: flex; gap: 1.5vw; }
+.eg-btn { background: #2c4a6e; border: 2px solid #5dadec; color: #5dadec; border-radius: 6px;
+  padding: 0.7vh 2vw; font-size: 1.8vmin; cursor: pointer; transition: all 0.15s; }
+.eg-btn:hover { background: #3a6494; color: white; }
+
+/* ── EXAMPLE IMAGES MODAL ── */
+#imgModal {
+  display: none; position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.85);
+  align-items: center; justify-content: center; flex-direction: column;
+}
+#imgModal.open { display: flex; }
+.img-modal-box {
+  background: #1a2a38; border: 2px solid #3a4f60; border-radius: 8px;
+  padding: 2vh 2vw; max-width: 95vw; max-height: 92vh;
+  display: flex; flex-direction: column; gap: 1.5vh; overflow-y: auto;
+}
+.img-modal-box h2 { color: #5dadec; font-size: 2.2vmin; margin: 0; }
+.img-modal-box p  { color: #aaa; font-size: 1.6vmin; margin: 0 0 0.5vh 0; }
+.img-row { display: flex; gap: 2vw; flex-wrap: wrap; }
+.img-panel { flex: 1; min-width: 35vw; }
+.img-panel img { width: 100%; border-radius: 5px; border: 1px solid #3a4f60; display: block; }
+.img-panel span { display: block; color: #ccc; font-size: 1.5vmin; margin-top: 0.5vh; text-align: center; }
+.img-close { align-self: flex-end; background: #c0392b; color: white; border: none;
+  border-radius: 4px; padding: 0.4vh 1.2vw; font-size: 1.8vmin; cursor: pointer; margin-bottom: 0.5vh; }
+.img-close:hover { background: #e74c3c; }
+</style>
+</head>
+<body>
+
+<!-- ═══ SCENARIO OVERLAY ═══ -->
+<div id="overlay">
+  <h1>the saleroom — Clerking Trainer</h1>
+  <p>Vectis Auction House &nbsp;|&nbsp; Select a scenario to begin</p>
+  <div class="sc-grid">
+    <div class="sc-card" onclick="go(0)">
+      <h3>Scenario 1 — Basic Sale</h3>
+      <p>Online bidder places bids. Advance through increments and sell the lot.</p>
+      <span class="diff easy">Beginner</span>
+    </div>
+    <div class="sc-card" onclick="go(1)">
+      <h3>Scenario 2 — No Interest (Pass)</h3>
+      <p>No bids arrive. Learn when and how to Pass a lot correctly.</p>
+      <span class="diff easy">Beginner</span>
+    </div>
+    <div class="sc-card" onclick="go(2)">
+      <h3>Scenario 3 — Room Bid</h3>
+      <p>A customer bids in the room alongside an online bidder.</p>
+      <span class="diff med">Intermediate</span>
+    </div>
+    <div class="sc-card" onclick="go(3)">
+      <h3>Scenario 4 — Fair Warning &amp; Once</h3>
+      <p>Bidding stalls. Issue Fair Warning, use Once/Twice/Final, then sell.</p>
+      <span class="diff med">Intermediate</span>
+    </div>
+    <div class="sc-card" onclick="go(4)">
+      <h3>Scenario 5 — Undo a Mistake</h3>
+      <p>A bid is entered incorrectly. Use Undo to reverse and re-take it.</p>
+      <span class="diff med">Intermediate</span>
+    </div>
+    <div class="sc-card" onclick="go(5)">
+      <h3>Scenario 6 — Full Auction Run</h3>
+      <p>Run 5 consecutive lots with mixed bidding situations end to end.</p>
+      <span class="diff hard">Advanced</span>
+    </div>
+    <div class="sc-card" onclick="goFree()" style="grid-column:1/-1;border-color:#5dadec">
+      <h3 style="color:#5dadec;font-size:2.2vmin">🔓 Free Mode — Full Auction (No Guidance)</h3>
+      <p>Run a full auction with no prompts. Online bids arrive automatically. Use all buttons freely — Sell, Pass, Room, Fair Warning, Once, Undo.</p>
+      <span class="diff" style="background:#5dadec;color:#111">Free Practice</span>
+    </div>
+  </div>
+  <div class="overlay-footer">
+    <button class="eg-btn" onclick="document.getElementById('imgModal').classList.add('open')">🖼 Example Images — Real Software</button>
+  </div>
+</div>
+
+<!-- ═══ EXAMPLE IMAGES MODAL ═══ -->
+<div id="imgModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="img-modal-box">
+    <button class="img-close" onclick="document.getElementById('imgModal').classList.remove('open')">✕ Close</button>
+    <h2>Real Software Reference — GAP Live Operator &amp; Saleroom</h2>
+    <p>These are screenshots of the actual clerking software used during live auctions. Use them as reference while practising.</p>
+    <div class="img-row">
+      <div class="img-panel">
+        <img src="gap-live.png" alt="GAP Live Operator" onerror="this.style.display='none';this.nextSibling.nextSibling.style.display='block'">
+        <span>GAP Live Operator — multi-platform bidding view</span>
+        <span style="display:none;color:#e74c3c;font-size:1.5vmin">⚠ Image not found — save screenshot as <strong>gap-live.png</strong> in the SaleroomTrainer folder</span>
+      </div>
+      <div class="img-panel">
+        <img src="gap-saleroom.png" alt="GAP Saleroom" onerror="this.style.display='none';this.nextSibling.nextSibling.style.display='block'">
+        <span>GAP Saleroom — full clerking screen</span>
+        <span style="display:none;color:#e74c3c;font-size:1.5vmin">⚠ Image not found — save screenshot as <strong>gap-saleroom.png</strong> in the SaleroomTrainer folder</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="wrapper">
+
+<!-- ═══ GUIDANCE BAR ═══ -->
+<div id="gbar">
+  <span style="font-weight:bold;white-space:nowrap" id="gbar-label">TRAINER:</span>
+  <span id="gt">Select a scenario to begin.</span>
+  <div class="dots" id="dots"></div>
+  <span id="si"></span>
+  <div id="fb" class="fb-info" style="opacity:0">—</div>
+  <button class="btn" onclick="document.getElementById('overlay').style.display='flex'"
+          style="width:auto;padding:2px 10px;font-size:1.6vmin">↩ Scenarios</button>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div id="main">
+
+<!-- ══════════════════════════════
+     LEFT — AUCTION
+══════════════════════════════ -->
+<div id="auction">
+
+  <!-- Row1 Col1-3: Current Lot -->
+  <div id="cell-curlot">
+    <div class="card">
+      <div class="curlot-top">
+        <div class="curlot-img" id="limg">📦</div>
+        <div class="curlot-info">
+          <p><b id="lnum">Lot: —</b></p>
+          <p id="lest">Est:</p>
+          <p id="lest2">—</p>
+        </div>
+        <div class="curlot-desc" id="ldesc">—</div>
+      </div>
+      <div class="action-row">
+        <button class="btn" onclick="act('sell')">Sell</button>
+        <button class="btn" onclick="act('pass')">Pass</button>
+        <button class="btn" onclick="act('undo')">Undo</button>
+        <button class="btn" onclick="act('offer')">Offer</button>
+        <button class="btn" onclick="act('next')">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row1 Col4-6: Bid Log -->
+  <div id="cell-bidlog">
+    <div class="card">
+      <div class="blog-head">
+        <span>Buyer ID</span><span>Hammer</span><span>Name</span>
+      </div>
+      <hr class="tbl-hr">
+      <div class="blog-body" id="log"></div>
+    </div>
+  </div>
+
+  <!-- Row2 Col1-6: Controls -->
+  <div id="cell-controls">
+    <div class="card">
+      <div class="ctrl-grid">
+
+        <!-- Col1: Left buttons -->
+        <div class="ctrl-left">
+          <button class="btn" id="bFW" onclick="act('fairwarn')">Fair warn</button>
+          <button class="btn" id="bBid" onclick="act('bid')">Bid</button>
+          <button class="btn" onclick="act('undo')">Undo</button>
+          <button class="btn" id="bRoom" onclick="act('room')">Room</button>
+          <button class="btn" style="margin-top:0.5vh">AV Check</button>
+        </div>
+
+        <!-- Col2: Provisional + H + A + Increment table + Manual + Notif -->
+        <div class="ctrl-center">
+          <div class="prov-row">
+            <input type="checkbox" id="chkProv">
+            <label for="chkProv">Provisional</label>
+          </div>
+          <div class="ha-row">
+            <span class="ha-lbl">H</span>
+            <input type="text" id="fH" value="0" class="h-field">
+          </div>
+          <div class="ha-row">
+            <span class="ha-lbl">A</span>
+            <span class="amt-disp" id="amt">0</span>
+            <input type="text" id="bidOverride" class="bid-override" placeholder=""
+              oninput="overrideInput(this.value)"
+              onkeydown="if(event.key==='Enter'){if(this.value.trim()){overrideEnter();}else{act('bid');}event.preventDefault();}">
+            <div class="stepper">
+              <button class="btn" onclick="act('minus')">−</button>
+              <button class="btn" onclick="act('plus')">+</button>
+            </div>
+          </div>
+          <div class="inc-scroll">
+            <table class="inc-tbl" id="itbl">
+              <colgroup><col></colgroup>
+              <tbody id="itbl-body"></tbody>
+            </table>
+          </div>
+          <div class="man-chk"><label><input type="checkbox"> Manual increments</label></div>
+          <div class="notif-bar" id="notif">Bidding Notification Box</div>
+        </div>
+
+        <!-- Col3: Pause + Once -->
+        <div class="ctrl-right">
+          <button class="btn" id="bPause" onclick="act('pause')">⏸ Pause</button>
+          <button class="btn" id="bOnce" onclick="act('once')">Once...</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Row3 Col1-6: Chat / Announcements -->
+  <div id="cell-chat">
+    <div class="card">
+      <div class="chat-left">
+        <ul class="ann-list" id="chat">
+          <li class="ann-item">You need to be in it to win it! Bid now before it's too late!</li>
+          <li class="ann-item">Auction starts at 9.30am</li>
+          <li class="ann-item">We will resume again at 12.00 p.m.</li>
+          <li class="ann-item">Todays sale is a timed sale</li>
+          <li class="ann-item">Hello the auction today is a timed sale and therefore will not have an auctioneer.</li>
+          <li class="ann-item">apologies for the delay we will resume very shortly</li>
+        </ul>
+        <div class="chat-foot">
+          <input type="text" id="cin" class="chat-inp" placeholder="">
+          <button class="btn" onclick="sendChat()" style="width:auto;padding:2px 10px">Add</button>
+        </div>
+      </div>
+      <div class="chat-right">
+        <button class="btn" id="button-send-alert">Alert</button>
+        <button class="btn" onclick="sendChat()" id="button-send-message">Send</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end #auction -->
+
+<!-- ══════════════════════════════
+     RIGHT — CONSOLES
+══════════════════════════════ -->
+<div id="consoles">
+
+  <!-- Tab row -->
+  <div class="tab-row">
+    <button class="tab-active"   id="nav-title-lots">Lots</button>
+    <button class="tab-inactive" id="nav-title-bidders">Bidders</button>
+    <button class="tab-inactive" id="nav-title-increments">Increments</button>
+    <button class="tab-inactive" id="nav-title-media">Media</button>
+    <button class="tab-inactive" id="nav-title-support">Support</button>
+    <button class="tab-inactive" id="nav-title-displays">Displays</button>
+    <button class="tab-inactive" id="nav-title-settings">Settings</button>
+    <div class="tab-filler"></div>
+    <div class="logo">the saleroom</div>
+  </div>
+
+  <!-- Tab content -->
+  <div class="tab-content">
+
+    <!-- Find lot -->
+    <div class="find-row">
+      <span class="find-lbl">Find lot:</span>
+      <input type="text" id="findl" class="find-inp" oninput="renderLL()">
+    </div>
+
+    <!-- Lot list -->
+    <div class="lot-list-area">
+      <div class="lot-list-card">
+        <div class="ll-head-shadow"><hr class="tbl-hr"></div>
+        <div class="ll-body" id="ll"></div>
+      </div>
+    </div>
+
+    <!-- Selected lot -->
+    <div class="selected-area">
+      <div class="selected-card">
+        <div class="sel-img" id="rphoto">
+          <span id="rphoto-e">📦</span>
+        </div>
+        <div class="sel-controls">
+          <button class="btn" disabled>History</button>
+          <button class="btn">New lot</button>
+          <button class="btn">Edit lot</button>
+        </div>
+        <div class="sel-table">
+          <div class="sel-tbl-card">
+            <div class="sel-tbl-head">
+              <span>Buyer ID</span><span>Hammer</span><span>Name</span>
+            </div>
+            <hr class="tbl-hr">
+            <div class="sel-tbl-body" id="rlog"></div>
+          </div>
+          <div class="bid-notif" id="bnotif">&nbsp;</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end .tab-content -->
+</div><!-- end #consoles -->
+
+</div><!-- end #main -->
+</div><!-- end #wrapper -->
+
+<script>
+/* ─────────────────────────────────────────
+   INCREMENT TABLE BUILDER
+───────────────────────────────────────── */
+function buildIncTable(){
+  const MAX = 20000;
+  const tbody = document.getElementById('itbl-body');
+  const rows = [];
+  for(const band of INC_TABLE){
+    const ceiling = Math.min(band.to === Infinity ? MAX : band.to, MAX);
+    for(let v = band.from + band.inc; v <= ceiling; v += band.inc){
+      rows.push(`<tr data-bid="${v}" style="cursor:pointer"><td>£${v.toLocaleString()}</td></tr>`);
+    }
+    if(ceiling >= MAX) break;
+  }
+  rows.push(`<tr class="lon"><td>London Bidding</td></tr>`);
+  tbody.innerHTML = rows.join('');
+
+  // Click any row to place a room bid at that amount
+  tbody.addEventListener('click', function(e){
+    const row = e.target.closest('tr[data-bid]');
+    if(!row) return;
+    const v = parseInt(row.dataset.bid, 10);
+    if(isNaN(v)) return;
+    if(!S.sc && !S.free) return;
+    if(S.free && S.freeLotSold){ fb('Lot is closed — click NEXT to continue', 'info'); return; }
+    S.pending = null;
+    S.bid = v; S.hi = v; S.lbdr = 'ROOM'; S.lname = 'ROOM';
+    addLog('ROOM', v, 'ROOM', 'room');
+    setNotif(''); setAmt(v); hiInc(v);
+    fb(`Room bid: £${v}`, 'good');
+    if(S.free) freeScheduleBid();
+    setTimeout(focusOverride, 50);
+  });
+}
+
+/* ─────────────────────────────────────────
+   BID OVERRIDE (A row input)
+───────────────────────────────────────── */
+function overrideInput(v){
+  const n = parseInt(v, 10);
+  if(!isNaN(n) && n > 0) document.getElementById('amt').textContent = n;
+}
+
+function focusOverride(){
+  const el = document.getElementById('bidOverride');
+  if(el){ el.focus(); el.select(); }
+}
+
+function overrideEnter(){
+  if(!S.sc && !S.free) return;
+  const el = document.getElementById('bidOverride');
+  const v = parseInt(el.value, 10);
+  if(isNaN(v) || v <= 0){ fb('Enter a valid amount', 'bad'); focusOverride(); return; }
+  if(S.free && S.freeLotSold){ fb('Lot is closed — click NEXT to continue', 'info'); focusOverride(); return; }
+  el.value = '';
+  S.pending = null;
+  S.bid = v; S.hi = v; S.lbdr = 'ROOM'; S.lname = 'ROOM';
+  addLog('ROOM', v, 'ROOM', 'room');
+  setNotif('');
+  setAmt(v); hiInc(v);
+  fb(`Room bid: £${v}`, 'good');
+  if(S.free) freeScheduleBid();
+  setTimeout(focusOverride, 50);
+}
+
+/* ─────────────────────────────────────────
+   INCREMENT TABLE
+───────────────────────────────────────── */
+const INC_TABLE = [
+  {from:0,    to:50,       inc:5},
+  {from:50,   to:100,      inc:10},
+  {from:100,  to:200,      inc:10},
+  {from:200,  to:500,      inc:20},
+  {from:500,  to:1000,     inc:50},
+  {from:1000, to:2000,     inc:100},
+  {from:2000, to:5000,     inc:200},
+  {from:5000, to:Infinity, inc:500},
+];
+
+/* ─────────────────────────────────────────
+   LOT DATA
+───────────────────────────────────────── */
+const LOTS = [
+  {id:508, est:'80-110',  e:'🚑', desc:'Dinky Toys Pre-War 24a (Type 2 Replacement Chassis) "Ambulance" - Grey Body, Red chassis and black hubs with white tyres - See-Photo - Fair (some fatigue)'},
+  {id:509, est:'60-80',   e:'🚗', desc:'Dinky Toys Pre-War 24b (Type 1) Limousine - rare issue - Maroon body, black chassis (underside UN-painted) and Tootsietoy style hubs'},
+  {id:510, est:'40-60',   e:'🚗', desc:'Dinky Toys Pre-War 24b (Type 2 replacement chassis) Limousine - Maroon body, and chassis and black hubs with white tyres - Fair See-Photo'},
+  {id:511, est:'100-150', e:'🚙', desc:'Dinky Toys Pre-War 24d (Type 1) Vogue - rare issue - Mid-Green including hubs with white tyres, black chassis (underside UN-painted)'},
+  {id:512, est:'50-70',   e:'🚕', desc:'Dinky Toys Pre-War 24f (Type 2) Coupe - Cream body, brown chassis, black hubs with white tyres - Fair - some hubs replaced from other models'},
+  {id:513, est:'40-60',   e:'🚕', desc:'Dinky Toys Pre-War 24f (Type 2 replacement chassis) Coupe - yellow body, blue chassis, black hubs - Fair - some over painting'},
+  {id:514, est:'30-50',   e:'🚕', desc:'Dinky Toys Pre-War 24f (Type 2 replacement chassis) Coupe - Blue body, black chassis and hubs - Fair (some fatigue and blow holes)'},
+  {id:515, est:'120-160', e:'🏎️', desc:'Dinky Toys Pre-War 24h (Type 1) 2-Seater Sports Car - rare issue - Green body, black chassis (underside UN-painted)'},
+  {id:516, est:'200-300', e:'🎁', desc:'Dinky Toys Pre-War (1938) 24 Series Gift Set - 3 Open Cream and blue chassis - See Photo - Fair condition'},
+  {id:517, est:'150-200', e:'🚛', desc:'Dinky Toys Pre-War 25 Series - Set of 6 commercial vehicles - all original - See Photo - Good condition throughout'},
+];
+
+/* ─────────────────────────────────────────
+   SCENARIOS
+───────────────────────────────────────── */
+const SCENARIOS = [
+  { name:'Basic Sale', lot:LOTS[0], steps:[
+    { g:'Online bids are arriving automatically for Lot 508...', auto:{b:'B1042',n:'Smith J',a:50}, autoAdv:true },
+    { g:'Another online bid coming in...', auto:{b:'B2317',n:'Jones A',a:60}, autoAdv:true },
+    { g:'One more online bid...', auto:{b:'B1042',n:'Smith J',a:70}, autoAdv:true },
+    { g:'🏁 Bidding has stopped. Issue FAIR WARNING.', expect:'fairwarn', auto:null },
+    { g:'⚠️ Fair Warning sent! Click SELL to close the lot.', expect:'sell', auto:null },
+  ]},
+  { name:'No Interest — Pass', lot:LOTS[1], steps:[
+    { g:'💡 No bids are coming in for Lot 509. Click PASS to move on.', expect:'pass', auto:null },
+  ]},
+  { name:'Room Bid', lot:LOTS[2], steps:[
+    { g:'Online bid at £40 coming in...', auto:{b:'B3301',n:'Taylor R',a:40}, autoAdv:true },
+    { g:'Online bid at £45 coming in...', auto:{b:'B3301',n:'Taylor R',a:45}, autoAdv:true },
+    { g:'⚠️ Online bid at £50 arrived — but a room customer bid simultaneously and the auctioneer did not give it to the platform. Click ROOM to take the bid for the room.', expect:'room', auto:{b:'B3301',n:'Taylor R',a:50} },
+    { g:'✅ Room bid taken at £50. The online platform has dropped out — hammer stays at £50. Issue FAIR WARNING.', expect:'fairwarn', auto:null },
+    { g:'⚠️ Fair Warning done. SELL to the room bidder at £50.', expect:'sell', auto:null },
+  ]},
+  { name:'Fair Warning & Once', lot:LOTS[3], steps:[
+    { g:'Online bid at £100 arriving...', auto:{b:'B4412',n:'Brown K',a:100}, autoAdv:true },
+    { g:'Another online bid coming in...', auto:{b:'B5521',n:'White M',a:110}, autoAdv:true },
+    { g:'🤔 Bidding has stalled. Issue FAIR WARNING.', expect:'fairwarn', auto:null },
+    { g:'⏱️ Now use ONCE — it cycles: Once → Twice → Final!', expect:'once', auto:null },
+    { g:'⏱️ Click ONCE again (Twice…)', expect:'once', auto:null },
+    { g:'🔴 Click ONCE once more (Final!)', expect:'once', auto:null },
+    { g:'🔨 SELL the lot!', expect:'sell', auto:null },
+  ]},
+  { name:'Undo a Mistake', lot:LOTS[4], steps:[
+    { g:'Online bid at £50 arriving...', auto:{b:'B6600',n:'Davis P',a:50}, autoAdv:true },
+    { g:'💡 Now practice BID — place a room counter, but you\'ll undo it next!', expect:'bid', auto:null },
+    { g:'⚠️ That BID was a mistake! Click UNDO to reverse it.', expect:'undo', auto:null },
+    { g:'↩️ Undone! A new online bid arrives at £60...', auto:{b:'B7701',n:'Evans L',a:60}, autoAdv:true },
+    { g:'🏁 Issue Fair Warning.', expect:'fairwarn', auto:null },
+    { g:'🔨 SELL!', expect:'sell', auto:null },
+  ]},
+  { name:'Full Auction Run', lot:LOTS[0], steps:[
+    { g:'🏁 FULL RUN — Lot 508. Online bids arriving...', auto:{b:'B1042',n:'Smith J',a:80}, autoAdv:true },
+    { g:'Another online bid coming in...', auto:{b:'B2317',n:'Jones A',a:90}, autoAdv:true },
+    { g:'🏁 Bidding stopped. Issue FAIR WARNING.', expect:'fairwarn', auto:null },
+    { g:'🔨 SELL.', expect:'sell', auto:null },
+    { g:'Click NEXT to move to Lot 509.', expect:'next', auto:null, nl:LOTS[1] },
+    { g:'💡 Lot 509 — No bids. PASS the lot.', expect:'pass', auto:null },
+    { g:'Click NEXT to move to Lot 510.', expect:'next', auto:null, nl:LOTS[2] },
+    { g:'Online bids coming in for Lot 510...', auto:{b:'B3301',n:'Taylor R',a:40}, autoAdv:true },
+    { g:'Another online bid...', auto:{b:'B3301',n:'Taylor R',a:45}, autoAdv:true },
+    { g:'⚠️ Online bid at £50 — room customer bid simultaneously, auctioneer did not give it to the platform. Click ROOM to take it for the room.', expect:'room', auto:{b:'B3301',n:'Taylor R',a:50} },
+    { g:'Room bid taken at £50. Issue FAIR WARNING.', expect:'fairwarn', auto:null },
+    { g:'🔨 SELL.', expect:'sell', auto:null },
+    { g:'Click NEXT to move to Lot 511.', expect:'next', auto:null, nl:LOTS[3] },
+    { g:'Lot 511 — Online bids arriving...', auto:{b:'B4412',n:'Brown K',a:100}, autoAdv:true },
+    { g:'Another online bid coming in...', auto:{b:'B5521',n:'White M',a:110}, autoAdv:true },
+    { g:'Issue FAIR WARNING.', expect:'fairwarn', auto:null },
+    { g:'⏱️ ONCE…', expect:'once', auto:null },
+    { g:'⏱️ TWICE…', expect:'once', auto:null },
+    { g:'🔴 FINAL!', expect:'once', auto:null },
+    { g:'🔨 SELL.', expect:'sell', auto:null },
+    { g:'Click NEXT to move to Lot 512.', expect:'next', auto:null, nl:LOTS[4] },
+    { g:'Lot 512 — Online bid arriving...', auto:{b:'B6600',n:'Davis P',a:50}, autoAdv:true },
+    { g:'Issue FAIR WARNING.', expect:'fairwarn', auto:null },
+    { g:'🔨 SELL — final lot!', expect:'sell', auto:null },
+  ]},
+];
+
+/* ─────────────────────────────────────────
+   FREE MODE
+───────────────────────────────────────── */
+const FREE_BIDDERS = [
+  {b:'B1042', n:'Smith J'},
+  {b:'B2317', n:'Jones A'},
+  {b:'B3301', n:'Taylor R'},
+  {b:'B4412', n:'Brown K'},
+  {b:'B5521', n:'White M'},
+  {b:'SR500486', n:'SR500486'},
+];
+const FREE_LIMITS = [95, 65, 55, 130, 60, 55, 40, 145, 260, 175];
+
+function goFree(){
+  document.getElementById('overlay').style.display = 'none';
+  S = {
+    sc:null, free:true,
+    si:0, bid:0, hi:0, lbdr:'', lname:'',
+    log:[], lots:JSON.parse(JSON.stringify(LOTS)),
+    li:0, once:0, sold:{}, pending:null, _at:null, _ft:null,
+    freeLotSold:false, freeBidderIdx:0, freePaused:false
+  };
+  clearLogs(); setNotif(''); setAmt(0);
+  document.getElementById('fH').value = '0';
+  resetOnce(); updateLot(); renderLL();
+  document.getElementById('dots').innerHTML = '';
+  document.getElementById('si').textContent = '';
+  document.getElementById('gbar-label').textContent = 'FREE MODE:';
+  document.getElementById('gbar-label').style.color = '#5dadec';
+  setG('No guidance — run the auction freely. Online bids will arrive automatically.');
+  document.getElementById('fb').style.opacity = '0';
+  const pauseBtn = document.getElementById('bPause');
+  pauseBtn.textContent = '⏸ Pause'; pauseBtn.style.background = '';
+  freeScheduleBid();
+  setTimeout(focusOverride, 200);
+}
+
+function freeScheduleBid(){
+  if(!S.free || S.freePaused) return;
+  const limit = FREE_LIMITS[S.li] || 80;
+  if(S.hi >= limit) return;
+  const delay = 2000 + Math.random() * 2000;
+  S._at = setTimeout(() => {
+    if(!S.free || S.freeLotSold) return;
+    if(S.hi >= limit) return;
+    const amount = nextBid(S.hi);
+    S.bid = amount; S.hi = amount; S.lbdr = 'ONLINE'; S.lname = 'Online';
+    addLog('ONLINE', amount, 'Online', '');
+    setNotif(''); setAmt(amount); hiInc(amount);
+    fb(`Online bid: £${amount}`, 'info');
+    freeScheduleBid();
+  }, delay);
+}
+
+/* ─────────────────────────────────────────
+   STATE
+───────────────────────────────────────── */
+let S = {};
+
+function resetState(sc){
+  S = {
+    sc, si:0, bid:0, hi:0, lbdr:'', lname:'',
+    log:[], lots:JSON.parse(JSON.stringify(LOTS)),
+    li:0, once:0, sold:{}, pending:null, _at:null, _ft:null,
+    lotClosed:false
+  };
+  S.li = LOTS.findIndex(l => l.id === sc.lot.id);
+}
+
+/* ─────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────── */
+function getInc(b){ for(const r of INC_TABLE) if(b>=r.from&&b<r.to) return r.inc; return 500; }
+function nextBid(b){ return b + getInc(b); }
+
+/* ─────────────────────────────────────────
+   SCENARIO RUNNER
+───────────────────────────────────────── */
+function go(idx){
+  document.getElementById('overlay').style.display = 'none';
+  resetState(SCENARIOS[idx]);
+  clearLogs(); setNotif(''); setAmt(0);
+  document.getElementById('fH').value = '0';
+  document.getElementById('gbar-label').textContent = 'TRAINER:';
+  document.getElementById('gbar-label').style.color = '#4ade80';
+  resetOnce(); updateLot(); renderLL(); renderDots(); runStep();
+  setTimeout(focusOverride, 200);
+}
+
+function runStep(){
+  if(!S.sc) return;
+  const step = S.sc.steps[S.si];
+  if(!step){ setG('🏆 Scenario complete! Great work!'); return; }
+  setG(step.g); updateDots(); clearTO();
+  if(step.auto){
+    S._at = setTimeout(() => {
+      triggerOnline(step.auto.b, step.auto.n, step.auto.a);
+      if(step.autoAdv){
+        // Auto-register and advance — no button press needed
+        S._at = setTimeout(() => {
+          if(S.pending){ const {a:am}=S.pending; S.pending=null; S.bid=am; setNotif(''); }
+          advance();
+        }, 1200);
+      }
+    }, 1500);
+  }
+}
+
+function triggerOnline(b,n,a){
+  const amount = a || nextBid(S.hi);
+  S.bid = amount; S.hi = amount; S.lbdr = 'ONLINE'; S.lname = 'Online';
+  S.pending = {b, n, a:amount};
+  addLog('ONLINE', amount, 'Online', '');   // always log — online bids arrive automatically
+  setNotif('ng'); setAmt(amount); hiInc(amount);
+  fb(`Online bid: £${amount}`, 'info');
+}
+
+/* ─────────────────────────────────────────
+   ACTIONS
+───────────────────────────────────────── */
+function act(a){
+  if(!S.sc && !S.free) return;
+
+  /* ── FREE MODE ── */
+  if(S.free){
+    if(S.freeLotSold && a !== 'next' && a !== 'undo'){
+      fb('Lot is closed — click NEXT to continue', 'info'); return;
+    }
+    if(a === 'bid'){
+      const amount = nextBid(S.hi);
+      S.bid = amount; S.hi = amount; S.lbdr = 'ROOM'; S.lname = 'ROOM';
+      S.pending = null;
+      setNotif(''); addLog('ROOM', amount, 'ROOM', 'room');
+      setAmt(amount); hiInc(amount);
+      fb(`Room bid: £${amount}`, 'good');
+      freeScheduleBid();
+    } else if(a === 'room'){
+      S.pending = null; S.lbdr = 'ROOM'; S.lname = 'ROOM';
+      addLog('ROOM', S.hi, 'ROOM', 'room');
+      setNotif('');
+      fb(`Room — staying at £${S.hi}`, 'good');
+    } else if(a === 'sell'){
+      if(S.hi === 0){ fb('No bids to sell at', 'bad'); return; }
+      const lot = S.lots[S.li];
+      S.sold[lot.id] = S.hi; lot.hammer = S.hi; lot.buyer = S.lbdr;
+      addLog(S.lbdr, S.hi, S.lname, 'sold');
+      document.getElementById('fH').value = `${S.hi}`;
+      fb(`🔨 SOLD — Lot ${lot.id} £${S.hi} to ${S.lname}`, 'good');
+      setNotif(''); renderLL();
+      S.freeLotSold = true;
+      setG(`Lot ${lot.id} sold at £${S.hi}. Click NEXT to move on.`);
+    } else if(a === 'pass'){
+      const lot = S.lots[S.li];
+      addLog('—', '—', 'NO SALE', '');
+      fb('Lot passed — no sale', 'info');
+      S.freeLotSold = true;
+      setG(`Lot ${lot.id} passed. Click NEXT to move on.`);
+    } else if(a === 'next'){
+      if(S.li >= S.lots.length-1){ setG('🏆 All lots complete!'); fb('Auction finished','good'); return; }
+      S.li++; S.bid=0; S.hi=0; S.log=[]; S.freeLotSold=false;
+      clearLogs(); setAmt(0);
+      document.getElementById('fH').value = '0';
+      resetOnce(); updateLot(); renderLL();
+      fb('Next lot','info');
+      setG(`Lot ${S.lots[S.li].id} — Est: £${S.lots[S.li].est}. Waiting for bids…`);
+      freeScheduleBid();
+    } else if(a === 'fairwarn'){
+      addChat('⚠️ Fair Warning — lot about to close!');
+      fb('Fair Warning sent','warn');
+    } else if(a === 'once'){
+      S.once = (S.once%3)+1;
+      const btn = document.getElementById('bOnce');
+      const labels=['Once...','Twice...','Final!'];
+      const bgs=['#ffe0b2','#fb8c00','#d32f2f'];
+      const fgs=['#111','white','white'];
+      btn.textContent=labels[S.once-1]; btn.style.background=bgs[S.once-1]; btn.style.color=fgs[S.once-1];
+      fb(labels[S.once-1], S.once===3?'bad':'warn');
+      if(S.once===3) setTimeout(resetOnce,3500);
+    } else if(a === 'undo'){
+      if(S.log.length>0){
+        S.log.pop(); renderLogFull();
+        const prev = S.log.length>0 && typeof S.log[S.log.length-1].a==='number' ? S.log[S.log.length-1].a : 0;
+        S.bid=prev; setAmt(prev); hiInc(prev);
+        fb('Bid undone','warn');
+      }
+    } else if(a==='offer'){ fb('Offer: re-opens a passed lot','info');
+    } else if(a==='pause'){
+      S.freePaused = !S.freePaused;
+      const btn = document.getElementById('bPause');
+      if(S.freePaused){
+        clearTimeout(S._at);
+        btn.textContent = '▶ Resume';
+        btn.style.background = '#e65100';
+        fb('⏸ Auto-bids paused', 'warn');
+      } else {
+        btn.textContent = '⏸ Pause';
+        btn.style.background = '';
+        fb('▶ Auto-bids resumed', 'good');
+        freeScheduleBid();
+      }
+    } else if(a==='minus'){ S.bid=Math.max(0,S.bid-getInc(S.bid)); setAmt(S.bid); hiInc(S.bid);
+    } else if(a==='plus'){  S.bid=nextBid(S.bid); setAmt(S.bid); hiInc(S.bid); }
+    setTimeout(focusOverride, 50);
+    return;
+  }
+
+  /* ── SCENARIO MODE ── */
+  const step = S.sc.steps[S.si];
+  if(!step) return;
+  if(step.autoAdv) return;  // hands-off step — auto-advancing, ignore button presses
+  const ex = step.expect;
+
+  const ok = a===ex || !ex;
+
+  if(a==='bid'){
+    if(S.pending){
+      const {a:amount}=S.pending; S.pending=null;
+      S.bid=amount; S.hi=amount; S.lbdr='ONLINE'; S.lname='Online';
+      setNotif('');
+      fb(`Online bid: £${amount}`,'info');
+    } else {
+      const amount=nextBid(S.hi);
+      S.bid=amount; S.hi=amount; S.lbdr='ROOM'; S.lname='ROOM';
+      addLog('ROOM',amount,'ROOM','room');
+      setNotif(''); setAmt(amount); hiInc(amount);
+      fb(`Room bid: £${amount}`,'info');
+    }
+    if(ok) advance();
+  } else if(a==='room'){
+    S.pending=null;
+    S.lbdr='ROOM'; S.lname='ROOM';
+    addLog('ROOM',S.hi,'ROOM','room'); setNotif('');
+    fb(`Room — £${S.hi}`,'info');
+    if(ok) advance();
+  } else if(a==='sell'){
+    if(ok){
+      const lot=S.lots[S.li];
+      S.sold[lot.id]=S.hi; lot.hammer=S.hi;
+      addLog(S.lbdr,S.hi,S.lname,'sold');
+      document.getElementById('fH').value=`${S.hi}`;
+      fb(`🔨 SOLD! Lot ${lot.id} — £${S.hi} to ${S.lname}`,'good');
+      setNotif(''); renderLL(); S.lotClosed=true; advance();
+    } else { fb(`Sell: £${S.hi} to ${S.lname}`,'info'); }
+  } else if(a==='pass'){
+    if(ok){
+      addLog('—','—','NO SALE','');
+      fb('⏭️ Lot passed — no sale','info'); S.lotClosed=true; advance();
+    } else { fb('Pass (no sale)','info'); }
+  } else if(a==='next'){
+    if(ok){
+      const ns=S.sc.steps[S.si];
+      if(ns&&ns.nl) S.li=LOTS.findIndex(l=>l.id===ns.nl.id);
+      else S.li=Math.min(S.li+1,LOTS.length-1);
+      S.bid=0; S.hi=0; S.log=[]; S.lotClosed=false;
+      clearLogs(); setAmt(0);
+      document.getElementById('fH').value='0';
+      updateLot(); renderLL(); fb('➡️ Next lot','info'); advance();
+    }
+  } else if(a==='fairwarn'){
+    addChat('⚠️ Fair Warning — lot about to close!');
+    fb('⚠️ Fair Warning','warn');
+    if(ok) advance();
+  } else if(a==='once'){
+    S.once=(S.once%3)+1;
+    const btn=document.getElementById('bOnce');
+    const labels=['Once...','Twice...','Final!'];
+    const bgs=['#ffe0b2','#fb8c00','#d32f2f'];
+    const fgs=['#111','white','white'];
+    btn.textContent=labels[S.once-1]; btn.style.background=bgs[S.once-1]; btn.style.color=fgs[S.once-1];
+    fb(`⏱️ ${labels[S.once-1]}`,S.once===3?'bad':'warn');
+    if(S.once===3) setTimeout(resetOnce,3500);
+    if(ok) advance();
+  } else if(a==='undo'){
+    if(S.log.length>0){
+      S.log.pop(); renderLogFull();
+      const prev=S.log.length>0&&typeof S.log[S.log.length-1].a==='number'?S.log[S.log.length-1].a:0;
+      S.bid=prev; setAmt(prev); hiInc(prev);
+      fb('↩️ Bid undone','warn');
+      if(ok) advance();
+    }
+  } else if(a==='offer'){ fb('ℹ️ Offer: re-opens a passed lot','info');
+  } else if(a==='pause'){ fb('⏸️ Auction paused','warn');
+  } else if(a==='minus'){ S.bid=Math.max(0,S.bid-getInc(S.bid)); setAmt(S.bid); hiInc(S.bid);
+  } else if(a==='plus'){  S.bid=nextBid(S.bid); setAmt(S.bid); hiInc(S.bid); }
+}
+
+function wrong(ex){
+  const nm={bid:'BID',room:'ROOM',sell:'SELL',pass:'PASS',next:'NEXT',fairwarn:'FAIR WARN',once:'ONCE',undo:'UNDO'};
+  fb(`❌ Not yet — try the ${nm[ex]||ex||'correct'} button`,'bad');
+}
+function advance(){ S.si++; clearTO(); setTimeout(runStep,300); setTimeout(focusOverride,350); }
+
+/* ─────────────────────────────────────────
+   UI HELPERS
+───────────────────────────────────────── */
+function setAmt(v){
+  const el=document.getElementById('amt');
+  el.textContent=v>0?v:'0';
+  el.classList.add('lit');
+  setTimeout(()=>el.classList.remove('lit'),600);
+}
+
+function addLog(b,a,n,cls){
+  S.log.push({b,a,n,cls}); renderLogFull();
+}
+
+function renderLogFull(){
+  const rows=[...S.log].reverse();
+  const html=rows.map((r,i)=>{
+    const aStr=typeof r.a==='number'?r.a:r.a;
+    const isTop=i===0;
+    return `<div class="blog-row ${r.cls} ${isTop?'cur':''} ${isTop?'new':''}">` +
+      `<span>${r.b}</span><span>${aStr}</span><span>${r.n}</span></div>` +
+      `<hr class="row-hr">`;
+  }).join('');
+  document.getElementById('log').innerHTML=html;
+  document.getElementById('rlog').innerHTML=html;
+}
+
+function clearLogs(){
+  document.getElementById('log').innerHTML='';
+  document.getElementById('rlog').innerHTML='';
+}
+
+function setNotif(cls){
+  const bar=document.getElementById('notif');
+  const big=document.getElementById('bnotif');
+  bar.className='notif-bar'; big.className='bid-notif';
+  if(cls==='ng'){
+    bar.classList.add('ng'); bar.textContent='● BID RECEIVED';
+    big.classList.add('ng'); big.textContent='● BID RECEIVED';
+  } else if(cls==='nr'){
+    bar.classList.add('nr'); bar.textContent='● ROOM BID';
+    big.classList.add('nr'); big.textContent='● ROOM BID';
+  } else if(cls==='np'){
+    bar.classList.add('np'); bar.textContent='● COMMISSION BID';
+    big.classList.add('np'); big.textContent='● COMMISSION BID';
+  } else {
+    bar.textContent='Bidding Notification Box';
+    big.textContent='';
+  }
+}
+
+function hiInc(bid){
+  document.querySelectorAll('#itbl-body tr').forEach(r=>r.classList.remove('hi'));
+  const next = nextBid(bid);
+  const target = document.querySelector(`#itbl-body tr[data-bid="${next}"]`);
+  if(target){ target.classList.add('hi'); target.scrollIntoView({block:'nearest'}); }
+}
+
+function updateLot(){
+  const lot=S.lots[S.li];
+  if(!lot) return;
+  document.getElementById('lnum').textContent=`Lot: ${lot.id}`;
+  document.getElementById('lest').textContent='Est:';
+  document.getElementById('lest2').textContent=lot.est;
+  document.getElementById('ldesc').textContent=lot.desc;
+  document.getElementById('limg').textContent=lot.e||'📦';
+  document.getElementById('rphoto-e').textContent=lot.e||'📦';
+}
+
+function renderLL(){
+  const f=(document.getElementById('findl').value||'').toLowerCase();
+  const src=S.lots||LOTS;
+  const cur=src[S.li];
+  document.getElementById('ll').innerHTML=src
+    .filter(l=>!f||String(l.id).includes(f)||l.desc.toLowerCase().includes(f))
+    .map(l=>{
+      const isCur=cur&&l.id===cur.id;
+      const hammer=(S.sold&&S.sold[l.id]!==undefined)?S.sold[l.id]:(l.hammer!==undefined?l.hammer:null);
+      const buyer=hammer!==null?(l.buyer||'Room'):'';
+      const status=hammer!==null
+        ? `<div class="ll-status"><span>${buyer}</span><span>${hammer}.00</span></div>`
+        : `<div class="ll-status"></div>`;
+      return `<div class="ll-row${isCur?' cur':''}">
+        <div class="ll-left">
+          <span class="ll-num">${l.id}</span>
+          <span class="ll-dot">●</span>
+        </div>
+        <div class="ll-right">
+          ${status}
+          <div class="ll-desc">${l.desc}</div>
+        </div>
+      </div><hr class="row-hr">`;
+    }).join('');
+  setTimeout(()=>{
+    const curEl=document.querySelector('.ll-row.cur');
+    if(curEl) curEl.scrollIntoView({block:'nearest'});
+  },50);
+}
+
+function addChat(m){
+  const c=document.getElementById('chat');
+  const li=document.createElement('li');
+  li.className='ann-item';
+  li.textContent=m;
+  li.style.cssText='color:#c00;font-weight:bold';
+  c.appendChild(li);
+  c.scrollTop=c.scrollHeight;
+}
+
+function sendChat(){
+  const i=document.getElementById('cin');
+  if(i.value.trim()){ addChat(i.value.trim()); i.value=''; }
+}
+
+function resetOnce(){
+  S.once=0;
+  const b=document.getElementById('bOnce');
+  b.textContent='Once...'; b.style.background=''; b.style.color='';
+}
+
+function setG(t){ document.getElementById('gt').textContent=t; }
+
+function fb(t,type){
+  const el=document.getElementById('fb');
+  el.textContent=t; el.className='fb-'+type; el.style.opacity='1';
+  clearTimeout(S._ft);
+  S._ft=setTimeout(()=>el.style.opacity='0.7',5000);
+}
+
+function renderDots(){
+  if(!S.sc) return;
+  document.getElementById('dots').innerHTML=
+    S.sc.steps.map((_,i)=>`<div class="dot" id="d${i}"></div>`).join('');
+  document.getElementById('si').textContent=`1 / ${S.sc.steps.length}`;
+}
+
+function updateDots(){
+  if(!S.sc) return;
+  S.sc.steps.forEach((_,i)=>{
+    const d=document.getElementById(`d${i}`);
+    if(d) d.className='dot'+(i<S.si?' done':i===S.si?' now':'');
+  });
+  document.getElementById('si').textContent=
+    `${Math.min(S.si+1,S.sc.steps.length)} / ${S.sc.steps.length}`;
+}
+
+function clearTO(){ if(S._at){clearTimeout(S._at);S._at=null;} }
+
+// init
+buildIncTable();
+renderLL();
+
+// Global: any digit key routes straight to the bid override input
+document.addEventListener('keydown', function(e){
+  const el = document.getElementById('bidOverride');
+  if(!el || document.activeElement === el) return;
+  if(e.ctrlKey || e.altKey || e.metaKey) return;
+  if(/^\d$/.test(e.key) || e.key === 'Backspace'){
+    el.focus();
+    if(/^\d$/.test(e.key)) el.setSelectionRange(el.value.length, el.value.length);
+  }
+});
+</script>
+</body>
+</html>
