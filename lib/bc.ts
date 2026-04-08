@@ -74,11 +74,12 @@ export async function bcPage(
   endpoint: string,
   params: Record<string, string | number>
 ): Promise<any[]> {
-  // Build query string manually so spaces encode as %20 (not +).
-  // OData $filter requires %20 — URLSearchParams uses + which BC ignores.
+  // Build query string manually:
+  // - Keep OData keys ($filter, $top, etc.) unencoded — BC ignores %24filter
+  // - Encode values with encodeURIComponent so spaces become %20 (not +)
   const base = baseUrl() + endpoint
   const qs = Object.entries(params)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
     .join("&")
   const urlStr = qs ? `${base}?${qs}` : base
   const res = await fetch(urlStr, {
