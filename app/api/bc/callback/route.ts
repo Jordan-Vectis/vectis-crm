@@ -73,17 +73,29 @@ export async function GET(req: NextRequest) {
     .setExpirationTime("8h")
     .encrypt(encKey())
 
-  const response = NextResponse.redirect(new URL("https://vectis-crm-production.up.railway.app/tools/bc-reports?bc_connected=1"))
+  const cookieHeader = [
+    `bc_token=${encrypted}`,
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    `Max-Age=${60 * 60 * 8}`,
+    "Path=/",
+  ].join("; ")
 
-  // Clear state cookie and set token cookie on the response
-  response.cookies.delete("bc_oauth_state")
-  response.cookies.set("bc_token", encrypted, {
-    httpOnly: true,
-    secure:   true,
-    sameSite: "lax",
-    maxAge:   60 * 60 * 8,
-    path:     "/",
+  const clearState = "bc_oauth_state=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/"
+
+  // Return a 200 HTML page that sets the cookie then JS-redirects.
+  // Browsers reliably honour Set-Cookie on 200 responses; they often
+  // silently drop them on 3xx redirects (which was causing no_cookie).
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<script>window.location.replace("https://vectis-crm-production.up.railway.app/tools/bc-reports?bc_connected=1")</script>
+</head><body>Connecting…</body></html>`
+
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html",
+      "Set-Cookie":   [cookieHeader, clearState].join(", "),
+    },
   })
-
-  return response
 }
