@@ -351,13 +351,18 @@ export default function BCReportsPage() {
   const [activeReport, setActiveReport] = useState<Report>("cataloguing")
   const [isConnected, setConnected]     = useState<boolean | null>(null)
   const [bcError, setBcError]           = useState<string | null>(null)
+  const [debugReason, setDebugReason]   = useState<string | null>(null)
   const [refreshKey, setRefreshKey]     = useState(0)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get("bc_error")) setBcError(params.get("bc_error"))
-    window.fetch("/api/bc/warehouse")
-      .then((r) => setConnected(r.status !== 401))
+    window.fetch("/api/bc/status")
+      .then((r) => r.json())
+      .then((data) => {
+        setConnected(data.connected === true)
+        if (!data.connected) setDebugReason(data.reason ?? null)
+      })
       .catch(() => setConnected(false))
   }, [])
 
@@ -422,6 +427,9 @@ export default function BCReportsPage() {
             </p>
             {bcError && (
               <p className="text-sm text-red-400 mb-3 bg-red-950 border border-red-800 rounded p-2">{bcError}</p>
+            )}
+            {debugReason && !bcError && (
+              <p className="text-xs text-gray-500 mb-3">Status: {debugReason}</p>
             )}
             <a
               href="/api/bc/auth"
