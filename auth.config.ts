@@ -2,6 +2,7 @@ import type { NextAuthConfig } from "next-auth"
 
 // Lightweight config used in proxy (Edge runtime — no Prisma/Node.js modules)
 export const authConfig: NextAuthConfig = {
+  trustHost: true,
   pages: {
     signIn: "/login",
   },
