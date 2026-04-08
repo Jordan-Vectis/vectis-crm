@@ -1,0 +1,166 @@
+"use server"
+
+import { revalidatePath } from "next/cache"
+import { prisma } from "@/lib/prisma"
+import { auth } from "@/auth"
+import { SubmissionChannel, SubmissionStatus } from "@/app/generated/prisma/enums"
+
+export async function createSubmission(formData: FormData) {
+  const session = await auth()
+  if (!session) throw new Error("Unauthorised")
+
+  const customerName = formData.get("customerName") as string
+  const customerEmail = formData.get("customerEmail") as string | null
+  const customerPhone = formData.get("customerPhone") as string | null
+  const channel = formData.get("channel") as SubmissionChannel
+  const notes = formData.get("notes") as string | null
+  const itemNames = formData.getAll("itemName") as string[]
+  const itemDescriptions = formData.getAll("itemDescription") as string[]
+
+  // Find or create customer
+  let customer = await prisma.customer.findFirst({
+    where: {
+      name: customerName,
+      ...(customerEmail ? { email: customerEmail } : {}),
+    },
+  })
+
+  if (!customer) {
+    customer = await prisma.customer.create({
+      data: {
+        name: customerName,
+        email: customerEmail || null,
+        phone: customerPhone || null,
+      },
+    })
+  }
+
+  const submission = await prisma.submission.create({
+    data: {
+      channel,
+      notes: notes || null,
+      customerId: customer.id,
+      createdById: session.user.id,
+      items: {
+        create: itemNames.map((name, i) => ({
+          name,
+          description: itemDescriptions[i] || null,
+        })),
+      },
+    },
+  })
+
+  revalidatePath("/submissions")
+  return { id: submission.id }
+}
+
+export async function assignSubmission(
+  submissionId: string,
+  departmentId: string,
+  cataloguerId: string
+) {
+  const session = await auth()
+  if (!session) throw new Error("Unauthorised")
+
+  await prisma.submission.update({
+    where: { id: submissionId },
+    data: {
+      departmentId,
+      cataloguerId,
+      status: SubmissionStatus.PENDING_VALUATION,
+    },
+  })
+
+  revalidatePath(`/submissions/${submissionId}`)
+  revalidatePath("/submissions")
+}
+
+export async function logContact(
+  submissionId: string,
+  method: string,
+  notes: string,
+  outcome: string,
+  isFollowUp: boolean = false
+) {
+  const session = await auth()
+  if (!session) throw new Error("Unauthorised")
+
+  await prisma.contactLog.create({
+    data: {
+      submissionId,
+      method,
+      notes,
+      outcome,
+      isFollowUp,
+      userId: session.user.id,
+    },
+  })
+
+  let newStatus: SubmissionStatus | undefined
+  if (outcome === "approved") newStatus = SubmissionStatus.APPROVED
+  else if (outcome === "declined") newStatus = SubmissionStatus.DECLINED
+  else if (outcome === "follow_up") newStatus = SubmissionStatus.FOLLOW_UP
+
+  if (newStatus) {
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: { status: newStatus },
+    })
+  }
+
+  if (isFollowUp) {
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: {
+        followUpCount: { increment: 1 },
+        lastFollowUpAt: new Date(),
+      },
+    })
+  }
+
+  revalidatePath(`/submissions/${submissionId}`)
+  revalidatePath("/follow-ups")
+}
+
+export async function sendFollowUp(submissionId: string) {
+  const session = await auth()
+  if (!session) throw new Error("Unauthorised")
+
+  await prisma.submission.update({
+    where: { id: submissionId },
+    data: {
+      followUpCount: { increment: 1 },
+      lastFollowUpAt: new Date(),
+    },
+  })
+
+  await prisma.contactLog.create({
+    data: {
+      submissionId,
+      method: "email",
+      notes: "Follow-up email sent",
+      outcome: "follow_up",
+      isFollowUp: true,
+      userId: session.user.id,
+    },
+  })
+
+  revalidatePath("/follow-ups")
+  revalidatePath(`/submissions/${submissionId}`)
+}
+
+export async function updateSubmissionStatus(
+  submissionId: string,
+  status: SubmissionStatus
+) {
+  const session = await auth()
+  if (!session) throw new Error("Unauthorised")
+
+  await prisma.submission.update({
+    where: { id: submissionId },
+    data: { status },
+  })
+
+  revalidatePath(`/submissions/${submissionId}`)
+  revalidatePath("/submissions")
+}

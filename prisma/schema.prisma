@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  COLLECTIONS
+  CATALOGUER
+}
+
+enum SubmissionChannel {
+  EMAIL
+  WEB_FORM
+  PHONE
+  WALK_IN
+}
+
+enum SubmissionStatus {
+  PENDING_ASSIGNMENT
+  PENDING_VALUATION
+  VALUATION_COMPLETE
+  PENDING_CUSTOMER_DECISION
+  APPROVED
+  DECLINED
+  FOLLOW_UP
+  COLLECTION_PENDING
+  ARRIVED
+  COMPLETED
+}
+
+enum LogisticsType {
+  SENT_IN
+  COLLECTION
+}
+
+model User {
+  id           String      @id @default(cuid())
+  name         String
+  email        String      @unique
+  password     String
+  role         Role        @default(COLLECTIONS)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  assignedSubmissions Submission[] @relation("AssignedCataloguer")
+  createdSubmissions  Submission[] @relation("CreatedBy")
+  valuations          Valuation[]
+  contactLogs         ContactLog[]
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  submissions Submission[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  submissions Submission[]
+}
+
+model Submission {
+  id             String            @id @default(cuid())
+  reference      String            @unique @default(cuid())
+  channel        SubmissionChannel
+  status         SubmissionStatus  @default(PENDING_ASSIGNMENT)
+  notes          String?
+  followUpCount  Int               @default(0)
+  lastFollowUpAt DateTime?
+
+  customerId   String
+  customer     Customer    @relation(fields: [customerId], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  cataloguerId String?
+  cataloguer   User?       @relation("AssignedCataloguer", fields: [cataloguerId], references: [id])
+  createdById  String
+  createdBy    User        @relation("CreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items       Item[]
+  contactLogs ContactLog[]
+  logistics   Logistics?
+}
+
+model Item {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  valuation    Valuation?
+}
+
+model Valuation {
+  id             String   @id @default(cuid())
+  estimatedValue Float
+  comments       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  itemId       String @unique
+  item         Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  cataloguerId String
+  cataloguer   User   @relation(fields: [cataloguerId], references: [id])
+}
+
+model ContactLog {
+  id      String   @id @default(cuid())
+  method  String
+  notes   String?
+  outcome String?
+  isFollowUp Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+}
+
+model Logistics {
+  id      String        @id @default(cuid())
+  type    LogisticsType
+  arrived Boolean       @default(false)
+  arrivedAt DateTime?
+
+  collectionAddress String?
+  collectionName    String?
+  collectionPhone   String?
+  collectionEmail   String?
+  collectionNotes   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  submissionId String     @unique
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+}
