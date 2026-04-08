@@ -168,6 +168,23 @@ export default async function SubmissionDetailPage({
                 departments={departments}
                 cataloguers={cataloguers}
               />
+              <div className="flex items-center gap-3 my-4">
+                <div className="flex-1 border-t border-gray-200" />
+                <span className="text-xs text-gray-400">or</span>
+                <div className="flex-1 border-t border-gray-200" />
+              </div>
+              <form action={async () => {
+                "use server"
+                const { updateSubmissionStatus } = await import("@/lib/actions/submissions")
+                await updateSubmissionStatus(submission.id, SubmissionStatus.APPROVED)
+              }}>
+                <button
+                  type="submit"
+                  className="w-full text-sm bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+                >
+                  Accept without valuation
+                </button>
+              </form>
             </section>
           )}
 
