@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 export const r2 = new S3Client({
   region: "auto",
@@ -26,4 +27,12 @@ export async function uploadToR2(
   )
 
   return key
+}
+
+export async function getSignedImageUrl(key: string): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: process.env.CLOUDFLARE_R2_BUCKET!,
+    Key: key,
+  })
+  return getSignedUrl(r2, command, { expiresIn: 3600 })
 }

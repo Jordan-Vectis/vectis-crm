@@ -7,6 +7,7 @@ import AssignForm from "./assign-form"
 import ContactForm from "./contact-form"
 import LogisticsForm from "./logistics-form"
 import ValuationSection from "./valuation-section"
+import PhotoViewer from "./photo-viewer"
 
 const statusLabels: Record<SubmissionStatus, { label: string; color: string }> = {
   PENDING_ASSIGNMENT: { label: "Pending Assignment", color: "bg-gray-100 text-gray-700" },
@@ -134,6 +135,7 @@ export default async function SubmissionDetailPage({
                       {item.description && (
                         <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
                       )}
+                    <PhotoViewer imageUrls={item.imageUrls} />
                     </div>
                     {item.valuation ? (
                       <div className="text-right">
