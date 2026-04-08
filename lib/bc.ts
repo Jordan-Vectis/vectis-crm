@@ -10,7 +10,7 @@ const BC_BASE =
 
 function encKey() {
   const buf = Buffer.alloc(32)
-  Buffer.from(process.env.NEXTAUTH_SECRET!).copy(buf)
+  Buffer.from(process.env.AUTH_SECRET!).copy(buf)
   return buf
 }
 
