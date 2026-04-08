@@ -8,8 +8,7 @@ export async function GET() {
 
   const clientId    = process.env.BC_CLIENT_ID!
   const tenantId    = process.env.BC_TENANT_ID!
-  const baseUrl     = process.env.NEXTAUTH_URL ?? "https://vectis-crm-production.up.railway.app"
-  const redirectUri = `${baseUrl}/api/bc/callback`
+  const redirectUri = "https://vectis-crm-production.up.railway.app/api/bc/callback"
   const state       = crypto.randomUUID()
 
   const params = new URLSearchParams({

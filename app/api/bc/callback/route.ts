@@ -34,8 +34,7 @@ export async function GET(req: NextRequest) {
   const clientId     = process.env.BC_CLIENT_ID!
   const clientSecret = process.env.BC_CLIENT_SECRET!
   const tenantId     = process.env.BC_TENANT_ID!
-  const baseUrl      = process.env.NEXTAUTH_URL ?? "https://vectis-crm-production.up.railway.app"
-  const redirectUri  = `${baseUrl}/api/bc/callback`
+  const redirectUri  = "https://vectis-crm-production.up.railway.app/api/bc/callback"
 
   // Exchange code for tokens
   const tokenRes = await fetch(
