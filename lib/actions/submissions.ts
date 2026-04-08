@@ -164,3 +164,15 @@ export async function updateSubmissionStatus(
   revalidatePath(`/submissions/${submissionId}`)
   revalidatePath("/submissions")
 }
+
+export async function deleteSubmission(submissionId: string) {
+  const session = await auth()
+  if (!session) throw new Error("Unauthorised")
+  if (session.user.role !== "ADMIN" && session.user.role !== "COLLECTIONS") {
+    throw new Error("Unauthorised")
+  }
+
+  await prisma.submission.delete({ where: { id: submissionId } })
+
+  revalidatePath("/submissions")
+}

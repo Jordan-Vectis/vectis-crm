@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import CreateUserForm from "./create-user-form"
 import DeleteUserButton from "./delete-button"
+import ChangePasswordButton from "./change-password-button"
 
 const roleLabels: Record<string, { label: string; color: string }> = {
   ADMIN: { label: "Admin", color: "bg-purple-100 text-purple-700" },
@@ -39,6 +40,7 @@ export default async function UsersPage() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Role</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Department</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Password</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -55,6 +57,9 @@ export default async function UsersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-500">{user.department?.name ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <ChangePasswordButton userId={user.id} userName={user.name} />
+                      </td>
                       <td className="px-4 py-3 text-right">
                         {user.id !== session.user.id && (
                           <DeleteUserButton id={user.id} name={user.name} />

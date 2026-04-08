@@ -2,6 +2,7 @@ import Link from "next/link"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { SubmissionStatus } from "@/app/generated/prisma/enums"
+import DeleteSubmissionButton from "./delete-button"
 
 const statusLabels: Record<SubmissionStatus, { label: string; color: string }> = {
   PENDING_ASSIGNMENT: { label: "Pending Assignment", color: "bg-gray-100 text-gray-700" },
@@ -26,32 +27,44 @@ const channelLabels: Record<string, string> = {
 export default async function SubmissionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; search?: string }>
+  searchParams: Promise<{
+    status?: string
+    search?: string
+    channel?: string
+    department?: string
+  }>
 }) {
   const session = await auth()
-  const { status, search } = await searchParams
+  const { status, search, channel, department } = await searchParams
 
-  const submissions = await prisma.submission.findMany({
-    where: {
-      ...(status ? { status: status as SubmissionStatus } : {}),
-      ...(search
-        ? {
-            OR: [
-              { customer: { name: { contains: search, mode: "insensitive" } } },
-              { reference: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      customer: true,
-      department: true,
-      cataloguer: true,
-      items: true,
-      _count: { select: { items: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  })
+  const [submissions, departments] = await Promise.all([
+    prisma.submission.findMany({
+      where: {
+        ...(status ? { status: status as SubmissionStatus } : {}),
+        ...(channel ? { channel: channel as "EMAIL" | "WEB_FORM" | "PHONE" | "WALK_IN" } : {}),
+        ...(department ? { department: { name: department } } : {}),
+        ...(search
+          ? {
+              OR: [
+                { customer: { name: { contains: search, mode: "insensitive" } } },
+                { reference: { contains: search, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        customer: true,
+        department: true,
+        cataloguer: true,
+        _count: { select: { items: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.department.findMany({ orderBy: { name: "asc" } }),
+  ])
+
+  const isCollectionsOrAdmin = session?.user.role === "ADMIN" || session?.user.role === "COLLECTIONS"
+  const hasFilters = status || search || channel || department
 
   return (
     <div className="p-6">
@@ -60,7 +73,7 @@ export default async function SubmissionsPage({
           <h1 className="text-2xl font-bold text-gray-900">Submissions</h1>
           <p className="text-sm text-gray-500 mt-0.5">{submissions.length} total</p>
         </div>
-        {(session?.user.role === "ADMIN" || session?.user.role === "COLLECTIONS") && (
+        {isCollectionsOrAdmin && (
           <Link
             href="/submissions/new"
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
@@ -71,12 +84,12 @@ export default async function SubmissionsPage({
       </div>
 
       {/* Filters */}
-      <form className="flex gap-3 mb-6">
+      <form className="flex flex-wrap gap-3 mb-6">
         <input
           name="search"
           defaultValue={search}
-          placeholder="Search by customer or reference..."
-          className="flex-1 max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Search customer or reference..."
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
         />
         <select
           name="status"
@@ -85,9 +98,27 @@ export default async function SubmissionsPage({
         >
           <option value="">All statuses</option>
           {Object.entries(statusLabels).map(([value, { label }]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <select
+          name="channel"
+          defaultValue={channel || ""}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">All channels</option>
+          {Object.entries(channelLabels).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <select
+          name="department"
+          defaultValue={department || ""}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">All departments</option>
+          {departments.map((d) => (
+            <option key={d.id} value={d.name}>{d.name}</option>
           ))}
         </select>
         <button
@@ -96,11 +127,8 @@ export default async function SubmissionsPage({
         >
           Filter
         </button>
-        {(status || search) && (
-          <Link
-            href="/submissions"
-            className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
-          >
+        {hasFilters && (
+          <Link href="/submissions" className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2">
             Clear
           </Link>
         )}
@@ -121,6 +149,7 @@ export default async function SubmissionsPage({
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Department</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Date</th>
+                {isCollectionsOrAdmin && <th className="px-4 py-3" />}
               </tr>
             </thead>
             <tbody>
@@ -148,6 +177,14 @@ export default async function SubmissionsPage({
                     <td className="px-4 py-3 text-gray-400 text-xs">
                       {new Date(sub.createdAt).toLocaleDateString("en-GB")}
                     </td>
+                    {isCollectionsOrAdmin && (
+                      <td className="px-4 py-3 text-right">
+                        <DeleteSubmissionButton
+                          id={sub.id}
+                          reference={sub.reference.slice(0, 8).toUpperCase()}
+                        />
+                      </td>
+                    )}
                   </tr>
                 )
               })}
