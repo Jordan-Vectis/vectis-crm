@@ -64,10 +64,10 @@ export default function Nav({ userRole, userName }: NavProps) {
 
   return (
     <nav className="w-56 min-h-screen bg-gray-900 flex flex-col">
-      <div className="px-5 py-5 border-b border-gray-700">
+      <Link href="/" className="block px-5 py-5 border-b border-gray-700 hover:bg-gray-800 transition-colors">
         <p className="text-white font-bold text-base tracking-wide">Vectis</p>
         <p className="text-gray-400 text-xs mt-0.5">Internal Platform</p>
-      </div>
+      </Link>
 
       <div className="flex-1 px-3 py-4">
         <NavSection title="CRM" items={crmItems} userRole={userRole} pathname={pathname} />

@@ -28,7 +28,7 @@ export default function LoginPage() {
       setError("Invalid email or password.")
       setLoading(false)
     } else {
-      router.push("/submissions")
+      router.push("/")
       router.refresh()
     }
   }
@@ -37,8 +37,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Vectis CRM</h1>
-          <p className="text-sm text-gray-500 mt-1">Collections Team</p>
+          <h1 className="text-2xl font-bold text-gray-900">Vectis</h1>
+          <p className="text-sm text-gray-500 mt-1">Internal Platform</p>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
