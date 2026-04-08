@@ -44,7 +44,7 @@ export default function ChangePasswordButton({ userId, userName }: { userId: str
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2 flex-wrap">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-1.5 min-w-0">
       <input
         type="password"
         value={password}
@@ -52,31 +52,33 @@ export default function ChangePasswordButton({ userId, userName }: { userId: str
         placeholder="New password"
         minLength={8}
         required
-        className="rounded border border-gray-300 px-2 py-1 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="rounded border border-gray-300 px-2 py-1 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
       <input
         type="password"
         value={confirm}
         onChange={(e) => setConfirm(e.target.value)}
-        placeholder="Confirm"
+        placeholder="Confirm password"
         required
-        className="rounded border border-gray-300 px-2 py-1 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="rounded border border-gray-300 px-2 py-1 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
       {error && <span className="text-xs text-red-500">{error}</span>}
-      <button
-        type="submit"
-        disabled={isPending}
-        className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded transition-colors disabled:opacity-50"
-      >
-        {isPending ? "Saving..." : "Save"}
-      </button>
-      <button
-        type="button"
-        onClick={() => { setOpen(false); setError(null) }}
-        className="text-xs text-gray-400 hover:text-gray-600"
-      >
-        Cancel
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={isPending}
+          className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded transition-colors disabled:opacity-50"
+        >
+          {isPending ? "Saving..." : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setOpen(false); setError(null) }}
+          className="text-xs text-gray-400 hover:text-gray-600"
+        >
+          Cancel
+        </button>
+      </div>
     </form>
   )
 }
