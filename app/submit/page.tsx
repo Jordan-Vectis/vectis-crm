@@ -130,8 +130,12 @@ export default function PublicSubmitPage() {
 
     setUploading(false)
 
-    // Submit form data with keys
-    const formData = new FormData(form)
+    // Submit form data with keys (manually built to exclude file input data)
+    const rawForm = new FormData(form)
+    const formData = new FormData()
+    for (const [key, value] of rawForm.entries()) {
+      if (typeof value === "string") formData.append(key, value)
+    }
     keys.forEach((k) => formData.append("photoKey", k))
 
     startTransition(async () => {
