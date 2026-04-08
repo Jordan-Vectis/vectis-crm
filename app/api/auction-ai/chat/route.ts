@@ -13,10 +13,11 @@ export async function POST(req: NextRequest) {
 
   const formData = await req.formData()
 
-  const message          = formData.get("message") as string ?? ""
+  const message           = formData.get("message") as string ?? ""
   const systemInstruction = formData.get("systemInstruction") as string ?? ""
-  const historyRaw       = formData.get("history") as string ?? "[]"
-  const imageFiles       = formData.getAll("images") as File[]
+  const historyRaw        = formData.get("history") as string ?? "[]"
+  const imageFiles        = formData.getAll("images") as File[]
+  const modelId           = formData.get("model") as string || "gemini-3-flash-preview"
 
   // Build image parts from uploaded files
   const imageParts = await Promise.all(
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
 
   const genai = new GoogleGenerativeAI(apiKey)
   const model = genai.getGenerativeModel({
-    model: "gemini-3-flash-preview",
+    model: modelId,
     systemInstruction: systemInstruction || undefined,
   })
 

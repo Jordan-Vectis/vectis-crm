@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
 
   const formData = await req.formData()
   const systemInstruction = formData.get("systemInstruction") as string ?? ""
+  const modelId           = formData.get("model") as string || "gemini-3-flash-preview"
 
   // Each lot is submitted as: lot_{name}_image_{i} files
   // We reconstruct the lots from the file field names
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   const genai = new GoogleGenerativeAI(apiKey)
   const model = genai.getGenerativeModel({
-    model: "gemini-3-flash-preview",
+    model: modelId,
     systemInstruction: systemInstruction || undefined,
   })
 

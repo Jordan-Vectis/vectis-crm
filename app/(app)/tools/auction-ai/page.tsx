@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import * as XLSX from "xlsx"
 
 // ─── System instruction presets ───────────────────────────────────────────────
@@ -502,7 +502,7 @@ function Autocomplete({ value, onChange, options, placeholder, accentColor = "#C
 
 // ─── Chat Tab ─────────────────────────────────────────────────────────────────
 
-function ChatTab() {
+function ChatTab({ model }: { model: string }) {
   const [preset, setPreset]      = useState(Object.keys(PRESETS)[1])
   const [custom, setCustom]      = useState("")
   const [images, setImages]      = useState<File[]>([])
@@ -528,6 +528,7 @@ function ChatTab() {
       fd.append("message", message)
       fd.append("systemInstruction", systemInstruction)
       fd.append("history", JSON.stringify(apiHistory))
+      fd.append("model", model)
       images.forEach(img => fd.append("images", img, img.name))
 
       const res  = await fetch("/api/auction-ai/chat", { method: "POST", body: fd })
@@ -610,7 +611,7 @@ function ChatTab() {
 
 // ─── Batch Run Tab ────────────────────────────────────────────────────────────
 
-function BatchTab() {
+function BatchTab({ model }: { model: string }) {
   const [preset, setPreset]   = useState(Object.keys(PRESETS)[1])
   const [custom, setCustom]   = useState("")
   const [lots, setLots]       = useState<Record<string, File[]>>({})
@@ -650,6 +651,7 @@ function BatchTab() {
       try {
         const fd = new FormData()
         fd.append("systemInstruction", systemInstruction)
+        fd.append("model", model)
         files.forEach((f, j) => fd.append(`lot_${lot}_image_${j}`, f, f.name))
 
         const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
@@ -1401,8 +1403,19 @@ const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+const DEFAULT_MODEL = "gemini-3-flash-preview"
+
 export default function AuctionAIPage() {
-  const [tab, setTab] = useState<Tab>("chat")
+  const [tab,       setTab]       = useState<Tab>("chat")
+  const [model,     setModel]     = useState(DEFAULT_MODEL)
+  const [modelList, setModelList] = useState<string[]>([DEFAULT_MODEL])
+
+  useEffect(() => {
+    fetch("/api/auction-ai/models")
+      .then(r => r.json())
+      .then(j => { if (j.models?.length) setModelList(j.models) })
+      .catch(() => {})
+  }, [])
 
   return (
     <div className="flex h-[calc(100vh-48px)] bg-[#1C1C1E] text-white overflow-hidden">
@@ -1418,7 +1431,7 @@ export default function AuctionAIPage() {
             const active = tab === t.id
             return (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded text-sm font-medium transition-colors text-left`}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded text-sm font-medium transition-colors text-left"
                 style={{
                   background: active ? accent + "1a" : "",
                   color: active ? accent : "#9ca3af",
@@ -1429,14 +1442,18 @@ export default function AuctionAIPage() {
             )
           })}
         </div>
-        <div className="px-4 py-3 border-t border-gray-800">
-          <p className="text-gray-600 text-xs">Powered by Gemini 2.0 Flash</p>
+        <div className="px-4 py-3 border-t border-gray-800 space-y-1.5">
+          <p className="text-gray-600 text-xs uppercase tracking-wider">Model</p>
+          <select value={model} onChange={e => setModel(e.target.value)}
+            className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-[#C8A96E]">
+            {modelList.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
         </div>
       </aside>
 
       <main className="flex-1 overflow-auto p-6">
-        {tab === "chat"      && <ChatTab />}
-        {tab === "batch"     && <BatchTab />}
+        {tab === "chat"      && <ChatTab model={model} />}
+        {tab === "batch"     && <BatchTab model={model} />}
         {tab === "barcode"   && <BarcodeTab />}
         {tab === "copier"    && <CopierTab />}
         {tab === "catalogue" && <CataloguingTab />}
