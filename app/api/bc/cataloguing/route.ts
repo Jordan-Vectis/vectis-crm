@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getBCConfig, bcPage } from "@/lib/bc"
-import { addDays, eachWeekOfInterval, endOfWeek } from "date-fns"
+import { getBCTokenFromCookie, bcPage } from "@/lib/bc"
+import { eachWeekOfInterval, endOfWeek } from "date-fns"
 
 export const maxDuration = 300
 
@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  const config = getBCConfig()
-  if (!config) return NextResponse.json({ error: "BC not configured" }, { status: 503 })
+  const token = await getBCTokenFromCookie()
+  if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
 
   const { searchParams } = req.nextUrl
   const from = searchParams.get("from") ?? ""
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       `and Field_Caption eq 'Internal Barcode'`
 
     try {
-      const rows = await bcPage(config, "ChangeLogEntries", {
+      const rows = await bcPage(token, "ChangeLogEntries", {
         $top: 500,
         $skip: 0,
         $filter: filter,

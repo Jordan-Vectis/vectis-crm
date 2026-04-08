@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getBCConfig, bcFetchAll, bcPage } from "@/lib/bc"
+import { getBCTokenFromCookie, bcFetchAll, bcPage } from "@/lib/bc"
 
 export const maxDuration = 300
 
@@ -8,8 +8,8 @@ export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  const config = getBCConfig()
-  if (!config) return NextResponse.json({ error: "BC not configured" }, { status: 503 })
+  const token = await getBCTokenFromCookie()
+  if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
 
   const { searchParams } = req.nextUrl
   const from = searchParams.get("from") ?? ""
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   // Fetch shipments
   const shipments = await bcFetchAll(
-    config,
+    token,
     "ShipmentRequestAPI",
     shipFilter,
     "EVA_No,EVA_DocumentNo,EVA_ShipmentDate,EVA_Status,PTE_InternalReference"
@@ -37,11 +37,11 @@ export async function GET(req: NextRequest) {
     const filter  = `(${quoted})`
     const select  = "EVA_DocumentNo,EVA_NoOfLines"
     try {
-      const chunk = await bcPage(config, "CollectionList", { $top: 500, $skip: 0, $filter: filter, $select: select })
+      const chunk = await bcPage(token, "CollectionList", { $top: 500, $skip: 0, $filter: filter, $select: select })
       colRows.push(...chunk)
     } catch (_) {}
     try {
-      const chunk = await bcPage(config, "PostedCollectionList", { $top: 500, $skip: 0, $filter: filter, $select: select })
+      const chunk = await bcPage(token, "PostedCollectionList", { $top: 500, $skip: 0, $filter: filter, $select: select })
       colRows.push(...chunk)
     } catch (_) {}
   }

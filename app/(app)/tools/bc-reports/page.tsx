@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   LabelList, ResponsiveContainer, Cell,
@@ -466,38 +466,84 @@ function WarehouseTab() {
   )
 }
 
+// ─── Connect banner ───────────────────────────────────────────────────────────
+
+function ConnectBanner({ error }: { error?: string }) {
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 max-w-md">
+      <h2 className="font-semibold text-gray-800 mb-1">Connect to Microsoft</h2>
+      <p className="text-sm text-gray-500 mb-4">
+        Sign in with your Microsoft 365 account to access Business Central data.
+      </p>
+      {error && (
+        <p className="text-sm text-red-600 mb-3 bg-red-50 border border-red-200 rounded p-2">{error}</p>
+      )}
+      <a
+        href="/api/bc/auth"
+        className="inline-block bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+      >
+        Sign in with Microsoft
+      </a>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 const TABS = ["Cataloguing", "Packing", "Warehouse"]
 
 export default function BCReportsPage() {
-  const [tab, setTab] = useState("Cataloguing")
+  const [tab, setTab]             = useState("Cataloguing")
+  const [isConnected, setConnected] = useState<boolean | null>(null)
+  const [bcError, setBcError]     = useState<string | null>(null)
+
+  useEffect(() => {
+    // Read query params
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("bc_error")) setBcError(params.get("bc_error"))
+
+    // Check if cookie token exists by calling a lightweight endpoint
+    window.fetch("/api/bc/warehouse")
+      .then((r) => setConnected(r.status !== 401))
+      .catch(() => setConnected(false))
+  }, [])
 
   return (
     <div className="p-6 max-w-5xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-1">BC Reports</h1>
       <p className="text-sm text-gray-500 mb-6">Business Central reporting dashboard</p>
 
-      {/* Main tabs */}
-      <div className="flex gap-1 border-b border-gray-200 mb-6">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              tab === t
-                ? "border-blue-600 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      {isConnected === null && (
+        <p className="text-sm text-gray-400">Checking connection…</p>
+      )}
 
-      {tab === "Cataloguing" && <CataloguingTab />}
-      {tab === "Packing"     && <PackingTab />}
-      {tab === "Warehouse"   && <WarehouseTab />}
+      {isConnected === false && (
+        <ConnectBanner error={bcError ?? undefined} />
+      )}
+
+      {isConnected === true && (
+        <>
+          <p className="text-xs text-green-600 mb-4">✓ Connected to Business Central</p>
+          <div className="flex gap-1 border-b border-gray-200 mb-6">
+            {TABS.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                  tab === t
+                    ? "border-blue-600 text-blue-700"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          {tab === "Cataloguing" && <CataloguingTab />}
+          {tab === "Packing"     && <PackingTab />}
+          {tab === "Warehouse"   && <WarehouseTab />}
+        </>
+      )}
     </div>
   )
 }
