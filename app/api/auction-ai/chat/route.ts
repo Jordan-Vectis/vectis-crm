@@ -46,8 +46,12 @@ export async function POST(req: NextRequest) {
   const contentParts: any[] = [...imageParts]
   if (message) contentParts.push({ text: message })
 
-  const result = await chat.sendMessage(contentParts)
-  const reply  = result.response.text()
-
-  return NextResponse.json({ reply })
+  try {
+    const result = await chat.sendMessage(contentParts)
+    const reply  = result.response.text()
+    return NextResponse.json({ reply })
+  } catch (e: any) {
+    const msg = e?.message ?? String(e)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }
