@@ -1,6 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import Nav from "@/components/nav"
+import TopBar from "@/components/top-bar"
 
 export default async function AppLayout({
   children,
@@ -11,8 +11,8 @@ export default async function AppLayout({
   if (!session) redirect("/login")
 
   return (
-    <div className="flex h-full min-h-screen">
-      <Nav userRole={session.user.role} userName={session.user.name} />
+    <div className="flex flex-col h-full min-h-screen">
+      <TopBar userRole={session.user.role} userName={session.user.name} />
       <main className="flex-1 overflow-auto bg-gray-50">{children}</main>
     </div>
   )
