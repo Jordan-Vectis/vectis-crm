@@ -4,10 +4,8 @@ import { cookies } from "next/headers"
 import { EncryptJWT } from "jose"
 
 function encKey() {
-  const secret = process.env.NEXTAUTH_SECRET!
-  // Pad/truncate to 32 bytes for AES-256
   const buf = Buffer.alloc(32)
-  Buffer.from(secret).copy(buf)
+  Buffer.from(process.env.NEXTAUTH_SECRET!).copy(buf)
   return buf
 }
 
@@ -26,28 +24,26 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  // Verify state from cookie
   const cookieStore = await cookies()
   const savedState  = cookieStore.get("bc_oauth_state")?.value
-
   if (!state || state !== savedState) {
     return NextResponse.redirect(new URL("/tools/bc-reports?bc_error=invalid_state", req.url))
   }
 
-  cookieStore.delete("bc_oauth_state")
-
-  const clientId    = process.env.BC_CLIENT_ID!
+  const clientId     = process.env.BC_CLIENT_ID!
   const clientSecret = process.env.BC_CLIENT_SECRET!
-  const tenantId    = process.env.BC_TENANT_ID!
-  const baseUrl     = process.env.NEXTAUTH_URL ?? "https://vectis-crm-production.up.railway.app"
-  const redirectUri = `${baseUrl}/api/bc/callback`
+  const tenantId     = process.env.BC_TENANT_ID!
+  const baseUrl      = process.env.NEXTAUTH_URL ?? "https://vectis-crm-production.up.railway.app"
+  const redirectUri  = `${baseUrl}/api/bc/callback`
 
   // Exchange code for tokens
   const tokenRes = await fetch(
     `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
     {
-      method: "POST",
+      method:  "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
+      body:    new URLSearchParams({
         grant_type:    "authorization_code",
         client_id:     clientId,
         client_secret: clientSecret,
@@ -67,7 +63,6 @@ export async function GET(req: NextRequest) {
 
   const tokens = await tokenRes.json()
 
-  // Encrypt token payload and store in HttpOnly cookie
   const payload = {
     access_token:  tokens.access_token,
     refresh_token: tokens.refresh_token ?? "",
@@ -79,13 +74,17 @@ export async function GET(req: NextRequest) {
     .setExpirationTime("8h")
     .encrypt(encKey())
 
-  cookieStore.set("bc_token", encrypted, {
+  const response = NextResponse.redirect(new URL("/tools/bc-reports?bc_connected=1", req.url))
+
+  // Clear state cookie and set token cookie on the response
+  response.cookies.delete("bc_oauth_state")
+  response.cookies.set("bc_token", encrypted, {
     httpOnly: true,
-    secure: true,
+    secure:   true,
     sameSite: "lax",
-    maxAge: 60 * 60 * 8, // 8 hours
-    path: "/",
+    maxAge:   60 * 60 * 8,
+    path:     "/",
   })
 
-  return NextResponse.redirect(new URL("/tools/bc-reports?bc_connected=1", req.url))
+  return response
 }
