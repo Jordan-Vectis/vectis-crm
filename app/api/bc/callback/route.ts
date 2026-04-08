@@ -11,7 +11,7 @@ function encKey() {
 
 export async function GET(req: NextRequest) {
   const session = await auth()
-  if (!session) return NextResponse.redirect(new URL("/login", req.url))
+  if (!session) return NextResponse.redirect(new URL("https://vectis-crm-production.up.railway.app/login"))
 
   const { searchParams } = req.nextUrl
   const code  = searchParams.get("code")
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   if (error) {
     return NextResponse.redirect(
-      new URL(`/tools/bc-reports?bc_error=${encodeURIComponent(error)}`, req.url)
+      new URL(`https://vectis-crm-production.up.railway.app/tools/bc-reports?bc_error=${encodeURIComponent(error)}`)
     )
   }
 
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   const cookieStore = await cookies()
   const savedState  = cookieStore.get("bc_oauth_state")?.value
   if (!state || state !== savedState) {
-    return NextResponse.redirect(new URL("/tools/bc-reports?bc_error=invalid_state", req.url))
+    return NextResponse.redirect(new URL("https://vectis-crm-production.up.railway.app/tools/bc-reports?bc_error=invalid_state"))
   }
 
   const clientId     = process.env.BC_CLIENT_ID!
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   if (!tokenRes.ok) {
     const err = await tokenRes.text()
     return NextResponse.redirect(
-      new URL(`/tools/bc-reports?bc_error=${encodeURIComponent(err)}`, req.url)
+      new URL(`https://vectis-crm-production.up.railway.app/tools/bc-reports?bc_error=${encodeURIComponent(err)}`)
     )
   }
 
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
     .setExpirationTime("8h")
     .encrypt(encKey())
 
-  const response = NextResponse.redirect(new URL("/tools/bc-reports?bc_connected=1", req.url))
+  const response = NextResponse.redirect(new URL("https://vectis-crm-production.up.railway.app/tools/bc-reports?bc_connected=1"))
 
   // Clear state cookie and set token cookie on the response
   response.cookies.delete("bc_oauth_state")
