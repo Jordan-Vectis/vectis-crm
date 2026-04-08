@@ -3,22 +3,56 @@
 import { useState, useTransition, useRef } from "react"
 import { submitPublicForm } from "@/lib/actions/public-submission"
 
+const MAX_FILES_SIZE_GB = 5
+const MAX_FILES_SIZE_BYTES = MAX_FILES_SIZE_GB * 1024 * 1024 * 1024
+const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "application/pdf"]
+
+interface FileEntry {
+  file: File
+  key: string | null
+  progress: number
+  error: string | null
+  done: boolean
+}
+
 export default function PublicSubmitPage() {
   const [isPending, startTransition] = useTransition()
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [files, setFiles] = useState<File[]>([])
+  const [files, setFiles] = useState<FileEntry[]>([])
+  const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function getTotalSize(entries: FileEntry[]) {
+    return entries.reduce((sum, e) => sum + e.file.size, 0)
+  }
 
   function handleFiles(incoming: FileList | null) {
     if (!incoming) return
-    const allowed = ["image/jpeg", "image/png", "application/pdf"]
-    const valid = Array.from(incoming).filter((f) => allowed.includes(f.type))
-    setFiles((prev) => [...prev, ...valid])
+    const valid = Array.from(incoming).filter((f) => ALLOWED_TYPES.includes(f.type))
+    const newEntries: FileEntry[] = valid.map((f) => ({
+      file: f,
+      key: null,
+      progress: 0,
+      error: null,
+      done: false,
+    }))
+
+    setFiles((prev) => {
+      const combined = [...prev, ...newEntries]
+      const totalSize = getTotalSize(combined)
+      if (totalSize > MAX_FILES_SIZE_BYTES) {
+        setError(`Total file size exceeds ${MAX_FILES_SIZE_GB}GB. Please contact us directly if you have a large number of photos.`)
+        return prev
+      }
+      setError(null)
+      return combined
+    })
   }
 
   function removeFile(index: number) {
     setFiles((prev) => prev.filter((_, i) => i !== index))
+    setError(null)
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -26,15 +60,79 @@ export default function PublicSubmitPage() {
     handleFiles(e.dataTransfer.files)
   }
 
+  async function uploadFile(entry: FileEntry, index: number): Promise<string> {
+    // Get signed URL from our server
+    const res = await fetch("/api/upload-url", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        filename: entry.file.name,
+        contentType: entry.file.type,
+        size: entry.file.size,
+      }),
+    })
+
+    if (!res.ok) throw new Error("Failed to get upload URL")
+    const { url, key } = await res.json()
+
+    // Upload directly to R2 with progress tracking
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open("PUT", url)
+      xhr.setRequestHeader("Content-Type", entry.file.type)
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100)
+          setFiles((prev) =>
+            prev.map((f, i) => (i === index ? { ...f, progress } : f))
+          )
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status === 200 || xhr.status === 204) {
+          setFiles((prev) =>
+            prev.map((f, i) => (i === index ? { ...f, progress: 100, done: true, key } : f))
+          )
+          resolve()
+        } else {
+          reject(new Error(`Upload failed: ${xhr.status}`))
+        }
+      }
+
+      xhr.onerror = () => reject(new Error("Upload failed"))
+      xhr.send(entry.file)
+    })
+
+    return key
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
     const form = e.currentTarget
-    const formData = new FormData(form)
 
-    // Replace file input with individually appended files
-    formData.delete("photos")
-    files.forEach((f) => formData.append("photos", f))
+    // Upload all files to R2 first
+    setUploading(true)
+    const keys: string[] = []
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const key = await uploadFile(files[i], i)
+        keys.push(key)
+      }
+    } catch {
+      setError("One or more photos failed to upload. Please try again.")
+      setUploading(false)
+      return
+    }
+
+    setUploading(false)
+
+    // Submit form data with keys
+    const formData = new FormData(form)
+    keys.forEach((k) => formData.append("photoKey", k))
 
     startTransition(async () => {
       try {
@@ -45,6 +143,11 @@ export default function PublicSubmitPage() {
       }
     })
   }
+
+  const totalSize = getTotalSize(files)
+  const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(1)
+  const allUploaded = files.every((f) => f.done)
+  const isSubmitting = uploading || isPending
 
   if (submitted) {
     return (
@@ -135,7 +238,7 @@ export default function PublicSubmitPage() {
           {/* Item Description */}
           <section>
             <h2 className="text-xl font-semibold text-gray-800 mb-2">Item Description</h2>
-            <p className="text-sm text-gray-500 mb-4">Tell us about your item. Enter as much information as possible to help our specialists evaluate your items.</p>
+            <p className="text-sm text-gray-500 mb-4">Tell us about your items. Enter as much information as possible to help our specialists evaluate them.</p>
             <textarea
               name="description"
               required
@@ -148,7 +251,7 @@ export default function PublicSubmitPage() {
           {/* Photographs */}
           <section>
             <h2 className="text-xl font-semibold text-gray-800 mb-2">Photographs</h2>
-            <p className="text-sm text-gray-500 mb-4">Acceptable files — JPG, PNG, PDF</p>
+            <p className="text-sm text-gray-500 mb-4">Acceptable files — JPG, PNG, PDF. Maximum {MAX_FILES_SIZE_GB}GB total.</p>
 
             <div
               onDrop={handleDrop}
@@ -175,20 +278,34 @@ export default function PublicSubmitPage() {
             </div>
 
             {files.length > 0 && (
-              <ul className="mt-3 space-y-2">
-                {files.map((file, i) => (
-                  <li key={i} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
-                    <span className="text-gray-700 truncate">{file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(i)}
-                      className="text-red-400 hover:text-red-600 ml-3 flex-shrink-0"
-                    >
-                      Remove
-                    </button>
-                  </li>
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-gray-400">{files.length} file{files.length !== 1 ? "s" : ""} — {totalSizeMB}MB total</p>
+                {files.map((entry, i) => (
+                  <div key={i} className="bg-gray-50 rounded-lg px-3 py-2">
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="text-gray-700 truncate mr-2">{entry.file.name}</span>
+                      {!isSubmitting && (
+                        <button
+                          type="button"
+                          onClick={() => removeFile(i)}
+                          className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {entry.progress > 0 && (
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${entry.done ? "bg-green-500" : "bg-blue-500"}`}
+                          style={{ width: `${entry.progress}%` }}
+                        />
+                      </div>
+                    )}
+                    {entry.error && <p className="text-xs text-red-500 mt-0.5">{entry.error}</p>}
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </section>
 
@@ -198,10 +315,14 @@ export default function PublicSubmitPage() {
 
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isSubmitting}
             className="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3 px-6 rounded-lg text-base transition-colors disabled:opacity-50"
           >
-            {isPending ? "Submitting..." : "Submit for Valuation"}
+            {uploading
+              ? `Uploading photos...`
+              : isPending
+              ? "Submitting..."
+              : "Submit for Valuation"}
           </button>
 
         </form>
