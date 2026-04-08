@@ -12,7 +12,7 @@ export const authConfig: NextAuthConfig = {
       const isLoggedIn = !!auth?.user
       const pathname = nextUrl.pathname
 
-      const publicPaths = ["/login", "/setup"]
+      const publicPaths = ["/login", "/setup", "/submit"]
       if (publicPaths.some((p) => pathname.startsWith(p))) return true
 
       if (!isLoggedIn) return false
