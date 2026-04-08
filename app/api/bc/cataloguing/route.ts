@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { getBCToken, bcPage } from "@/lib/bc"
-import { eachWeekOfInterval, endOfWeek } from "date-fns"
 
 export const maxDuration = 300
 
 const EXCLUDED_USERS = new Set([
   "JORDAN.ORANGE", "JACK.COLLINGS", "MICHELLE.TROTTER", "ANDREW.WILSON",
 ])
+
+// Mirror Python's rolling 7-day chunk logic exactly
+function addDays(date: Date, n: number): Date {
+  const d = new Date(date); d.setUTCDate(d.getUTCDate() + n); return d
+}
+function toDateStr(d: Date): string {
+  return d.toISOString().split("T")[0]
+}
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -21,22 +28,23 @@ export async function GET(req: NextRequest) {
   const to   = searchParams.get("to")   ?? ""
   if (!from || !to) return NextResponse.json({ error: "Missing from/to" }, { status: 400 })
 
-  const dateFrom = new Date(from)
-  const dateTo   = new Date(to)
+  // Parse as UTC dates (matching Python date objects)
+  const dateFrom = new Date(from + "T00:00:00Z")
+  const dateTo   = new Date(to   + "T00:00:00Z")
 
-  // Fetch in weekly chunks (mirrors the original app)
-  const weeks = eachWeekOfInterval({ start: dateFrom, end: dateTo }, { weekStartsOn: 1 })
   const allRows: any[] = []
 
-  for (const weekStart of weeks) {
-    const chunkStart = weekStart < dateFrom ? dateFrom : weekStart
-    const chunkEnd   = endOfWeek(weekStart, { weekStartsOn: 1 }) > dateTo
-      ? dateTo
-      : endOfWeek(weekStart, { weekStartsOn: 1 })
+  // Exact rolling 7-day chunks matching Python:
+  // chunk_start = date_from
+  // chunk_end   = min(chunk_start + 6 days, date_to)
+  // next chunk  = chunk_end + 1 day
+  let chunkStart = dateFrom
+  while (chunkStart <= dateTo) {
+    const chunkEnd = addDays(chunkStart, 6) > dateTo ? dateTo : addDays(chunkStart, 6)
 
     const filter =
-      `Date_and_Time ge ${chunkStart.toISOString().split("T")[0]}T00:00:00Z ` +
-      `and Date_and_Time le ${chunkEnd.toISOString().split("T")[0]}T23:59:59Z ` +
+      `Date_and_Time ge ${toDateStr(chunkStart)}T00:00:00Z ` +
+      `and Date_and_Time le ${toDateStr(chunkEnd)}T23:59:59Z ` +
       `and Field_Caption eq 'Internal Barcode'`
 
     try {
@@ -50,6 +58,8 @@ export async function GET(req: NextRequest) {
     } catch (_) {
       // skip failed chunks
     }
+
+    chunkStart = addDays(chunkEnd, 1)
   }
 
   // Filter excluded users
