@@ -61,9 +61,24 @@ export async function GET() {
     .map(([cataloguer, count]) => ({ cataloguer, count }))
     .sort((a, b) => b.count - a.count)
 
+  // Raw rows — keep only useful display fields to limit response size
+  const raw = rows.map((r) => ({
+    category:   r[CAT_COL]        ?? "",
+    cataloguer: SALESPERSON_NAMES[String(r[CATALOGUER_COL] ?? "").trim()] ?? String(r[CATALOGUER_COL] ?? ""),
+    catalogued: r[CATALOGUED_COL] === true,
+    barcode:    r["No_"] ?? r["EVA_TOT_No"] ?? "",
+    description: r["Description"] ?? r["EVA_TOT_Description"] ?? "",
+  }))
+
   return NextResponse.json({
     byCategory,
     byCataloguer,
-    meta: { total: rows.length, openTotes: openTotes.length },
+    raw,
+    meta: {
+      total:           rows.length,
+      openTotes:       openTotes.length,
+      categoryCount:   byCategory.length,
+      largestCategory: byCategory[0]?.category ?? "—",
+    },
   })
 }

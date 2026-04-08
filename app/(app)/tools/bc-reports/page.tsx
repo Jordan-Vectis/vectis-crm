@@ -26,7 +26,8 @@ type PackData = {
 type WhData = {
   byCategory:   { category: string; count: number }[]
   byCataloguer: { cataloguer: string; count: number }[]
-  meta:         { total: number; openTotes: number }
+  raw:          { category: string; cataloguer: string; catalogued: boolean; barcode: string; description: string }[]
+  meta:         { total: number; openTotes: number; categoryCount: number; largestCategory: string }
 }
 
 type Report = "cataloguing" | "packing" | "warehouse"
@@ -316,10 +317,51 @@ function WarehouseTab() {
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
       {data && (
         <>
-          <MetaBar text={`${data.meta.total.toLocaleString()} total totes  ·  ${data.meta.openTotes.toLocaleString()} open`} />
-          <SubTabs tabs={["By Category", "By Cataloguer"]} active={subTab} onChange={setSubTab} />
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Total Totes</p>
+              <p className="text-xl font-bold text-white">{data.meta.total.toLocaleString()}</p>
+            </div>
+            <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Categories</p>
+              <p className="text-xl font-bold text-white">{data.meta.categoryCount.toLocaleString()}</p>
+            </div>
+            <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Largest Category</p>
+              <p className="text-sm font-semibold text-white truncate">{data.meta.largestCategory}</p>
+            </div>
+          </div>
+          <SubTabs tabs={["By Category", "By Cataloguer", "Raw Data"]} active={subTab} onChange={setSubTab} />
           {subTab === "By Category"   && <><HBar data={data.byCategory} valueKey="count" labelKey="category" /><ExportBtn onClick={() => exportXlsx(data.byCategory, "warehouse_by_category")} /></>}
           {subTab === "By Cataloguer" && <><HBar data={data.byCataloguer} valueKey="count" labelKey="cataloguer" /><ExportBtn onClick={() => exportXlsx(data.byCataloguer, "warehouse_by_cataloguer")} /></>}
+          {subTab === "Raw Data" && (
+            <>
+              <p className="text-xs text-gray-500 mb-3">{data.raw.length.toLocaleString()} totes</p>
+              <div className="overflow-x-auto rounded border border-gray-800">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#0d0f1a] text-gray-500 text-xs uppercase">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Barcode</th>
+                      <th className="px-4 py-2 text-left">Category</th>
+                      <th className="px-4 py-2 text-left">Cataloguer</th>
+                      <th className="px-4 py-2 text-left">Catalogued</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {data.raw.map((r, i) => (
+                      <tr key={i} className="hover:bg-[#0d0f1a]">
+                        <td className="px-4 py-2 text-gray-500 font-mono text-xs">{r.barcode}</td>
+                        <td className="px-4 py-2 text-gray-300">{r.category}</td>
+                        <td className="px-4 py-2 text-gray-300">{r.cataloguer}</td>
+                        <td className="px-4 py-2">{r.catalogued ? <span className="text-green-400 text-xs">✓ Yes</span> : <span className="text-gray-600 text-xs">No</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <ExportBtn onClick={() => exportXlsx(data.raw, "warehouse_raw")} />
+            </>
+          )}
         </>
       )}
     </div>
