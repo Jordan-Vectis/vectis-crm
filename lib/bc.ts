@@ -74,9 +74,14 @@ export async function bcPage(
   endpoint: string,
   params: Record<string, string | number>
 ): Promise<any[]> {
-  const url = new URL(baseUrl() + endpoint)
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
-  const res = await fetch(url.toString(), {
+  // Build query string manually so spaces encode as %20 (not +).
+  // OData $filter requires %20 — URLSearchParams uses + which BC ignores.
+  const base = baseUrl() + endpoint
+  const qs = Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&")
+  const urlStr = qs ? `${base}?${qs}` : base
+  const res = await fetch(urlStr, {
     headers: {
       Accept:            "application/json",
       "OData-MaxVersion": "4.0",
