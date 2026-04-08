@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 
 export async function GET() {
+  try {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
@@ -33,4 +34,7 @@ export async function GET() {
   })
 
   return response
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message, stack: e.stack }, { status: 500 })
+  }
 }
