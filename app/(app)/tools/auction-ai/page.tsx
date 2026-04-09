@@ -649,8 +649,9 @@ function BatchTab({ model }: { model: string }) {
       if (map[lot].length < 24) map[lot].push(file)
     }
     const names = Object.keys(map)
-    setLots(map); setSelected(new Set(names)); setResults([]); setLog([])
-    addLog(`Loaded ${names.length} lot folders  ·  ${Object.values(map).reduce((s,f)=>s+f.length,0)} images total`)
+    const autoSkipped = names.filter(n => savedLots.has(n))
+    setLots(map); setSelected(new Set(names.filter(n => !savedLots.has(n)))); setResults([]); setLog([])
+    addLog(`Loaded ${names.length} lot folders  ·  ${Object.values(map).reduce((s,f)=>s+f.length,0)} images total${autoSkipped.length ? `  ·  ${autoSkipped.length} already saved (auto-deselected)` : ""}`)
   }
 
   // Sort flat folder by filename: everything before the first underscore = lot name
@@ -675,8 +676,9 @@ function BatchTab({ model }: { model: string }) {
     }
 
     const names = Object.keys(map).sort()
-    setLots(map); setSelected(new Set(names))
-    addLog(`Done — ${names.length} lots, ${sorted} images sorted, ${skipped} skipped`)
+    const autoSkipped = names.filter(n => savedLots.has(n))
+    setLots(map); setSelected(new Set(names.filter(n => !savedLots.has(n))))
+    addLog(`Done — ${names.length} lots, ${sorted} images sorted, ${skipped} skipped${autoSkipped.length ? `  ·  ${autoSkipped.length} already saved (auto-deselected)` : ""}`)
   }
 
   function toggleLot(name: string) {
@@ -820,7 +822,16 @@ function BatchTab({ model }: { model: string }) {
           <div className="flex items-center gap-3 mt-1.5">
             <span className="text-xs text-amber-400">{savedLots.size} lot{savedLots.size !== 1 ? "s" : ""} already saved in this run</span>
             <button
-              onClick={() => setSelected(s => { const n = new Set(s); savedLots.forEach(l => n.delete(l)); return n })}
+              onClick={() => {
+                const inBoth = [...savedLots].filter(l => selected.has(l))
+                if (inBoth.length > 0) {
+                  // deselect all saved lots
+                  setSelected(s => new Set([...s].filter(l => !savedLots.has(l))))
+                } else {
+                  // all already deselected — re-add them back
+                  setSelected(s => new Set([...s, ...savedLots].filter(l => lotNames.includes(l))))
+                }
+              }}
               className="text-xs px-2.5 py-0.5 bg-[#2C2C2E] border border-amber-600 text-amber-400 rounded hover:bg-amber-900/30 transition-colors">
               ⏭ Skip Saved
             </button>
