@@ -25,3 +25,125 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   font-size: 1.125rem;
 }
+
+/* ─── Warehouse app utility classes ─────────────────────────────────────── */
+
+.wh-card {
+  background: white;
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
+  padding: 1rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.wh-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  background: #2563eb;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: none;
+}
+.wh-btn-primary:hover { background: #1d4ed8; }
+.wh-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.wh-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  background: white;
+  color: #374151;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #d1d5db;
+  transition: border-color 0.15s;
+}
+.wh-btn-secondary:hover { border-color: #9ca3af; }
+.wh-btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.wh-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  background: #ef4444;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s;
+}
+.wh-btn-danger:hover { background: #dc2626; }
+
+.wh-btn-sm {
+  padding: 0.25rem 0.625rem !important;
+  font-size: 0.75rem !important;
+}
+
+.wh-input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  background: white;
+  color: #111827;
+}
+.wh-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgb(59 130 246 / 0.3);
+}
+
+.wh-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.25rem;
+}
+
+.wh-table-header {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.wh-table-cell {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+.wh-badge {
+  display: inline-flex;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.wh-badge-blue  { background: #dbeafe; color: #1d4ed8; }
+.wh-badge-green { background: #dcfce7; color: #15803d; }
+.wh-badge-yellow{ background: #fef9c3; color: #a16207; }
+.wh-badge-gray  { background: #f3f4f6; color: #374151; }
+.wh-badge-red   { background: #fee2e2; color: #dc2626; }
+
+@media print {
+  .print\:block { display: block !important; }
+  .print\:hidden { display: none !important; }
+}

@@ -12,11 +12,13 @@ declare module "next-auth" {
       email: string
       role: string
       departmentId: string | null
+      appPermissions: Record<string, { role: string }> | null
     }
   }
   interface User {
     role: string
     departmentId: string | null
+    appPermissions: Record<string, { role: string }> | null
   }
 }
 
@@ -49,6 +51,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: user.email,
           role: user.role,
           departmentId: user.departmentId,
+          appPermissions: user.appPermissions as Record<string, { role: string }> | null,
         }
       },
     }),

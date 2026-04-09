@@ -39,16 +39,17 @@ enum LogisticsType {
 }
 
 model User {
-  id           String      @id @default(cuid())
-  name         String
-  email        String      @unique
-  password     String
-  role         Role        @default(COLLECTIONS)
-  allowedApps  String[]    @default([])
-  departmentId String?
-  department   Department? @relation(fields: [departmentId], references: [id])
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id             String      @id @default(cuid())
+  name           String
+  email          String      @unique
+  password       String
+  role           Role        @default(COLLECTIONS)
+  allowedApps    String[]    @default([])
+  appPermissions Json?
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   assignedSubmissions Submission[] @relation("AssignedCataloguer")
   createdSubmissions  Submission[] @relation("CreatedBy")
@@ -241,4 +242,60 @@ model CatalogueLot {
 
   auctionId    String
   auction      CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+}
+
+model WarehouseCustomer {
+  id        String   @id
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  receipts WarehouseReceipt[]
+}
+
+model WarehouseReceipt {
+  id             String            @id
+  customerId     String
+  customer       WarehouseCustomer @relation(fields: [customerId], references: [id])
+  commissionRate Float             @default(0)
+  notes          String?
+  status         String            @default("open")
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  containers WarehouseContainer[]
+}
+
+model WarehouseContainer {
+  id          String           @id
+  type        String
+  description String
+  receiptId   String
+  receipt     WarehouseReceipt @relation(fields: [receiptId], references: [id])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  movements WarehouseMovement[]
+}
+
+model WarehouseLocation {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  movements WarehouseMovement[]
+}
+
+model WarehouseMovement {
+  id           String             @id @default(cuid())
+  containerId  String
+  container    WarehouseContainer @relation(fields: [containerId], references: [id])
+  locationCode String
+  location     WarehouseLocation  @relation(fields: [locationCode], references: [code])
+  notes        String?
+  movedByName  String?
+  movedAt      DateTime           @default(now())
 }

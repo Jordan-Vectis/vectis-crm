@@ -13,3 +13,25 @@ export function hasAppAccess(role: string, allowedApps: string[], appKey: AppKey
   if (role === "ADMIN") return true
   return allowedApps.includes(appKey)
 }
+
+export type WarehouseRole = "warehouse" | "manager" | "admin"
+
+export const WAREHOUSE_ROLES: { value: WarehouseRole; label: string }[] = [
+  { value: "warehouse", label: "Warehouse (basic)" },
+  { value: "manager",   label: "Manager" },
+  { value: "admin",     label: "Admin (full)" },
+]
+
+export function getWarehouseRole(
+  role: string,
+  appPermissions: Record<string, { role: string }> | null | undefined
+): WarehouseRole | null {
+  if (role === "ADMIN") return "admin"
+  return (appPermissions?.WAREHOUSE?.role as WarehouseRole) || null
+}
+
+export function canAccessWarehouseRoute(whRole: WarehouseRole | null, minRole: WarehouseRole): boolean {
+  if (!whRole) return false
+  const order: WarehouseRole[] = ["warehouse", "manager", "admin"]
+  return order.indexOf(whRole) >= order.indexOf(minRole)
+}

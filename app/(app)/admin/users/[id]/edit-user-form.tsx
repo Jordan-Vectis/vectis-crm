@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updateUser } from "@/lib/actions/admin"
-import { ALL_APPS } from "@/lib/apps"
-import type { AppKey } from "@/lib/apps"
+import { ALL_APPS, WAREHOUSE_ROLES } from "@/lib/apps"
+import type { AppKey, WarehouseRole } from "@/lib/apps"
 
 interface Props {
   userId: string
@@ -12,14 +12,18 @@ interface Props {
   role: string
   departmentId: string | null
   allowedApps: string[]
+  appPermissions: Record<string, { role: string }> | null
   departments: { id: string; name: string }[]
   isSelf: boolean
 }
 
-export default function EditUserForm({ userId, name, role, departmentId, allowedApps, departments, isSelf }: Props) {
+export default function EditUserForm({ userId, name, role, departmentId, allowedApps, appPermissions, departments, isSelf }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [selectedApps, setSelectedApps] = useState<string[]>(allowedApps)
+  const [warehouseRole, setWarehouseRole] = useState<WarehouseRole>(
+    (appPermissions?.WAREHOUSE?.role as WarehouseRole) || "warehouse"
+  )
   const [appsPending, startAppsTransition] = useTransition()
   const [appsMsg, setAppsMsg] = useState<string | null>(null)
   const [pwdOpen, setPwdOpen] = useState(false)
@@ -43,11 +47,15 @@ export default function EditUserForm({ userId, name, role, departmentId, allowed
 
   function saveApps() {
     setAppsMsg(null)
+    const newAppPermissions: Record<string, { role: string }> = {}
+    if (selectedApps.includes("WAREHOUSE")) {
+      newAppPermissions.WAREHOUSE = { role: warehouseRole }
+    }
     startAppsTransition(async () => {
       const res = await fetch(`/api/admin/users/${userId}/apps`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ allowedApps: selectedApps }),
+        body: JSON.stringify({ allowedApps: selectedApps, appPermissions: newAppPermissions }),
       })
       setAppsMsg(res.ok ? "Saved" : "Failed to save")
       if (res.ok) setTimeout(() => setAppsMsg(null), 2000)
@@ -109,27 +117,50 @@ export default function EditUserForm({ userId, name, role, departmentId, allowed
 
       {/* ── App access ── */}
       <section className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="font-semibold text-gray-800 mb-1">App Access</h2>
-        <p className="text-sm text-gray-500 mb-4">Choose which apps this user can see and access.</p>
+        <h2 className="font-semibold text-gray-800 mb-1">App Access & Permissions</h2>
+        <p className="text-sm text-gray-500 mb-4">Choose which apps this user can access, and set their role within each app.</p>
         {role === "ADMIN" ? (
-          <p className="text-sm text-gray-500 italic">Admin users have access to all apps.</p>
+          <p className="text-sm text-gray-500 italic">Admin users have access to all apps with full permissions.</p>
         ) : (
           <>
-            <div className="flex flex-col gap-3 mb-5">
+            <div className="flex flex-col gap-4 mb-5">
               {ALL_APPS.map(app => (
-                <label key={app.key} className="flex items-center gap-3 cursor-pointer group">
-                  <div onClick={() => toggleApp(app.key)}
-                    className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors cursor-pointer ${
-                      selectedApps.includes(app.key) ? "bg-blue-600 border-blue-600" : "border-gray-300 group-hover:border-blue-400"
-                    }`}>
-                    {selectedApps.includes(app.key) && (
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
-                        <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
-                  </div>
-                  <span className="text-sm text-gray-700 group-hover:text-gray-900">{app.label}</span>
-                </label>
+                <div key={app.key}>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div onClick={() => toggleApp(app.key)}
+                      className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                        selectedApps.includes(app.key) ? "bg-blue-600 border-blue-600" : "border-gray-300 group-hover:border-blue-400"
+                      }`}>
+                      {selectedApps.includes(app.key) && (
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
+                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-sm text-gray-700 group-hover:text-gray-900 font-medium">{app.label}</span>
+                  </label>
+
+                  {/* Warehouse role sub-option */}
+                  {app.key === "WAREHOUSE" && selectedApps.includes("WAREHOUSE") && (
+                    <div className="ml-8 mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Warehouse Role</label>
+                      <select
+                        value={warehouseRole}
+                        onChange={e => setWarehouseRole(e.target.value as WarehouseRole)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {WAREHOUSE_ROLES.map(r => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {warehouseRole === "warehouse" && "Can use Inbound, Locate, and Lookup."}
+                        {warehouseRole === "manager" && "Can also view Customers, Receipts, and History."}
+                        {warehouseRole === "admin" && "Full access including Reports."}
+                      </p>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
             <div className="flex items-center gap-3">

@@ -6,7 +6,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const session = await auth()
   if (!session || session.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   const { id } = await params
-  const { allowedApps } = await req.json()
-  await prisma.user.update({ where: { id }, data: { allowedApps } })
+  const { allowedApps, appPermissions } = await req.json()
+  await prisma.user.update({
+    where: { id },
+    data: {
+      allowedApps,
+      ...(appPermissions !== undefined ? { appPermissions } : {}),
+    },
+  })
   return NextResponse.json({ ok: true })
 }

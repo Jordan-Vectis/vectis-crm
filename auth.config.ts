@@ -26,6 +26,7 @@ export const authConfig: NextAuthConfig = {
         token.id = user.id as string
         token.role = (user as { role: string }).role
         token.departmentId = (user as { departmentId: string | null }).departmentId
+        token.appPermissions = (user as { appPermissions: Record<string, { role: string }> | null }).appPermissions ?? null
       }
       return token
     },
@@ -33,6 +34,7 @@ export const authConfig: NextAuthConfig = {
       session.user.id = token.id as string
       session.user.role = token.role as string
       session.user.departmentId = token.departmentId as string | null
+      session.user.appPermissions = token.appPermissions as Record<string, { role: string }> | null
       return session
     },
   },
