@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getBCToken, bcPage } from "@/lib/bc"
+import { getBCToken, bcFetchAll } from "@/lib/bc"
 
 export const maxDuration = 300
 
@@ -48,12 +48,12 @@ export async function GET(req: NextRequest) {
       `and Field_Caption eq 'Internal Barcode'`
 
     try {
-      const rows = await bcPage(token, "ChangeLogEntries", {
-        $top: 500,
-        $skip: 0,
-        $filter: filter,
-        $select: "User_ID,Date_and_Time,Entry_No,Field_Caption",
-      })
+      const rows = await bcFetchAll(
+        token,
+        "ChangeLogEntries",
+        filter,
+        "User_ID,Date_and_Time,Entry_No,Field_Caption",
+      )
       allRows.push(...rows)
     } catch (_) {
       // skip failed chunks
