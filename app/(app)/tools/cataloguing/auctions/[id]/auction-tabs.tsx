@@ -49,9 +49,8 @@ const lbl   = "block text-xs font-medium text-gray-400 mb-1"
 
 export default function AuctionTabs({ auction, lots }: { auction: Auction; lots: Lot[] }) {
   const router = useRouter()
-  const [tab, setTab]               = useState<Tab>("settings")
-  const [editingLotId, setEditing]  = useState<string | null>(null)
-  const [addKey, setAddKey]         = useState(0)
+  const [tab, setTab]              = useState<Tab>("settings")
+  const [editingLotId, setEditing] = useState<string | null>(null)
 
   const editingLot = lots.find(l => l.id === editingLotId) ?? null
 
@@ -98,8 +97,8 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
       {tab === "settings" && <SettingsTab auction={auction} />}
 
       {tab === "add-lot" && (
-        <LotWizardTab key={addKey} auctionId={auction.id} auction={auction}
-          onCreated={() => { setAddKey(k => k + 1); router.refresh() }} />
+        <LotWizardTab auctionId={auction.id} auction={auction}
+          onCreated={() => router.refresh()} />
       )}
 
       {tab === "manage-lots" && (
