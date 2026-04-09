@@ -651,7 +651,8 @@ function BatchTab({ model }: { model: string }) {
     addLog(`Loaded ${names.length} lot folders  ·  ${Object.values(map).reduce((s,f)=>s+f.length,0)} images total`)
   }
 
-  // Sort flat folder by filename pattern e.g. R00001-1.jpg → lot R00001
+  // Sort flat folder by filename: everything before the first underscore = lot name
+  // e.g. R00001_1.jpg → lot "R00001"  (matches Python app logic)
   function onSortFiles(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files) return
     const files = Array.from(e.target.files).filter(f => f.type.startsWith("image/"))
@@ -660,22 +661,20 @@ function BatchTab({ model }: { model: string }) {
     addLog(`Sorting ${files.length} images by filename…`)
 
     const map: Record<string, File[]> = {}
-    let sorted = 0, unsorted = 0
+    let sorted = 0, skipped = 0
 
     for (const file of files) {
-      // Match patterns like R00001-1, R00001_1, R00001 (with optional -N or _N suffix)
-      const m = file.name.match(/([A-Za-z]\d{4,6})(?:[-_]\d+)?(?:\.\w+)?$/)
-      const lot = m ? m[1].toUpperCase() : "_UNSORTED"
-      if (m) sorted++ else unsorted++
+      const nameNoExt = file.name.replace(/\.[^.]+$/, "")
+      const lot = nameNoExt.split("_")[0].trim()
+      if (!lot) { skipped++; continue }
+      sorted++
       if (!map[lot]) map[lot] = []
       if (map[lot].length < 24) map[lot].push(file)
     }
 
-    const names = Object.keys(map).filter(k => k !== "_UNSORTED").sort()
-    const allNames = [...names, ...(map["_UNSORTED"] ? ["_UNSORTED"] : [])]
+    const names = Object.keys(map).sort()
     setLots(map); setSelected(new Set(names))
-    addLog(`Done — ${names.length} lots matched, ${sorted} images sorted, ${unsorted} unmatched`)
-    if (map["_UNSORTED"]) addLog(`⚠ ${map["_UNSORTED"].length} images could not be matched (in _UNSORTED)`)
+    addLog(`Done — ${names.length} lots, ${sorted} images sorted, ${skipped} skipped`)
   }
 
   function toggleLot(name: string) {
@@ -748,8 +747,8 @@ function BatchTab({ model }: { model: string }) {
         <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Step 1 — Sort flat folder by filename (optional)</p>
         <div onClick={() => sortRef.current?.click()}
           className="border border-dashed border-gray-600 hover:border-green-500 rounded-lg px-4 py-3 text-center cursor-pointer transition-colors">
-          <p className="text-gray-300 text-sm font-medium">▦ Match images by filename (e.g. R00001-1.jpg)</p>
-          <p className="text-gray-600 text-xs mt-0.5">Groups images into lots based on the lot reference in their filename</p>
+          <p className="text-gray-300 text-sm font-medium">▦ Sort images by filename (e.g. R00001_1.jpg)</p>
+          <p className="text-gray-600 text-xs mt-0.5">Groups by the part before the first underscore — R00001_1.jpg → lot R00001</p>
           <input ref={sortRef} type="file" multiple accept="image/*" className="hidden" onChange={onSortFiles} />
         </div>
       </div>
