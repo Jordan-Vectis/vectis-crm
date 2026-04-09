@@ -33,11 +33,12 @@ export async function POST(req: NextRequest) {
     systemInstruction: systemInstruction || undefined,
   })
 
-  const MAX_RETRIES    = 8
   const MAX_BACKOFF_MS = 60_000
 
+  // Retries forever on rate-limit / service errors — only throws on real failures
   async function generateWithRetry(contents: any[]): Promise<string> {
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    let attempt = 0
+    while (true) {
       try {
         const result = await model.generateContent(contents)
         return result.response.text()
@@ -47,12 +48,11 @@ export async function POST(req: NextRequest) {
                             msg.includes("503") || msg.includes("Service Unavailable") ||
                             msg.includes("high demand")
         if (!isRetryable) throw e
-        if (attempt === MAX_RETRIES - 1) throw e
         const backoff = Math.min(MAX_BACKOFF_MS, Math.pow(2, attempt) * 1000) + Math.random() * 1500
         await new Promise((r) => setTimeout(r, backoff))
+        attempt++
       }
     }
-    throw new Error("Max retries exceeded")
   }
 
   const results: { lot: string; description: string; estimate: string; status: string; error?: string }[] = []

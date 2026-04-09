@@ -734,8 +734,8 @@ function BatchTab({ model }: { model: string }) {
   }
 
   function exportXlsx() {
-    const ws = XLSX.utils.json_to_sheet(results.map(r => ({
-      Folder: r.lot, Description: r.description, Estimate: r.estimate, Status: r.status, Error: r.error ?? "",
+    const ws = XLSX.utils.json_to_sheet(results.filter(r => r.status === "OK").map(r => ({
+      Folder: r.lot, Description: r.description, Estimate: r.estimate,
     })))
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Results")
