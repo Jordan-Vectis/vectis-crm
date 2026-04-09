@@ -593,29 +593,28 @@ function BatchTab({ model }: { model: string }) {
   const [auctionCode,  setAuctionCode]  = useState("")
   const [savedLots,    setSavedLots]    = useState<Set<string>>(new Set())
   const [savedRunId,   setSavedRunId]   = useState<string | null>(null)
+  const [runList,      setRunList]      = useState<{ id: string; code: string; _count: { lots: number } }[]>([])
 
   useEffect(() => {
     fetch("/api/auction-ai/presets").then(r => r.json()).then(setOverrides).catch(() => {})
+    fetch("/api/auction-ai/runs").then(r => r.json()).then(setRunList).catch(() => {})
   }, [])
 
   // When auction code changes, look up existing saved lots for that run
   useEffect(() => {
     const code = auctionCode.trim().toUpperCase()
     if (!code) { setSavedLots(new Set()); setSavedRunId(null); return }
-    fetch("/api/auction-ai/runs")
+    const match = runList.find(r => r.code === code)
+    if (!match) { setSavedLots(new Set()); setSavedRunId(null); return }
+    setSavedRunId(match.id)
+    fetch(`/api/auction-ai/runs/${match.id}`)
       .then(r => r.json())
-      .then((runs: { id: string; code: string }[]) => {
-        const match = runs.find(r => r.code === code)
-        if (!match) { setSavedLots(new Set()); setSavedRunId(null); return }
-        setSavedRunId(match.id)
-        return fetch(`/api/auction-ai/runs/${match.id}`).then(r => r.json())
-      })
       .then((run: any) => {
         if (!run?.lots) return
         setSavedLots(new Set(run.lots.map((l: any) => l.lot)))
       })
       .catch(() => {})
-  }, [auctionCode])
+  }, [auctionCode, runList])
 
   const systemInstruction = preset === "Custom (paste my own)" ? custom : (overrides[preset] ?? PRESETS[preset])
 
@@ -805,9 +804,18 @@ function BatchTab({ model }: { model: string }) {
 
       {/* ── Auction Code ── */}
       <div>
-        <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Auction Code <span className="normal-case text-gray-600">(optional — saves results for later retrieval)</span></label>
-        <input value={auctionCode} onChange={e => setAuctionCode(e.target.value)} placeholder="e.g. VINYL-2026-04"
-          className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] uppercase placeholder:normal-case placeholder:text-gray-600" />
+        <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">
+          Auction Code <span className="normal-case text-gray-600">(optional — saves results for later retrieval)</span>
+        </label>
+        <Autocomplete
+          value={auctionCode}
+          onChange={v => setAuctionCode(v.replace(/\s+\(\d+ lots\)$/, "").toUpperCase())}
+          options={runList.map(r => `${r.code}  (${r._count.lots} lots)`)}
+          placeholder="Select existing or type new code…"
+        />
+        {auctionCode && !runList.find(r => r.code === auctionCode.trim().toUpperCase()) && (
+          <p className="text-xs text-gray-600 mt-1">New run — lots will be saved under this code</p>
+        )}
         {savedLots.size > 0 && (
           <div className="flex items-center gap-3 mt-1.5">
             <span className="text-xs text-amber-400">{savedLots.size} lot{savedLots.size !== 1 ? "s" : ""} already saved in this run</span>
