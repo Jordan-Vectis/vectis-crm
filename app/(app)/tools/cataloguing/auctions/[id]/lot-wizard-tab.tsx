@@ -408,8 +408,15 @@ export default function LotWizardTab({
   const [tote,        setTote]        = useState("")
   const [receipt,     setReceipt]     = useState("")
   const [step,        setStep]        = useState(1)
-  const [barcode,     setBarcode]     = useState("")
-  const [lastBarcode, setLastBarcode] = useState("")
+  const [barcode, setBarcode] = useState("")
+
+  const LAST_BARCODE_KEY = "vectis_last_barcode"
+  function getLastBarcode() {
+    try { return localStorage.getItem(LAST_BARCODE_KEY) ?? "" } catch { return "" }
+  }
+  function saveLastBarcode(val: string) {
+    try { localStorage.setItem(LAST_BARCODE_KEY, val) } catch {}
+  }
   const [keyPoints,   setKeyPoints]   = useState("")
   const [mainCat,     setMainCat]     = useState("")
   const [subCat,      setSubCat]      = useState("")
@@ -458,7 +465,7 @@ export default function LotWizardTab({
   function goBack() { setValidErr(""); if (step > 1) setStep(step - 1) }
 
   function nextBarcodeNumber() {
-    const src = barcode || lastBarcode
+    const src = barcode || getLastBarcode()
     if (!src) return
     const m = src.match(/(\d+)$/)
     if (!m) return
@@ -495,7 +502,7 @@ export default function LotWizardTab({
       await createLot(auctionId, fd)
       const n = lotCount + 1
       setLotCount(n)
-      setLastBarcode(barcode)
+      saveLastBarcode(barcode)
       setSaveStatus(`✓ Lot #${n} saved — ${vendor} / ${tote} / ${barcode}`)
       // Restore pinned values; vendor/tote/receipt fall back to keeping current value if not pinned
       setVendor(pinnedVendor || vendor)
