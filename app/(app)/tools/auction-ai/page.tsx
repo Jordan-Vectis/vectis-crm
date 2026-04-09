@@ -823,7 +823,7 @@ function BatchTab({ model }: { model: string }) {
 
       {/* ── Actions ── */}
       <div className="flex items-center gap-3 flex-shrink-0">
-        <button onClick={run} disabled={loading || sorting || !total}
+        <button onClick={run} disabled={loading || !total}
           className="px-6 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors disabled:opacity-40">
           {loading ? `Running ${done} / ${total}…` : `Start Batch (${total} lots)`}
         </button>
