@@ -23,7 +23,17 @@ const apps = [
     iconBg:      "text-amber-400",
     btnBg:       "bg-amber-600 hover:bg-amber-500",
     glow:        "hover:shadow-amber-900/40",
-    soon:        true,
+  },
+  {
+    href:        "/tools/cataloguing",
+    label:       "Cataloguing",
+    description: "Step-by-step lot cataloguing wizard — vendor, barcode, categories, estimates and condition.",
+    icon:        "📂",
+    color:       "teal",
+    border:      "border-teal-500",
+    iconBg:      "text-teal-400",
+    btnBg:       "bg-teal-600 hover:bg-teal-500",
+    glow:        "hover:shadow-teal-900/40",
   },
   {
     href:        "/tools/bc-reports",
