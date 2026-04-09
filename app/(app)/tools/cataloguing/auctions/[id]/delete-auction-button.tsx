@@ -9,7 +9,7 @@ export default function DeleteAuctionButton({ id }: { id: string }) {
   async function handleDelete() {
     if (!confirm("Are you sure you want to delete this auction? All lots will also be deleted.")) return
     await deleteAuction(id)
-    router.push("/cataloguer/auctions")
+    router.push("/tools/cataloguing/auctions")
   }
 
   return (

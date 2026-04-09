@@ -45,7 +45,7 @@ export default async function AuctionDetailPage({
   return (
     <div className="p-6">
       <div className="mb-4">
-        <Link href="/cataloguer/auctions" className="text-sm text-blue-600 hover:text-blue-800">
+        <Link href="/tools/cataloguing/auctions" className="text-sm text-blue-600 hover:text-blue-800">
           ← Back to Auctions
         </Link>
       </div>
@@ -57,7 +57,7 @@ export default async function AuctionDetailPage({
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <h2 className="font-semibold text-gray-900">Lots</h2>
               <Link
-                href={`/cataloguer/auctions/${id}/lots/new`}
+                href={`/tools/cataloguing/auctions/${id}/lots/new`}
                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
               >
                 + Add Lot
@@ -87,7 +87,7 @@ export default async function AuctionDetailPage({
                     >
                       <td className="px-4 py-3">
                         <Link
-                          href={`/cataloguer/auctions/${id}/lots/${lot.id}`}
+                          href={`/tools/cataloguing/auctions/${id}/lots/${lot.id}`}
                           className="font-mono text-blue-600 hover:text-blue-800 font-medium"
                         >
                           {lot.lotNumber}
@@ -113,7 +113,7 @@ export default async function AuctionDetailPage({
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Link
-                          href={`/cataloguer/auctions/${id}/lots/${lot.id}`}
+                          href={`/tools/cataloguing/auctions/${id}/lots/${lot.id}`}
                           className="text-xs text-gray-400 hover:text-gray-700"
                         >
                           Edit
@@ -196,7 +196,7 @@ export default async function AuctionDetailPage({
 
             <div className="border-t border-gray-100 pt-3 space-y-2">
               <Link
-                href={`/cataloguer/auctions/${id}/edit`}
+                href={`/tools/cataloguing/auctions/${id}/edit`}
                 className="block w-full text-center rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium px-4 py-2 transition-colors"
               >
                 Edit Auction

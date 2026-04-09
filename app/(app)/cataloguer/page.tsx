@@ -30,109 +30,19 @@ export default async function CataloguerPage() {
           ],
         }
 
-  const [submissions, recentAuctions] = await Promise.all([
-    prisma.submission.findMany({
-      where: whereClause,
-      include: {
-        customer: true,
-        department: true,
-        cataloguer: true,
-        items: { include: { valuation: true } },
-      },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.catalogueAuction.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: { _count: { select: { lots: true } } },
-    }),
-  ])
+  const submissions = await prisma.submission.findMany({
+    where: whereClause,
+    include: {
+      customer: true,
+      department: true,
+      cataloguer: true,
+      items: { include: { valuation: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  })
 
   return (
     <div className="p-6 space-y-8">
-      {/* Recent Auctions */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-900">Recent Auctions</h2>
-          <Link
-            href="/cataloguer/auctions"
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-          >
-            View all →
-          </Link>
-        </div>
-        {recentAuctions.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-            <p className="text-gray-400 text-sm">No auctions yet.</p>
-            <Link
-              href="/cataloguer/auctions"
-              className="mt-2 inline-block text-sm text-blue-600 hover:text-blue-800"
-            >
-              Create the first auction →
-            </Link>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Code</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Lots</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentAuctions.map((auction) => {
-                  const statusLabel = auction.complete
-                    ? "Complete"
-                    : auction.finished
-                    ? "Finished"
-                    : auction.locked
-                    ? "Locked"
-                    : "Active"
-                  const statusColor = auction.complete
-                    ? "bg-green-100 text-green-700"
-                    : auction.finished
-                    ? "bg-blue-100 text-blue-700"
-                    : auction.locked
-                    ? "bg-yellow-100 text-yellow-700"
-                    : "bg-gray-100 text-gray-700"
-                  return (
-                    <tr
-                      key={auction.id}
-                      className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/cataloguer/auctions/${auction.id}`}
-                          className="font-mono font-semibold text-blue-600 hover:text-blue-800"
-                        >
-                          {auction.code}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-gray-900">{auction.name}</td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {auction.auctionDate
-                          ? new Date(auction.auctionDate).toLocaleDateString("en-GB")
-                          : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500">{auction._count.lots}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
-                          {statusLabel}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       {/* My Valuations */}
       <div>
         <div className="mb-4">

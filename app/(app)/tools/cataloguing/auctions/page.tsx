@@ -72,7 +72,7 @@ export default async function AuctionsPage() {
                 >
                   <td className="px-4 py-3">
                     <Link
-                      href={`/cataloguer/auctions/${auction.id}`}
+                      href={`/tools/cataloguing/auctions/${auction.id}`}
                       className="font-mono font-semibold text-blue-600 hover:text-blue-800"
                     >
                       {auction.code}

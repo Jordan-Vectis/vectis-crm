@@ -43,7 +43,7 @@ export default function EditAuctionForm({ auction }: { auction: Auction }) {
     try {
       const fd = new FormData(e.currentTarget)
       await updateAuction(auction.id, fd)
-      router.push(`/cataloguer/auctions/${auction.id}`)
+      router.push(`/tools/cataloguing/auctions/${auction.id}`)
     } finally {
       setLoading(false)
     }
@@ -141,7 +141,7 @@ export default function EditAuctionForm({ auction }: { auction: Auction }) {
       <div className="flex gap-3 pt-2">
         <button
           type="button"
-          onClick={() => router.push(`/cataloguer/auctions/${auction.id}`)}
+          onClick={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)}
           className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
           Cancel

@@ -48,7 +48,7 @@ export default function LotForm({
       } else {
         await updateLot(lot.id, auctionId, fd)
       }
-      router.push(`/cataloguer/auctions/${auctionId}`)
+      router.push(`/tools/cataloguing/auctions/${auctionId}`)
     } finally {
       setLoading(false)
     }
@@ -60,7 +60,7 @@ export default function LotForm({
     setLoading(true)
     try {
       await deleteLot(lot.id, auctionId)
-      router.push(`/cataloguer/auctions/${auctionId}`)
+      router.push(`/tools/cataloguing/auctions/${auctionId}`)
     } finally {
       setLoading(false)
     }
@@ -251,7 +251,7 @@ export default function LotForm({
       <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
         <button
           type="button"
-          onClick={() => router.push(`/cataloguer/auctions/${auctionId}`)}
+          onClick={() => router.push(`/tools/cataloguing/auctions/${auctionId}`)}
           className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
           Cancel

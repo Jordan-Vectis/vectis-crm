@@ -19,7 +19,7 @@ export async function createAuction(formData: FormData) {
   await prisma.catalogueAuction.create({
     data: { code, name, auctionDate: auctionDate ? new Date(auctionDate) : null, auctionType: auctionType || "GENERAL", eventName: eventName || null }
   })
-  revalidatePath("/cataloguer/auctions")
+  revalidatePath("/tools/cataloguing/auctions")
 }
 
 export async function updateAuction(id: string, formData: FormData) {
@@ -36,34 +36,34 @@ export async function updateAuction(id: string, formData: FormData) {
     where: { id },
     data: { code, name, auctionDate: auctionDate ? new Date(auctionDate) : null, auctionType: auctionType || "GENERAL", eventName: eventName || null, locked, finished, complete }
   })
-  revalidatePath("/cataloguer/auctions")
-  revalidatePath(`/cataloguer/auctions/${id}`)
+  revalidatePath("/tools/cataloguing/auctions")
+  revalidatePath(`/tools/cataloguing/auctions/${id}`)
 }
 
 export async function deleteAuction(id: string) {
   await requireCataloguer()
   await prisma.catalogueAuction.delete({ where: { id } })
-  revalidatePath("/cataloguer/auctions")
+  revalidatePath("/tools/cataloguing/auctions")
 }
 
 export async function createLot(auctionId: string, formData: FormData) {
   await requireCataloguer()
   const data = extractLotData(formData)
   await prisma.catalogueLot.create({ data: { ...data, auctionId } })
-  revalidatePath(`/cataloguer/auctions/${auctionId}`)
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
 export async function updateLot(lotId: string, auctionId: string, formData: FormData) {
   await requireCataloguer()
   const data = extractLotData(formData)
   await prisma.catalogueLot.update({ where: { id: lotId }, data })
-  revalidatePath(`/cataloguer/auctions/${auctionId}`)
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
 export async function deleteLot(lotId: string, auctionId: string) {
   await requireCataloguer()
   await prisma.catalogueLot.delete({ where: { id: lotId } })
-  revalidatePath(`/cataloguer/auctions/${auctionId}`)
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
 function extractLotData(formData: FormData) {

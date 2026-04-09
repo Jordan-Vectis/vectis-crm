@@ -34,7 +34,7 @@ export default async function LotPage({
     <div className="p-6">
       <div className="mb-4">
         <Link
-          href={`/cataloguer/auctions/${id}`}
+          href={`/tools/cataloguing/auctions/${id}`}
           className="text-sm text-blue-600 hover:text-blue-800"
         >
           ← Back to Auction
