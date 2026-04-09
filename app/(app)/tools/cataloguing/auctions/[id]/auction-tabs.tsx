@@ -94,13 +94,13 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         ))}
       </div>
 
-      {/* Tab panels */}
+      {/* Tab panels — LotWizardTab stays mounted to preserve pins/state */}
       {tab === "settings" && <SettingsTab auction={auction} />}
 
-      {tab === "add-lot" && (
+      <div className={tab === "add-lot" ? "" : "hidden"}>
         <LotWizardTab auctionId={auction.id} auction={auction}
           onCreated={() => router.refresh()} />
-      )}
+      </div>
 
       {tab === "manage-lots" && (
         editingLotId
