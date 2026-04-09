@@ -24,14 +24,14 @@ export default async function EditAuctionPage({
       <div className="mb-4">
         <Link
           href={`/tools/cataloguing/auctions/${id}`}
-          className="text-sm text-blue-600 hover:text-blue-800"
+          className="text-sm text-[#2AB4A6] hover:text-[#24a090]"
         >
           ← Back to Auction
         </Link>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h1 className="text-xl font-bold text-gray-900 mb-6">
+      <div className="bg-[#1C1C1E] rounded-xl border border-gray-700 p-6">
+        <h1 className="text-xl font-bold text-white mb-6">
           Edit Auction — <span className="font-mono">{auction.code}</span>
         </h1>
         <EditAuctionForm auction={auction} />

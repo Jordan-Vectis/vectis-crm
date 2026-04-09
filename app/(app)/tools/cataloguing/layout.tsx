@@ -12,7 +12,7 @@ export default async function CataloguingLayout({ children }: { children: React.
   return (
     <div className="flex flex-1 min-h-0">
       <CataloguingSidebar />
-      <div className="flex-1 overflow-auto bg-gray-50">{children}</div>
+      <div className="flex-1 overflow-auto bg-[#141416]">{children}</div>
     </div>
   )
 }

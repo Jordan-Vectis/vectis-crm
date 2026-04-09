@@ -53,42 +53,42 @@ export default function EditAuctionForm({ auction }: { auction: Auction }) {
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Code *</label>
+          <label className="block text-xs font-medium text-gray-400 mb-1">Code *</label>
           <input
             name="code"
             required
             defaultValue={auction.code}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+            className="w-full rounded-lg border border-gray-700 bg-[#2C2C2E] px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6] uppercase"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+          <label className="block text-xs font-medium text-gray-400 mb-1">Date</label>
           <input
             name="auctionDate"
             type="date"
             defaultValue={defaultDate}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-lg border border-gray-700 bg-[#2C2C2E] px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6]"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+        <label className="block text-xs font-medium text-gray-400 mb-1">Name *</label>
         <input
           name="name"
           required
           defaultValue={auction.name}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded-lg border border-gray-700 bg-[#2C2C2E] px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6]"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+          <label className="block text-xs font-medium text-gray-400 mb-1">Type</label>
           <select
             name="auctionType"
             defaultValue={auction.auctionType}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-lg border border-gray-700 bg-[#2C2C2E] px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6]"
           >
             {AUCTION_TYPES.map(({ value, label }) => (
               <option key={value} value={value}>{label}</option>
@@ -96,11 +96,11 @@ export default function EditAuctionForm({ auction }: { auction: Auction }) {
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Event Name</label>
+          <label className="block text-xs font-medium text-gray-400 mb-1">Event Name</label>
           <input
             name="eventName"
             defaultValue={auction.eventName ?? ""}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-lg border border-gray-700 bg-[#2C2C2E] px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6]"
           />
         </div>
       </div>
@@ -112,9 +112,9 @@ export default function EditAuctionForm({ auction }: { auction: Auction }) {
             name="locked"
             value="true"
             defaultChecked={auction.locked}
-            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            className="w-4 h-4 rounded border-gray-600 text-[#2AB4A6] focus:ring-[#2AB4A6]"
           />
-          <span className="text-sm text-gray-700">Locked</span>
+          <span className="text-sm text-gray-400">Locked</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -122,9 +122,9 @@ export default function EditAuctionForm({ auction }: { auction: Auction }) {
             name="finished"
             value="true"
             defaultChecked={auction.finished}
-            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            className="w-4 h-4 rounded border-gray-600 text-[#2AB4A6] focus:ring-[#2AB4A6]"
           />
-          <span className="text-sm text-gray-700">Finished</span>
+          <span className="text-sm text-gray-400">Finished</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -132,9 +132,9 @@ export default function EditAuctionForm({ auction }: { auction: Auction }) {
             name="complete"
             value="true"
             defaultChecked={auction.complete}
-            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            className="w-4 h-4 rounded border-gray-600 text-[#2AB4A6] focus:ring-[#2AB4A6]"
           />
-          <span className="text-sm text-gray-700">Complete</span>
+          <span className="text-sm text-gray-400">Complete</span>
         </label>
       </div>
 
@@ -142,14 +142,14 @@ export default function EditAuctionForm({ auction }: { auction: Auction }) {
         <button
           type="button"
           onClick={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)}
-          className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className="flex-1 rounded-lg border border-gray-700 bg-[#2C2C2E] px-4 py-2 text-sm font-medium text-gray-400 hover:bg-[#3C3C3E] transition-colors"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="flex-1 bg-[#2AB4A6] hover:bg-[#24a090] disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
         >
           {loading ? "Saving..." : "Save Changes"}
         </button>
