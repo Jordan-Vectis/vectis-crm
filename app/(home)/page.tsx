@@ -79,7 +79,7 @@ const apps: {
     appKey:      "WAREHOUSE",
   },
   {
-    href:        "/admin/users",
+    href:        "/admin",
     label:       "Admin",
     description: "Manage users, departments and system settings.",
     icon:        "⚙️",

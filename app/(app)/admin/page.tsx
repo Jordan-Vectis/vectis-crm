@@ -1,0 +1,43 @@
+import Link from "next/link"
+import { auth } from "@/auth"
+import { redirect } from "next/navigation"
+
+const sections = [
+  {
+    href:        "/admin/users",
+    label:       "Users & Permissions",
+    description: "Add and remove users, set roles and control which apps each person can access.",
+    icon:        "👤",
+  },
+  {
+    href:        "/admin/departments",
+    label:       "Departments",
+    description: "Manage cataloguer departments used across the CRM.",
+    icon:        "🏢",
+  },
+]
+
+export default async function AdminOverviewPage() {
+  const session = await auth()
+  if (!session || session.user.role !== "ADMIN") redirect("/")
+
+  return (
+    <div className="p-8 max-w-3xl">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">Admin</h1>
+        <p className="text-sm text-gray-500 mt-1">System-wide settings and management</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {sections.map(s => (
+          <Link key={s.href} href={s.href}
+            className="bg-white border border-gray-200 rounded-xl p-5 hover:border-slate-400 hover:shadow-sm transition-all group">
+            <div className="text-3xl mb-3">{s.icon}</div>
+            <h2 className="font-semibold text-gray-800 group-hover:text-slate-700 mb-1">{s.label}</h2>
+            <p className="text-sm text-gray-500 leading-relaxed">{s.description}</p>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}

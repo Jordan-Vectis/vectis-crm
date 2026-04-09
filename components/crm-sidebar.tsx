@@ -3,13 +3,13 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
-const CRM_ROUTES = ["/submissions", "/follow-ups", "/cataloguer", "/admin"]
+const CRM_ROUTES = ["/submissions", "/follow-ups", "/cataloguer", "/crm-settings"]
 
 const links = [
-  { href: "/submissions", label: "Submissions", icon: "📋" },
-  { href: "/follow-ups",  label: "Follow-ups",  icon: "🔔" },
-  { href: "/cataloguer",  label: "Cataloguer",  icon: "🏷" },
-  { href: "/admin/users", label: "Admin",        icon: "⚙️" },
+  { href: "/submissions",  label: "Submissions", icon: "📋" },
+  { href: "/follow-ups",   label: "Follow-ups",  icon: "🔔" },
+  { href: "/cataloguer",   label: "Cataloguer",  icon: "🏷" },
+  { href: "/crm-settings", label: "Settings",    icon: "⚙️" },
 ]
 
 export default function CrmSidebar() {
@@ -23,7 +23,9 @@ export default function CrmSidebar() {
       <p className="text-xs font-semibold uppercase tracking-widest text-gray-500 px-4 mb-3">CRM</p>
       <nav className="flex flex-col gap-0.5 px-2">
         {links.map(({ href, label, icon }) => {
-          const active = pathname === href || (href !== "/submissions" && pathname.startsWith(href))
+          const active = href === "/submissions"
+            ? pathname === href || pathname.startsWith("/submissions/")
+            : pathname.startsWith(href)
           return (
             <Link
               key={href}
