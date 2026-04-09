@@ -376,6 +376,21 @@ function CondBtn({ label, selected, onClick }: { label: string; selected: boolea
   )
 }
 
+// ─── Pin button ───────────────────────────────────────────────────────────────
+
+function PinBtn({ pinned, onPin }: { pinned: boolean; onPin: () => void }) {
+  return (
+    <button type="button" onClick={onPin}
+      className="text-xs px-2 py-0.5 rounded transition-colors flex-shrink-0"
+      style={{
+        color: pinned ? CAT_ACCENT : "#6b7280",
+        border: `1px solid ${pinned ? CAT_ACCENT + "66" : "#374151"}`,
+      }}>
+      {pinned ? "📌 Pinned" : "Pin"}
+    </button>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function LotWizardTab({
@@ -399,13 +414,18 @@ export default function LotWizardTab({
   const [mainCat,     setMainCat]     = useState("")
   const [subCat,      setSubCat]      = useState("")
   const [brand,       setBrand]       = useState("")
-  const [pinnedMain,  setPinnedMain]  = useState("")
-  const [pinnedSub,   setPinnedSub]   = useState("")
   const [estLow,      setEstLow]      = useState("")
   const [estHigh,     setEstHigh]     = useState("")
   const [cond1,       setCond1]       = useState("")
   const [cond2,       setCond2]       = useState("")
   const [parcel,      setParcel]      = useState("")
+
+  // Pinned values — restored after each lot save
+  const [pinnedVendor,  setPinnedVendor]  = useState("")
+  const [pinnedTote,    setPinnedTote]    = useState("")
+  const [pinnedReceipt, setPinnedReceipt] = useState("")
+  const [pinnedMain,    setPinnedMain]    = useState("")
+  const [pinnedSub,     setPinnedSub]     = useState("")
   const [saveStatus,  setSaveStatus]  = useState("")
   const [lotCount,    setLotCount]    = useState(0)
   const [validErr,    setValidErr]    = useState("")
@@ -477,6 +497,10 @@ export default function LotWizardTab({
       setLotCount(n)
       setLastBarcode(barcode)
       setSaveStatus(`✓ Lot #${n} saved — ${vendor} / ${tote} / ${barcode}`)
+      // Restore pinned values; vendor/tote/receipt fall back to keeping current value if not pinned
+      setVendor(pinnedVendor || vendor)
+      setTote(pinnedTote || tote)
+      setReceipt(pinnedReceipt || receipt)
       setBarcode(""); setKeyPoints("")
       setMainCat(pinnedMain); setSubCat(pinnedSub); setBrand("")
       setEstLow(""); setEstHigh(""); setCond1(""); setCond2(""); setParcel("")
@@ -519,21 +543,30 @@ export default function LotWizardTab({
           <div className="max-w-lg space-y-4">
             <p className="text-xs text-gray-500">These values are remembered between lots.</p>
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Vendor Number <span className="text-red-500">*</span></label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-gray-500 uppercase tracking-wider">Vendor Number <span className="text-red-500">*</span></label>
+                <PinBtn pinned={pinnedVendor === vendor && !!vendor} onPin={() => setPinnedVendor(v => v === vendor ? "" : vendor)} />
+              </div>
               <div className="flex gap-2">
                 <input value={vendor} onChange={e => setVendor(e.target.value)} className={`flex-1 ${inpFocus}`} placeholder="e.g. V12345" autoFocus />
                 {vendor && <button type="button" onClick={() => setVendor("")} className="px-3 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
               </div>
             </div>
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Tote Number <span className="text-red-500">*</span></label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-gray-500 uppercase tracking-wider">Tote Number <span className="text-red-500">*</span></label>
+                <PinBtn pinned={pinnedTote === tote && !!tote} onPin={() => setPinnedTote(v => v === tote ? "" : tote)} />
+              </div>
               <div className="flex gap-2">
                 <input value={tote} onChange={e => setTote(e.target.value)} className={`flex-1 ${inpFocus}`} placeholder="e.g. T001" />
                 {tote && <button type="button" onClick={() => setTote("")} className="px-3 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
               </div>
             </div>
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Receipt Number <span className="text-gray-600">(optional)</span></label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-gray-500 uppercase tracking-wider">Receipt Number <span className="text-gray-600">(optional)</span></label>
+                <PinBtn pinned={pinnedReceipt === receipt && !!receipt} onPin={() => setPinnedReceipt(v => v === receipt ? "" : receipt)} />
+              </div>
               <div className="flex gap-2">
                 <input value={receipt} onChange={e => setReceipt(e.target.value)} className={`flex-1 ${inpFocus}`} placeholder="e.g. R9876" />
                 {receipt && <button type="button" onClick={() => setReceipt("")} className="px-3 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
