@@ -584,14 +584,80 @@ function toDataURL(file: File): Promise<string> {
 
 // ─── Preset selector ─────────────────────────────────────────────────────────
 
-function PresetSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function PresetSelector({ value, onChange, overrides, onEdit }: {
+  value: string
+  onChange: (v: string) => void
+  overrides: Record<string, string>
+  onEdit: () => void
+}) {
+  const isEdited = value !== "Custom (paste my own)" && overrides[value] !== undefined
   return (
     <div className="mb-3">
       <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">System Instruction Preset</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E]">
-        {Object.keys(PRESETS).map((k) => <option key={k}>{k}</option>)}
-      </select>
+      <div className="flex gap-2">
+        <select value={value} onChange={(e) => onChange(e.target.value)}
+          className="flex-1 bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E]">
+          {Object.keys(PRESETS).map((k) => <option key={k}>{k}</option>)}
+        </select>
+        {value !== "Custom (paste my own)" && (
+          <button onClick={onEdit}
+            className={`px-3 py-1.5 text-xs rounded border transition-colors flex-shrink-0 ${isEdited ? "border-[#C8A96E] text-[#C8A96E] bg-[#2C2C2E] hover:bg-[#3a3a2e]" : "border-gray-700 text-gray-400 bg-[#2C2C2E] hover:border-gray-500"}`}>
+            {isEdited ? "✎ Edited" : "✎ Edit"}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Preset editor modal ──────────────────────────────────────────────────────
+
+function PresetEditorModal({ presetKey, initialText, onSave, onClose }: {
+  presetKey: string
+  initialText: string
+  onSave: (text: string) => void
+  onClose: () => void
+}) {
+  const [draft, setDraft] = useState(initialText)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave(draft)
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl p-5 w-full max-w-2xl max-h-[85vh] flex flex-col gap-3"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white truncate">{presetKey}</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-lg leading-none ml-4">✕</button>
+        </div>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={18}
+          className="w-full bg-[#141416] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] resize-none font-mono flex-1"
+        />
+        <div className="flex gap-2 justify-between">
+          <button onClick={() => setDraft(PRESETS[presetKey])}
+            className="text-xs px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-500 rounded hover:border-gray-500 hover:text-gray-300 transition-colors">
+            Reset to default
+          </button>
+          <div className="flex gap-2">
+            <button onClick={onClose}
+              className="text-sm px-4 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-400 rounded hover:border-gray-500 transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSave} disabled={saving}
+              className="text-sm px-5 py-1.5 bg-[#C8A96E] hover:bg-[#d4b87a] text-black font-bold rounded transition-colors disabled:opacity-40">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -701,9 +767,25 @@ function ChatTab({ model }: { model: string }) {
   const [loading, setLoading]    = useState(false)
   const [error, setError]        = useState<string | null>(null)
   const [copied, setCopied]      = useState(false)
+  const [overrides, setOverrides] = useState<Record<string, string>>({})
+  const [editOpen, setEditOpen]   = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const systemInstruction = preset === "Custom (paste my own)" ? custom : PRESETS[preset]
+  useEffect(() => {
+    fetch("/api/auction-ai/presets").then(r => r.json()).then(setOverrides).catch(() => {})
+  }, [])
+
+  const systemInstruction = preset === "Custom (paste my own)" ? custom : (overrides[preset] ?? PRESETS[preset])
+
+  async function savePreset(text: string) {
+    await fetch("/api/auction-ai/presets", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: preset, instruction: text }),
+    })
+    setOverrides(prev => ({ ...prev, [preset]: text }))
+    setEditOpen(false)
+  }
 
   async function send() {
     if (!message.trim() && !images.length) return
@@ -742,7 +824,8 @@ function ChatTab({ model }: { model: string }) {
   return (
     <div className="flex flex-col h-full">
       <h2 className="text-lg font-semibold text-white mb-3">Chat Window</h2>
-      <PresetSelector value={preset} onChange={setPreset} />
+      <PresetSelector value={preset} onChange={setPreset} overrides={overrides} onEdit={() => setEditOpen(true)} />
+      {editOpen && <PresetEditorModal presetKey={preset} initialText={overrides[preset] ?? PRESETS[preset]} onSave={savePreset} onClose={() => setEditOpen(false)} />}
       {preset === "Custom (paste my own)" && (
         <textarea value={custom} onChange={(e) => setCustom(e.target.value)}
           placeholder="Paste your system instruction here…" rows={3}
@@ -801,9 +884,11 @@ function ChatTab({ model }: { model: string }) {
 // ─── Batch Run Tab ────────────────────────────────────────────────────────────
 
 function BatchTab({ model }: { model: string }) {
-  const [preset,   setPreset]   = useState(Object.keys(PRESETS)[1])
-  const [custom,   setCustom]   = useState("")
-  const [lots,     setLots]     = useState<Record<string, File[]>>({})
+  const [preset,     setPreset]   = useState(Object.keys(PRESETS)[1])
+  const [custom,     setCustom]   = useState("")
+  const [lots,       setLots]     = useState<Record<string, File[]>>({})
+  const [overrides,  setOverrides] = useState<Record<string, string>>({})
+  const [editOpen,   setEditOpen]  = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [results,  setResults]  = useState<BatchResult[]>([])
   const [loading,  setLoading]  = useState(false)
@@ -814,7 +899,21 @@ function BatchTab({ model }: { model: string }) {
   const sortRef    = useRef<HTMLInputElement>(null)
   const cancelRef  = useRef(false)
 
-  const systemInstruction = preset === "Custom (paste my own)" ? custom : PRESETS[preset]
+  useEffect(() => {
+    fetch("/api/auction-ai/presets").then(r => r.json()).then(setOverrides).catch(() => {})
+  }, [])
+
+  const systemInstruction = preset === "Custom (paste my own)" ? custom : (overrides[preset] ?? PRESETS[preset])
+
+  async function savePreset(text: string) {
+    await fetch("/api/auction-ai/presets", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: preset, instruction: text }),
+    })
+    setOverrides(prev => ({ ...prev, [preset]: text }))
+    setEditOpen(false)
+  }
   const lotNames           = Object.keys(lots).sort()
   const selectedNames      = lotNames.filter(n => selected.has(n))
   const total              = selectedNames.length
@@ -937,7 +1036,8 @@ function BatchTab({ model }: { model: string }) {
     <div className="flex flex-col h-full gap-3">
       <h2 className="text-lg font-semibold text-white">Batch Run</h2>
 
-      <PresetSelector value={preset} onChange={setPreset} />
+      <PresetSelector value={preset} onChange={setPreset} overrides={overrides} onEdit={() => setEditOpen(true)} />
+      {editOpen && <PresetEditorModal presetKey={preset} initialText={overrides[preset] ?? PRESETS[preset]} onSave={savePreset} onClose={() => setEditOpen(false)} />}
       {preset === "Custom (paste my own)" && (
         <textarea value={custom} onChange={(e) => setCustom(e.target.value)}
           placeholder="Paste your system instruction here…" rows={3}

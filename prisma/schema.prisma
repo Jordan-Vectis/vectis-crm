@@ -154,6 +154,12 @@ model ContactLog {
   user         User       @relation(fields: [userId], references: [id])
 }
 
+model AiPreset {
+  key         String   @id
+  instruction String   @db.Text
+  updatedAt   DateTime @updatedAt
+}
+
 model Logistics {
   id      String        @id @default(cuid())
   type    LogisticsType
