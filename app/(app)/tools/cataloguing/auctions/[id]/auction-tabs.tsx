@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updateAuction, updateLot, deleteLot, deleteAuction } from "@/lib/actions/catalogue"
 import LotWizardTab from "./lot-wizard-tab"
+import * as XLSX from "xlsx"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         editingLotId
           ? <LotEditView lot={editingLot} auctionId={auction.id}
               onDone={() => { setEditing(null); router.refresh() }} />
-          : <ManageLotsTab lots={lots} auctionId={auction.id}
+          : <ManageLotsTab lots={lots} auctionId={auction.id} auction={auction}
               onEdit={setEditing}
               onDelete={() => router.refresh()} />
       )}
@@ -231,13 +232,40 @@ function SettingsTab({ auction }: { auction: Auction }) {
 
 // ─── Manage lots tab ──────────────────────────────────────────────────────────
 
-function ManageLotsTab({ lots, auctionId, onEdit, onDelete }: {
+function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   lots: Lot[]; auctionId: string
+  auction: { code: string; name: string }
   onEdit: (id: string) => void
   onDelete: () => void
 }) {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [pending, start] = useTransition()
+
+  function exportExcel() {
+    const rows = lots.map(l => ({
+      "Lot No.":      l.lotNumber,
+      "Title":        l.title,
+      "Description":  l.description,
+      "Estimate Low": l.estimateLow ?? "",
+      "Estimate High":l.estimateHigh ?? "",
+      "Reserve":      l.reserve ?? "",
+      "Hammer Price": l.hammerPrice ?? "",
+      "Condition":    l.condition ?? "",
+      "Status":       l.status,
+      "Vendor":       l.vendor ?? "",
+      "Tote":         l.tote ?? "",
+      "Receipt":      l.receipt ?? "",
+      "Category":     l.category ?? "",
+      "Sub-Category": l.subCategory ?? "",
+      "Brand":        l.brand ?? "",
+      "Notes":        l.notes ?? "",
+      "Added By":     l.createdByName ?? "",
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Lots")
+    XLSX.writeFile(wb, `${auction.code}_${auction.name}_lots.xlsx`.replace(/\s+/g, "_"))
+  }
 
   async function handleDelete(lot: Lot) {
     if (!confirm(`Delete lot "${lot.lotNumber} — ${lot.title}"?`)) return
@@ -258,6 +286,13 @@ function ManageLotsTab({ lots, auctionId, onEdit, onDelete }: {
   }
 
   return (
+    <div>
+      <div className="flex justify-end mb-3">
+        <button onClick={exportExcel}
+          className="px-4 py-1.5 text-sm font-medium rounded-lg border border-[#2AB4A6] text-[#2AB4A6] hover:bg-[#2AB4A6] hover:text-black transition-colors">
+          ⬇ Export to Excel
+        </button>
+      </div>
     <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl overflow-hidden">
       <table className="w-full text-sm">
         <thead>
@@ -304,6 +339,7 @@ function ManageLotsTab({ lots, auctionId, onEdit, onDelete }: {
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   )
 }
