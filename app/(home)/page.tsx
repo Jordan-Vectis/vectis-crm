@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { hasAppAccess } from "@/lib/apps"
 import type { AppKey } from "@/lib/apps"
+import UserMenu from "./user-menu"
 
 const apps: {
   href: string
@@ -116,8 +117,11 @@ export default async function HomePage() {
     return hasAppAccess(dbUser?.role ?? "", dbUser?.allowedApps ?? [], app.appKey)
   })
 
+  const fullName = session?.user?.name ?? name
+
   return (
-    <div className="min-h-screen bg-[#111318] flex flex-col items-center px-6 py-16">
+    <div className="relative min-h-screen bg-[#111318] flex flex-col items-center px-6 py-16">
+      <UserMenu name={fullName} />
       {/* Header */}
       <div className="text-center mb-14">
         <h1 className="text-4xl font-bold text-white tracking-tight mb-2">
