@@ -234,9 +234,10 @@ model CatalogueLot {
   brand        String?
   notes        String?
   imageUrls    String[]         @default([])
-  status       String           @default("ENTERED")
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  status        String           @default("ENTERED")
+  createdByName String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   auctionId    String
   auction      CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)

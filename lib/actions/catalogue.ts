@@ -48,9 +48,10 @@ export async function deleteAuction(id: string) {
 }
 
 export async function createLot(auctionId: string, formData: FormData) {
-  await requireCataloguer()
+  const session = await requireCataloguer()
   const data = extractLotData(formData)
-  await prisma.catalogueLot.create({ data: { ...data, auctionId } })
+  const createdByName = session.user.name ?? session.user.email ?? "Unknown"
+  await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName } })
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 

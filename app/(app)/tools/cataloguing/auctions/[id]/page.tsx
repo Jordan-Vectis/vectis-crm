@@ -56,6 +56,7 @@ export default async function AuctionDetailPage({
         brand: l.brand,
         notes: l.notes,
         status: l.status,
+        createdByName: l.createdByName,
       }))}
     />
   )

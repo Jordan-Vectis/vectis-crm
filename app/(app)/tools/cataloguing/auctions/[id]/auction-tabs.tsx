@@ -20,7 +20,8 @@ interface Lot {
   estimateLow: number | null; estimateHigh: number | null; reserve: number | null
   hammerPrice: number | null; condition: string | null; vendor: string | null
   tote: string | null; receipt: string | null; category: string | null
-  subCategory: string | null; brand: string | null; notes: string | null; status: string
+  subCategory: string | null; brand: string | null; notes: string | null
+  status: string; createdByName: string | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -267,6 +268,7 @@ function ManageLotsTab({ lots, auctionId, onEdit, onDelete }: {
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Estimate</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Condition</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Added by</th>
             <th className="px-4 py-3" />
           </tr>
         </thead>
@@ -286,6 +288,7 @@ function ManageLotsTab({ lots, auctionId, onEdit, onDelete }: {
                   {lot.status}
                 </span>
               </td>
+              <td className="px-4 py-3 text-gray-500 text-xs">{lot.createdByName ?? "—"}</td>
               <td className="px-4 py-3 text-right">
                 <div className="flex items-center justify-end gap-3">
                   <button onClick={() => onEdit(lot.id)}
