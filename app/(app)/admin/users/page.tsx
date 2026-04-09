@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import CreateUserForm from "./create-user-form"
 import DeleteUserButton from "./delete-button"
 import ChangePasswordButton from "./change-password-button"
+import AppPermissionsButton from "./app-permissions-button"
 
 const roleLabels: Record<string, { label: string; color: string }> = {
   ADMIN: { label: "Admin", color: "bg-purple-100 text-purple-700" },
@@ -23,6 +24,7 @@ export default async function UsersPage() {
     prisma.department.findMany({ orderBy: { name: "asc" } }),
   ])
 
+
   return (
     <div className="p-6 max-w-5xl">
       <div className="mb-6">
@@ -41,6 +43,7 @@ export default async function UsersPage() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Role</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Department</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Password</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Apps</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -59,6 +62,14 @@ export default async function UsersPage() {
                       <td className="px-4 py-3 text-gray-500">{user.department?.name ?? "—"}</td>
                       <td className="px-4 py-3">
                         <ChangePasswordButton userId={user.id} userName={user.name} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <AppPermissionsButton
+                          userId={user.id}
+                          userName={user.name}
+                          currentApps={user.allowedApps}
+                          userRole={user.role}
+                        />
                       </td>
                       <td className="px-4 py-3 text-right">
                         {user.id !== session.user.id && (

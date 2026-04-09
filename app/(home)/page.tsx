@@ -1,7 +1,22 @@
 import Link from "next/link"
 import { auth } from "@/auth"
+import { prisma } from "@/lib/prisma"
+import { hasAppAccess } from "@/lib/apps"
+import type { AppKey } from "@/lib/apps"
 
-const apps = [
+const apps: {
+  href: string
+  label: string
+  description: string
+  icon: string
+  color: string
+  border: string
+  iconBg: string
+  btnBg: string
+  glow: string
+  soon?: boolean
+  appKey?: AppKey
+}[] = [
   {
     href:        "/submissions",
     label:       "CRM",
@@ -12,6 +27,7 @@ const apps = [
     iconBg:      "text-blue-400",
     btnBg:       "bg-blue-600 hover:bg-blue-500",
     glow:        "hover:shadow-blue-900/40",
+    appKey:      "CRM",
   },
   {
     href:        "/tools/auction-ai",
@@ -23,6 +39,7 @@ const apps = [
     iconBg:      "text-amber-400",
     btnBg:       "bg-amber-600 hover:bg-amber-500",
     glow:        "hover:shadow-amber-900/40",
+    appKey:      "AUCTION_AI",
   },
   {
     href:        "/tools/cataloguing",
@@ -34,6 +51,7 @@ const apps = [
     iconBg:      "text-teal-400",
     btnBg:       "bg-teal-600 hover:bg-teal-500",
     glow:        "hover:shadow-teal-900/40",
+    appKey:      "CATALOGUING",
   },
   {
     href:        "/tools/bc-reports",
@@ -45,6 +63,7 @@ const apps = [
     iconBg:      "text-red-400",
     btnBg:       "bg-red-600 hover:bg-red-500",
     glow:        "hover:shadow-red-900/40",
+    appKey:      "BC_REPORTS",
   },
   {
     href:        "/tools/warehouse",
@@ -57,6 +76,18 @@ const apps = [
     btnBg:       "bg-cyan-600 hover:bg-cyan-500",
     glow:        "hover:shadow-cyan-900/40",
     soon:        true,
+    appKey:      "WAREHOUSE",
+  },
+  {
+    href:        "/admin/users",
+    label:       "Admin",
+    description: "Manage users, departments and system settings.",
+    icon:        "⚙️",
+    color:       "slate",
+    border:      "border-slate-500",
+    iconBg:      "text-slate-400",
+    btnBg:       "bg-slate-600 hover:bg-slate-500",
+    glow:        "hover:shadow-slate-900/40",
   },
   {
     href:        "/tools/saleroom-trainer",
@@ -68,12 +99,22 @@ const apps = [
     iconBg:      "text-purple-400",
     btnBg:       "bg-purple-600 hover:bg-purple-500",
     glow:        "hover:shadow-purple-900/40",
+    appKey:      "SALEROOM_TRAINER",
   },
 ]
 
 export default async function HomePage() {
   const session = await auth()
   const name    = session?.user?.name?.split(" ")[0] ?? "there"
+
+  const dbUser = session?.user?.id
+    ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { allowedApps: true, role: true } })
+    : null
+
+  const visibleApps = apps.filter(app => {
+    if (!app.appKey) return session?.user?.role === "ADMIN" // admin card
+    return hasAppAccess(dbUser?.role ?? "", dbUser?.allowedApps ?? [], app.appKey)
+  })
 
   return (
     <div className="min-h-screen bg-[#111318] flex flex-col items-center px-6 py-16">
@@ -89,7 +130,7 @@ export default async function HomePage() {
 
       {/* App grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 w-full max-w-5xl">
-        {apps.map((app) => (
+        {visibleApps.map((app) => (
           <div
             key={app.href}
             className={`relative bg-[#1c1f27] border ${app.border} rounded-xl p-6 flex flex-col items-center text-center
