@@ -10,7 +10,7 @@ export default async function CataloguingLayout({ children }: { children: React.
   const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { allowedApps: true, role: true } })
   if (!hasAppAccess(dbUser?.role ?? "", dbUser?.allowedApps ?? [], "CATALOGUING")) redirect("/")
   return (
-    <div className="flex flex-1 min-h-0">
+    <div className="flex h-full">
       <CataloguingSidebar />
       <div className="flex-1 overflow-auto bg-[#141416]">{children}</div>
     </div>

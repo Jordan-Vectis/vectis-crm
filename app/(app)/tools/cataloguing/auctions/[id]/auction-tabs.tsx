@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateAuction, createLot, updateLot, deleteLot, deleteAuction } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction } from "@/lib/actions/catalogue"
+import LotWizardTab from "./lot-wizard-tab"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,7 +97,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
       {tab === "settings" && <SettingsTab auction={auction} />}
 
       {tab === "add-lot" && (
-        <AddLotTab key={addKey} auctionId={auction.id}
+        <LotWizardTab key={addKey} auctionId={auction.id} auction={auction}
           onCreated={() => { setAddKey(k => k + 1); router.refresh() }} />
       )}
 
@@ -224,125 +225,6 @@ function SettingsTab({ auction }: { auction: Auction }) {
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-// ─── Add lot tab ──────────────────────────────────────────────────────────────
-
-function AddLotTab({ auctionId, onCreated }: { auctionId: string; onCreated: () => void }) {
-  const [pending, start] = useTransition()
-  const [saved, setSaved] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const fd = new FormData(e.currentTarget)
-    start(async () => {
-      await createLot(auctionId, fd)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-      onCreated()
-    })
-  }
-
-  return (
-    <div>
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="grid grid-cols-2 gap-6">
-          {/* Left */}
-          <div className="space-y-4">
-            <div>
-              <label className={lbl}>Lot Number *</label>
-              <input name="lotNumber" required placeholder="e.g. 001" className={input} />
-            </div>
-            <div>
-              <label className={lbl}>Title *</label>
-              <input name="title" required placeholder="Lot title" className={input} />
-            </div>
-            <div>
-              <label className={lbl}>Description</label>
-              <textarea name="description" rows={4} placeholder="Detailed description…"
-                className={`${input} resize-none`} />
-            </div>
-            <div>
-              <label className={lbl}>Condition</label>
-              <select name="condition" className={input}>
-                <option value="">— Select —</option>
-                {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={lbl}>Status</label>
-              <select name="status" defaultValue="ENTERED" className={input}>
-                {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={lbl}>Notes</label>
-              <textarea name="notes" rows={2} placeholder="Internal notes…"
-                className={`${input} resize-none`} />
-            </div>
-          </div>
-
-          {/* Right */}
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lbl}>Estimate Low (£)</label>
-                <input name="estimateLow" type="number" min="0" placeholder="0" className={input} />
-              </div>
-              <div>
-                <label className={lbl}>Estimate High (£)</label>
-                <input name="estimateHigh" type="number" min="0" placeholder="0" className={input} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lbl}>Reserve (£)</label>
-                <input name="reserve" type="number" min="0" placeholder="0" className={input} />
-              </div>
-              <div>
-                <label className={lbl}>Hammer Price (£)</label>
-                <input name="hammerPrice" type="number" min="0" placeholder="0" className={input} />
-              </div>
-            </div>
-            <div>
-              <label className={lbl}>Vendor</label>
-              <input name="vendor" placeholder="Vendor name" className={input} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lbl}>Tote</label>
-                <input name="tote" placeholder="Tote ref" className={input} />
-              </div>
-              <div>
-                <label className={lbl}>Receipt</label>
-                <input name="receipt" placeholder="Receipt no." className={input} />
-              </div>
-            </div>
-            <div>
-              <label className={lbl}>Category</label>
-              <input name="category" placeholder="Category" className={input} />
-            </div>
-            <div>
-              <label className={lbl}>Sub-Category</label>
-              <input name="subCategory" placeholder="Sub-category" className={input} />
-            </div>
-            <div>
-              <label className={lbl}>Brand</label>
-              <input name="brand" placeholder="Brand" className={input} />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 pt-2 border-t border-gray-700">
-          <button type="submit" disabled={pending}
-            className="bg-[#2AB4A6] hover:bg-[#24a090] disabled:opacity-50 text-white font-semibold text-sm px-6 py-2 rounded-lg transition-colors">
-            {pending ? "Adding…" : "Add Lot"}
-          </button>
-          {saved && <span className="text-sm text-[#2AB4A6]">✓ Lot added — form cleared</span>}
-        </div>
-      </form>
     </div>
   )
 }
