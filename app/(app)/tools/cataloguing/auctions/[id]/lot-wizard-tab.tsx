@@ -495,7 +495,7 @@ export default function LotWizardTab({
     fd.append("category",     mainCat)
     fd.append("subCategory",  subCat)
     fd.append("brand",        brand)
-    fd.append("notes",        parcel ? `Parcel: ${parcel}` : "")
+    fd.append("notes",        parcel)
     fd.append("status",       "ENTERED")
 
     start(async () => {
