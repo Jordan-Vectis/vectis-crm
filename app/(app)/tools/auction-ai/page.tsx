@@ -623,6 +623,7 @@ function BatchTab({ model }: { model: string }) {
   const logRef     = useRef<HTMLDivElement>(null)
   const folderRef  = useRef<HTMLInputElement>(null)
   const sortRef    = useRef<HTMLInputElement>(null)
+  const cancelRef  = useRef(false)
 
   const systemInstruction = preset === "Custom (paste my own)" ? custom : PRESETS[preset]
   const lotNames           = Object.keys(lots).sort()
@@ -683,13 +684,23 @@ function BatchTab({ model }: { model: string }) {
   function selectAll()  { setSelected(new Set(lotNames)) }
   function selectNone() { setSelected(new Set()) }
 
+  function cancel() {
+    cancelRef.current = true
+  }
+
   async function run() {
     if (!selectedNames.length) return
+    cancelRef.current = false
     setLoading(true); setResults([]); setDone(0)
-    setLog([]); addLog(`Starting batch run — ${selectedNames.length} lots selected  ·  Model: ${model}`)
+    setLog([])
+    addLog(`Starting batch run — ${selectedNames.length} lots  ·  Model: ${model}  ·  Instruction: ${preset}`)
     const all: BatchResult[] = []
 
     for (let i = 0; i < selectedNames.length; i++) {
+      if (cancelRef.current) {
+        addLog(`⛔ Cancelled after ${i} / ${selectedNames.length} lots`)
+        break
+      }
       const lot   = selectedNames[i]
       const files = lots[lot]
       setDone(i)
@@ -713,10 +724,12 @@ function BatchTab({ model }: { model: string }) {
       setResults([...all])
     }
 
-    setDone(selectedNames.length)
-    const ok   = all.filter(r => r.status === "OK").length
-    const fail = all.filter(r => r.status !== "OK").length
-    addLog(`Run complete — ${ok} OK, ${fail} failed`)
+    if (!cancelRef.current) {
+      setDone(selectedNames.length)
+      const ok   = all.filter(r => r.status === "OK").length
+      const fail = all.filter(r => r.status !== "OK").length
+      addLog(`Run complete — ${ok} OK, ${fail} failed`)
+    }
     setLoading(false)
   }
 
@@ -776,6 +789,8 @@ function BatchTab({ model }: { model: string }) {
             <div className="flex gap-1.5">
               <button onClick={selectAll}  className="text-xs px-2 py-0.5 bg-[#1C1C1E] border border-gray-700 text-gray-400 rounded hover:border-gray-500">All</button>
               <button onClick={selectNone} className="text-xs px-2 py-0.5 bg-[#1C1C1E] border border-gray-700 text-gray-400 rounded hover:border-gray-500">None</button>
+              <button onClick={() => setSelected(s => { const n = new Set(s); results.filter(r => r.status === "OK").forEach(r => n.delete(r.lot)); return n })}
+                className="text-xs px-2 py-0.5 bg-[#1C1C1E] border border-gray-700 text-gray-400 rounded hover:border-gray-500" title="Deselect lots that already have an OK result">Skip Done</button>
             </div>
           </div>
           <div className="overflow-y-auto rounded border border-gray-800 bg-[#141416] flex-1">
@@ -827,7 +842,13 @@ function BatchTab({ model }: { model: string }) {
           className="px-6 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors disabled:opacity-40">
           {loading ? `Running ${done} / ${total}…` : `Start Batch (${total} lots)`}
         </button>
-        {results.length > 0 && (
+        {loading && (
+          <button onClick={cancel}
+            className="px-4 py-2 bg-red-900 hover:bg-red-800 border border-red-700 text-red-300 text-sm font-semibold rounded transition-colors">
+            ✕ Cancel
+          </button>
+        )}
+        {results.length > 0 && !loading && (
           <button onClick={exportXlsx}
             className="px-4 py-2 bg-[#2C2C2E] border border-gray-700 hover:border-[#C8A96E] text-gray-300 text-sm rounded transition-colors">
             ⬇ Export to Excel

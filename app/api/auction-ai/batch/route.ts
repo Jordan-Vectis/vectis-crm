@@ -33,9 +33,33 @@ export async function POST(req: NextRequest) {
     systemInstruction: systemInstruction || undefined,
   })
 
-  const results: { lot: string; description: string; estimate: string; status: string; error?: string }[] = []
+  const MAX_RETRIES    = 8
+  const MAX_BACKOFF_MS = 60_000
 
-  for (const [lot, files] of Object.entries(lotMap)) {
+  async function generateWithRetry(contents: any[]): Promise<string> {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const result = await model.generateContent(contents)
+        return result.response.text()
+      } catch (e: any) {
+        const msg: string = e?.message ?? String(e)
+        const isRetryable = msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") ||
+                            msg.includes("503") || msg.includes("Service Unavailable") ||
+                            msg.includes("high demand")
+        if (!isRetryable) throw e
+        if (attempt === MAX_RETRIES - 1) throw e
+        const backoff = Math.min(MAX_BACKOFF_MS, Math.pow(2, attempt) * 1000) + Math.random() * 1500
+        await new Promise((r) => setTimeout(r, backoff))
+      }
+    }
+    throw new Error("Max retries exceeded")
+  }
+
+  const results: { lot: string; description: string; estimate: string; status: string; error?: string }[] = []
+  const lotEntries = Object.entries(lotMap)
+
+  for (let idx = 0; idx < lotEntries.length; idx++) {
+    const [lot, files] = lotEntries[idx]
     try {
       const imageParts = await Promise.all(
         files.slice(0, 24).map(async (file) => {
@@ -45,11 +69,10 @@ export async function POST(req: NextRequest) {
         })
       )
 
-      const result = await model.generateContent([
+      const text = await generateWithRetry([
         ...imageParts,
         { text: "Please describe this auction lot." },
       ])
-      const text = result.response.text()
 
       // Split description and estimate
       const lines = text.trim().split("\n").filter(Boolean)
@@ -59,7 +82,7 @@ export async function POST(req: NextRequest) {
       results.push({ lot, description, estimate: estimateLine.replace(/^Estimate:\s*/i, "").trim(), status: "OK" })
 
       // 8-second delay between lots (matches Python app)
-      if (Object.keys(lotMap).indexOf(lot) < Object.keys(lotMap).length - 1) {
+      if (idx < lotEntries.length - 1) {
         await new Promise((r) => setTimeout(r, 8000))
       }
     } catch (e: any) {
