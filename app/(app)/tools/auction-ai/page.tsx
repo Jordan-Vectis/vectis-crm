@@ -618,7 +618,6 @@ function BatchTab({ model }: { model: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [results,  setResults]  = useState<BatchResult[]>([])
   const [loading,  setLoading]  = useState(false)
-  const [sorting,  setSorting]  = useState(false)
   const [done,     setDone]     = useState(0)
   const [log,      setLog]      = useState<string[]>([])
   const logRef     = useRef<HTMLDivElement>(null)
@@ -652,44 +651,31 @@ function BatchTab({ model }: { model: string }) {
     addLog(`Loaded ${names.length} lot folders  ·  ${Object.values(map).reduce((s,f)=>s+f.length,0)} images total`)
   }
 
-  // Sort flat folder by barcode scan
-  async function onSortFiles(e: React.ChangeEvent<HTMLInputElement>) {
+  // Sort flat folder by filename pattern e.g. R00001-1.jpg → lot R00001
+  function onSortFiles(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files) return
     const files = Array.from(e.target.files).filter(f => f.type.startsWith("image/"))
     if (!files.length) return
-    setSorting(true); setLog([]); setResults([])
-    addLog(`Sort started — ${files.length} images to scan`)
-    try {
-      const { BrowserMultiFormatReader } = await import("@zxing/browser" as any)
-      const reader = new (BrowserMultiFormatReader as any)()
-      const map: Record<string, File[]> = {}
-      let sorted = 0, unsorted = 0
+    setLog([]); setResults([])
+    addLog(`Sorting ${files.length} images by filename…`)
 
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        const url = URL.createObjectURL(file)
-        const img = new Image(); img.src = url
-        await new Promise(r => { img.onload = r; img.onerror = r })
-        let lot = "_UNSORTED"
-        try {
-          const r   = await reader.decodeFromImageElement(img)
-          const txt = r.getText()
-          if (/^[A-Z]\d{6}$/.test(txt)) { lot = txt; sorted++ } else unsorted++
-        } catch { unsorted++ }
-        URL.revokeObjectURL(url)
-        if (!map[lot]) map[lot] = []
-        if (map[lot].length < 24) map[lot].push(file)
-        if ((i + 1) % 10 === 0 || i === files.length - 1)
-          addLog(`Scanning ${i + 1} / ${files.length}  ·  ${sorted} sorted, ${unsorted} unread`)
-      }
+    const map: Record<string, File[]> = {}
+    let sorted = 0, unsorted = 0
 
-      const names = Object.keys(map)
-      setLots(map); setSelected(new Set(names))
-      addLog(`Sort complete — ${names.length} lots  ·  ${sorted} images sorted, ${unsorted} unread`)
-    } catch (e: any) {
-      addLog(`ERROR: ${e.message}`)
+    for (const file of files) {
+      // Match patterns like R00001-1, R00001_1, R00001 (with optional -N or _N suffix)
+      const m = file.name.match(/([A-Za-z]\d{4,6})(?:[-_]\d+)?(?:\.\w+)?$/)
+      const lot = m ? m[1].toUpperCase() : "_UNSORTED"
+      if (m) sorted++ else unsorted++
+      if (!map[lot]) map[lot] = []
+      if (map[lot].length < 24) map[lot].push(file)
     }
-    setSorting(false)
+
+    const names = Object.keys(map).filter(k => k !== "_UNSORTED").sort()
+    const allNames = [...names, ...(map["_UNSORTED"] ? ["_UNSORTED"] : [])]
+    setLots(map); setSelected(new Set(names))
+    addLog(`Done — ${names.length} lots matched, ${sorted} images sorted, ${unsorted} unmatched`)
+    if (map["_UNSORTED"]) addLog(`⚠ ${map["_UNSORTED"].length} images could not be matched (in _UNSORTED)`)
   }
 
   function toggleLot(name: string) {
@@ -759,11 +745,11 @@ function BatchTab({ model }: { model: string }) {
 
       {/* ── Step 1: Sort (optional) ── */}
       <div className="bg-[#2C2C2E] border border-gray-700 rounded-lg p-3">
-        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Step 1 — Sort files into subfolders (optional)</p>
-        <div onClick={() => !sorting && sortRef.current?.click()}
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Step 1 — Sort flat folder by filename (optional)</p>
+        <div onClick={() => sortRef.current?.click()}
           className="border border-dashed border-gray-600 hover:border-green-500 rounded-lg px-4 py-3 text-center cursor-pointer transition-colors">
-          <p className="text-gray-300 text-sm font-medium">▦ {sorting ? "Scanning barcodes…" : "Sort flat folder by barcode"}</p>
-          <p className="text-gray-600 text-xs mt-0.5">Scans each image for a lot barcode and groups into virtual subfolders</p>
+          <p className="text-gray-300 text-sm font-medium">▦ Match images by filename (e.g. R00001-1.jpg)</p>
+          <p className="text-gray-600 text-xs mt-0.5">Groups images into lots based on the lot reference in their filename</p>
           <input ref={sortRef} type="file" multiple accept="image/*" className="hidden" onChange={onSortFiles} />
         </div>
       </div>
