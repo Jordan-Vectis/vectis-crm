@@ -16,10 +16,11 @@ export async function createAuction(formData: FormData) {
   const auctionDate = formData.get("auctionDate") as string
   const auctionType = formData.get("auctionType") as string
   const eventName = formData.get("eventName") as string
-  await prisma.catalogueAuction.create({
+  const auction = await prisma.catalogueAuction.create({
     data: { code, name, auctionDate: auctionDate ? new Date(auctionDate) : null, auctionType: auctionType || "GENERAL", eventName: eventName || null }
   })
   revalidatePath("/tools/cataloguing/auctions")
+  return auction.id
 }
 
 export async function updateAuction(id: string, formData: FormData) {

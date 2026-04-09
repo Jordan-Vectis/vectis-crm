@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { createAuction } from "@/lib/actions/catalogue"
 
 const AUCTION_TYPES = [
@@ -16,6 +17,7 @@ const AUCTION_TYPES = [
 ]
 
 export default function NewAuctionButton() {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
@@ -25,9 +27,8 @@ export default function NewAuctionButton() {
     setLoading(true)
     try {
       const fd = new FormData(e.currentTarget)
-      await createAuction(fd)
-      setOpen(false)
-      formRef.current?.reset()
+      const id = await createAuction(fd)
+      router.push(`/tools/cataloguing/auctions/${id}`)
     } finally {
       setLoading(false)
     }
