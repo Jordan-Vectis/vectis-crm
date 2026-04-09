@@ -619,16 +619,22 @@ function BatchTab({ model }: { model: string }) {
   const [results,  setResults]  = useState<BatchResult[]>([])
   const [loading,  setLoading]  = useState(false)
   const [sorting,  setSorting]  = useState(false)
-  const [sortProgress, setSortProgress] = useState("")
-  const [current,  setCurrent]  = useState("")
   const [done,     setDone]     = useState(0)
-  const [error,    setError]    = useState<string | null>(null)
+  const [log,      setLog]      = useState<string[]>([])
+  const logRef     = useRef<HTMLDivElement>(null)
   const folderRef  = useRef<HTMLInputElement>(null)
   const sortRef    = useRef<HTMLInputElement>(null)
 
   const systemInstruction = preset === "Custom (paste my own)" ? custom : PRESETS[preset]
   const lotNames           = Object.keys(lots).sort()
   const selectedNames      = lotNames.filter(n => selected.has(n))
+  const total              = selectedNames.length
+
+  function addLog(msg: string) {
+    const ts = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    setLog(l => [...l, `[${ts}]  ${msg}`])
+    setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 50)
+  }
 
   // Load pre-sorted subfolders
   function onFolderFiles(e: React.ChangeEvent<HTMLInputElement>) {
@@ -641,26 +647,26 @@ function BatchTab({ model }: { model: string }) {
       if (!map[lot]) map[lot] = []
       if (map[lot].length < 24) map[lot].push(file)
     }
-    setLots(map)
-    setSelected(new Set(Object.keys(map)))
-    setResults([])
+    const names = Object.keys(map)
+    setLots(map); setSelected(new Set(names)); setResults([]); setLog([])
+    addLog(`Loaded ${names.length} lot folders  ·  ${Object.values(map).reduce((s,f)=>s+f.length,0)} images total`)
   }
 
-  // Sort flat folder of images into lots by scanning barcodes
+  // Sort flat folder by barcode scan
   async function onSortFiles(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files) return
     const files = Array.from(e.target.files).filter(f => f.type.startsWith("image/"))
     if (!files.length) return
-
-    setSorting(true); setError(null); setSortProgress("Loading barcode scanner…")
+    setSorting(true); setLog([]); setResults([])
+    addLog(`Sort started — ${files.length} images to scan`)
     try {
       const { BrowserMultiFormatReader } = await import("@zxing/browser" as any)
       const reader = new (BrowserMultiFormatReader as any)()
       const map: Record<string, File[]> = {}
+      let sorted = 0, unsorted = 0
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
-        setSortProgress(`Scanning ${i + 1}/${files.length}: ${file.name}`)
         const url = URL.createObjectURL(file)
         const img = new Image(); img.src = url
         await new Promise(r => { img.onload = r; img.onerror = r })
@@ -668,45 +674,41 @@ function BatchTab({ model }: { model: string }) {
         try {
           const r   = await reader.decodeFromImageElement(img)
           const txt = r.getText()
-          // Match lot barcode pattern e.g. L123456 or any letter + 6 digits
-          const m   = txt.match(/^[A-Z]\d{6}$/)
-          if (m) lot = txt
-        } catch { /* unreadable barcode */ }
+          if (/^[A-Z]\d{6}$/.test(txt)) { lot = txt; sorted++ } else unsorted++
+        } catch { unsorted++ }
         URL.revokeObjectURL(url)
         if (!map[lot]) map[lot] = []
         if (map[lot].length < 24) map[lot].push(file)
+        if ((i + 1) % 10 === 0 || i === files.length - 1)
+          addLog(`Scanning ${i + 1} / ${files.length}  ·  ${sorted} sorted, ${unsorted} unread`)
       }
 
-      setLots(map)
-      setSelected(new Set(Object.keys(map)))
-      setResults([])
-      setSortProgress(`Done — ${Object.keys(map).length} lots found`)
+      const names = Object.keys(map)
+      setLots(map); setSelected(new Set(names))
+      addLog(`Sort complete — ${names.length} lots  ·  ${sorted} images sorted, ${unsorted} unread`)
     } catch (e: any) {
-      setError("Barcode scanner failed: " + e.message)
+      addLog(`ERROR: ${e.message}`)
     }
     setSorting(false)
   }
 
   function toggleLot(name: string) {
-    setSelected(s => {
-      const next = new Set(s)
-      next.has(name) ? next.delete(name) : next.add(name)
-      return next
-    })
+    setSelected(s => { const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n })
   }
-
   function selectAll()  { setSelected(new Set(lotNames)) }
   function selectNone() { setSelected(new Set()) }
 
   async function run() {
     if (!selectedNames.length) return
-    setLoading(true); setError(null); setResults([]); setDone(0)
+    setLoading(true); setResults([]); setDone(0)
+    setLog([]); addLog(`Starting batch run — ${selectedNames.length} lots selected  ·  Model: ${model}`)
     const all: BatchResult[] = []
 
     for (let i = 0; i < selectedNames.length; i++) {
       const lot   = selectedNames[i]
       const files = lots[lot]
-      setCurrent(lot); setDone(i)
+      setDone(i)
+      addLog(`Processing ${i + 1} / ${selectedNames.length}  ·  ${lot}  (${files.length} image${files.length !== 1 ? "s" : ""})`)
 
       try {
         const fd = new FormData()
@@ -718,13 +720,19 @@ function BatchTab({ model }: { model: string }) {
         const json = await res.json()
         if (!res.ok) throw new Error(json.error ?? res.statusText)
         all.push(...json.results)
+        addLog(`✓ ${lot} — OK`)
       } catch (e: any) {
         all.push({ lot, description: "", estimate: "", status: "FAILED", error: e.message })
+        addLog(`✗ ${lot} — FAILED: ${e.message}`)
       }
       setResults([...all])
     }
 
-    setDone(selectedNames.length); setCurrent(""); setLoading(false)
+    setDone(selectedNames.length)
+    const ok   = all.filter(r => r.status === "OK").length
+    const fail = all.filter(r => r.status !== "OK").length
+    addLog(`Run complete — ${ok} OK, ${fail} failed`)
+    setLoading(false)
   }
 
   function exportXlsx() {
@@ -736,84 +744,69 @@ function BatchTab({ model }: { model: string }) {
     XLSX.writeFile(wb, "auction_ai_results.xlsx")
   }
 
-  const total = selectedNames.length
-  const pct   = total ? Math.round((done / total) * 100) : 0
+  const pct = total ? Math.round((done / total) * 100) : 0
 
   return (
-    <div className="flex flex-col h-full">
-      <h2 className="text-lg font-semibold text-white mb-3">Batch Run</h2>
+    <div className="flex flex-col h-full gap-3">
+      <h2 className="text-lg font-semibold text-white">Batch Run</h2>
+
       <PresetSelector value={preset} onChange={setPreset} />
       {preset === "Custom (paste my own)" && (
         <textarea value={custom} onChange={(e) => setCustom(e.target.value)}
           placeholder="Paste your system instruction here…" rows={3}
-          className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] mb-3 resize-none" />
+          className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] resize-none" />
       )}
 
-      {/* Two load options */}
-      <div className="grid grid-cols-2 gap-3 mb-3">
-        <div onClick={() => folderRef.current?.click()}
-          className="border-2 border-dashed border-gray-700 hover:border-[#C8A96E] rounded-lg p-4 text-center cursor-pointer transition-colors">
-          <p className="text-gray-300 text-sm font-medium mb-0.5">📂 Load Subfolders</p>
-          <p className="text-gray-600 text-xs">Each sub-folder = one lot</p>
-          <input ref={folderRef} type="file" multiple className="hidden" {...({ webkitdirectory: "" } as any)} onChange={onFolderFiles} />
-        </div>
+      {/* ── Step 1: Sort (optional) ── */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-lg p-3">
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Step 1 — Sort files into subfolders (optional)</p>
         <div onClick={() => !sorting && sortRef.current?.click()}
-          className="border-2 border-dashed border-gray-700 hover:border-green-500 rounded-lg p-4 text-center cursor-pointer transition-colors">
-          <p className="text-gray-300 text-sm font-medium mb-0.5">▦ Sort by Barcode</p>
-          <p className="text-gray-600 text-xs">Scan flat folder, group by lot barcode</p>
+          className="border border-dashed border-gray-600 hover:border-green-500 rounded-lg px-4 py-3 text-center cursor-pointer transition-colors">
+          <p className="text-gray-300 text-sm font-medium">▦ {sorting ? "Scanning barcodes…" : "Sort flat folder by barcode"}</p>
+          <p className="text-gray-600 text-xs mt-0.5">Scans each image for a lot barcode and groups into virtual subfolders</p>
           <input ref={sortRef} type="file" multiple accept="image/*" className="hidden" onChange={onSortFiles} />
         </div>
       </div>
 
-      {/* Sort progress */}
-      {sorting && (
-        <p className="text-xs text-green-400 mb-2">{sortProgress}</p>
-      )}
-      {!sorting && sortProgress && !error && (
-        <p className="text-xs text-gray-500 mb-2">{sortProgress}</p>
-      )}
+      {/* ── Step 2: Load subfolders ── */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-lg p-3">
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Step 2 — Load lot subfolders</p>
+        <div onClick={() => folderRef.current?.click()}
+          className="border border-dashed border-gray-600 hover:border-[#C8A96E] rounded-lg px-4 py-3 text-center cursor-pointer transition-colors">
+          <p className="text-gray-300 text-sm font-medium">📂 {lotNames.length > 0 ? `${lotNames.length} lots loaded — click to reload` : "Select folder"}</p>
+          <p className="text-gray-600 text-xs mt-0.5">Each sub-folder = one lot (up to 24 images each)</p>
+          <input ref={folderRef} type="file" multiple className="hidden" {...({ webkitdirectory: "" } as any)} onChange={onFolderFiles} />
+        </div>
+      </div>
 
-      {/* Lot list */}
+      {/* ── Lot list ── */}
       {lotNames.length > 0 && (
-        <div className="flex flex-col flex-1 min-h-0 mb-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">
+        <div className="flex flex-col min-h-0" style={{ maxHeight: "220px" }}>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs text-gray-400">
               <span className="text-[#C8A96E] font-semibold">{selected.size}</span>
-              <span className="text-gray-600"> / {lotNames.length} lots selected</span>
-              <span className="text-gray-600"> · {Object.values(lots).reduce((s,f) => s+f.length,0)} images total</span>
+              {" / "}{lotNames.length} lots selected
+              {" · "}{Object.values(lots).reduce((s,f)=>s+f.length,0)} images
             </span>
-            <div className="flex gap-2">
-              <button onClick={selectAll}  className="text-xs px-2 py-1 bg-[#2C2C2E] border border-gray-700 text-gray-400 rounded hover:border-gray-500">All</button>
-              <button onClick={selectNone} className="text-xs px-2 py-1 bg-[#2C2C2E] border border-gray-700 text-gray-400 rounded hover:border-gray-500">None</button>
+            <div className="flex gap-1.5">
+              <button onClick={selectAll}  className="text-xs px-2 py-0.5 bg-[#1C1C1E] border border-gray-700 text-gray-400 rounded hover:border-gray-500">All</button>
+              <button onClick={selectNone} className="text-xs px-2 py-0.5 bg-[#1C1C1E] border border-gray-700 text-gray-400 rounded hover:border-gray-500">None</button>
             </div>
           </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto rounded border border-gray-800 bg-[#141416]">
+          <div className="overflow-y-auto rounded border border-gray-800 bg-[#141416] flex-1">
             {lotNames.map(name => {
               const checked  = selected.has(name)
               const imgCount = lots[name].length
               const result   = results.find(r => r.lot === name)
               return (
-                <div key={name}
-                  onClick={() => !loading && toggleLot(name)}
-                  className={`flex items-center gap-3 px-4 py-2.5 border-b border-gray-800 last:border-0 cursor-pointer transition-colors ${
-                    checked ? "hover:bg-[#2C2C2E]" : "opacity-40 hover:opacity-60 hover:bg-[#1a1a1e]"
-                  }`}>
-                  <div className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border transition-colors ${
-                    checked ? "bg-[#C8A96E] border-[#C8A96E]" : "border-gray-600"
-                  }`}>
+                <div key={name} onClick={() => !loading && toggleLot(name)}
+                  className={`flex items-center gap-3 px-3 py-2 border-b border-gray-800 last:border-0 cursor-pointer transition-colors ${checked ? "hover:bg-[#2C2C2E]" : "opacity-40 hover:opacity-60"}`}>
+                  <div className={`w-3.5 h-3.5 rounded flex-shrink-0 flex items-center justify-center border ${checked ? "bg-[#C8A96E] border-[#C8A96E]" : "border-gray-600"}`}>
                     {checked && <span className="text-black text-xs font-bold leading-none">✓</span>}
                   </div>
-                  <span className="flex-1 text-sm text-gray-200 font-mono truncate">{name}</span>
-                  <span className="text-xs text-gray-600 flex-shrink-0">{imgCount} img{imgCount !== 1 ? "s" : ""}</span>
-                  {result && (
-                    <span className={`text-xs font-bold flex-shrink-0 ${result.status === "OK" ? "text-green-400" : "text-red-400"}`}>
-                      {result.status}
-                    </span>
-                  )}
-                  {loading && current === name && (
-                    <span className="text-xs text-[#C8A96E] flex-shrink-0">Processing…</span>
-                  )}
+                  <span className="flex-1 text-xs text-gray-200 font-mono truncate">{name}</span>
+                  <span className="text-xs text-gray-600 flex-shrink-0">{imgCount}img</span>
+                  {result && <span className={`text-xs font-bold flex-shrink-0 ${result.status === "OK" ? "text-green-400" : "text-red-400"}`}>{result.status}</span>}
                 </div>
               )
             })}
@@ -821,21 +814,33 @@ function BatchTab({ model }: { model: string }) {
         </div>
       )}
 
-      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
-
-      {loading && (
-        <div className="mb-3">
-          <div className="w-full bg-gray-800 rounded-full h-1.5 mb-1">
-            <div className="bg-[#C8A96E] h-1.5 rounded-full transition-all" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="text-xs text-gray-500">{done}/{total} · {current}</p>
+      {/* ── Run log ── */}
+      {log.length > 0 && (
+        <div ref={logRef} className="overflow-y-auto rounded border border-gray-800 bg-[#0d0d0f] px-3 py-2 font-mono text-xs text-[#C8C8D0] flex-shrink-0" style={{ maxHeight: "160px" }}>
+          {log.map((line, i) => (
+            <p key={i} className={line.includes("✓") ? "text-green-400" : line.includes("✗") || line.includes("ERROR") ? "text-red-400" : line.includes("complete") || line.includes("complete") ? "text-[#C8A96E]" : ""}>{line}</p>
+          ))}
         </div>
       )}
 
+      {/* ── Progress bar ── */}
+      {loading && (
+        <div className="flex-shrink-0">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm font-semibold text-[#C8A96E]">{done} / {total} lots complete</span>
+            <span className="text-xs text-gray-500">{pct}%</span>
+          </div>
+          <div className="w-full bg-gray-800 rounded-full h-2">
+            <div className="bg-[#C8A96E] h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Actions ── */}
       <div className="flex items-center gap-3 flex-shrink-0">
         <button onClick={run} disabled={loading || sorting || !total}
           className="px-6 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors disabled:opacity-40">
-          {loading ? `Running ${done}/${total}…` : `Start Batch (${total})`}
+          {loading ? `Running ${done} / ${total}…` : `Start Batch (${total} lots)`}
         </button>
         {results.length > 0 && (
           <button onClick={exportXlsx}
