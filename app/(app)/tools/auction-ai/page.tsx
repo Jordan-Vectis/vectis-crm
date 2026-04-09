@@ -257,6 +257,12 @@ type BatchResult = {
   error?: string
 }
 
+function parseEstimate(est: string): { low: number; high: number } {
+  const m = est.match(/£([\d,]+)\s*[–\-]\s*£?([\d,]+)/)
+  if (!m) return { low: 0, high: 0 }
+  return { low: parseInt(m[1].replace(/,/g, "")), high: parseInt(m[2].replace(/,/g, "")) }
+}
+
 function toDataURL(file: File): Promise<string> {
   return new Promise((res, rej) => {
     const r = new FileReader()
@@ -585,10 +591,31 @@ function BatchTab({ model }: { model: string }) {
   const pauseRef   = useRef(false)
   const [paused,       setPaused]       = useState(false)
   const [auctionCode,  setAuctionCode]  = useState("")
+  const [savedLots,    setSavedLots]    = useState<Set<string>>(new Set())
+  const [savedRunId,   setSavedRunId]   = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/auction-ai/presets").then(r => r.json()).then(setOverrides).catch(() => {})
   }, [])
+
+  // When auction code changes, look up existing saved lots for that run
+  useEffect(() => {
+    const code = auctionCode.trim().toUpperCase()
+    if (!code) { setSavedLots(new Set()); setSavedRunId(null); return }
+    fetch("/api/auction-ai/runs")
+      .then(r => r.json())
+      .then((runs: { id: string; code: string }[]) => {
+        const match = runs.find(r => r.code === code)
+        if (!match) { setSavedLots(new Set()); setSavedRunId(null); return }
+        setSavedRunId(match.id)
+        return fetch(`/api/auction-ai/runs/${match.id}`).then(r => r.json())
+      })
+      .then((run: any) => {
+        if (!run?.lots) return
+        setSavedLots(new Set(run.lots.map((l: any) => l.lot)))
+      })
+      .catch(() => {})
+  }, [auctionCode])
 
   const systemInstruction = preset === "Custom (paste my own)" ? custom : (overrides[preset] ?? PRESETS[preset])
 
@@ -691,6 +718,11 @@ function BatchTab({ model }: { model: string }) {
       const lot   = selectedNames[i]
       const files = lots[lot]
       setDone(i)
+      if (savedLots.has(lot)) {
+        addLog(`⏭ ${lot} — already saved, skipping`)
+        all.push({ lot, description: "", estimate: "", status: "SKIPPED" })
+        continue
+      }
       addLog(`Processing ${i + 1} / ${selectedNames.length}  ·  ${lot}  (${files.length} image${files.length !== 1 ? "s" : ""})`)
 
       try {
@@ -745,11 +777,15 @@ function BatchTab({ model }: { model: string }) {
   }
 
   function exportXlsx() {
-    const ws = XLSX.utils.json_to_sheet(results.filter(r => r.status === "OK").map(r => ({
-      Folder: r.lot, Description: r.description, Estimate: r.estimate,
-    })))
+    const now = new Date().toISOString()
+    const rows = results.filter(r => r.status === "OK").map(r => {
+      const { low, high } = parseEstimate(r.estimate)
+      return { Folder: r.lot, Description: r.description, Estimate: r.estimate, "Estimate Low": low, "Estimate High": high, Status: r.status, Updated: now }
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws["!cols"] = [{ wch: 16 }, { wch: 70 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 26 }]
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Results")
+    XLSX.utils.book_append_sheet(wb, ws, "Descriptions")
     XLSX.writeFile(wb, "auction_ai_results.xlsx")
   }
 
@@ -772,6 +808,16 @@ function BatchTab({ model }: { model: string }) {
         <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Auction Code <span className="normal-case text-gray-600">(optional — saves results for later retrieval)</span></label>
         <input value={auctionCode} onChange={e => setAuctionCode(e.target.value)} placeholder="e.g. VINYL-2026-04"
           className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] uppercase placeholder:normal-case placeholder:text-gray-600" />
+        {savedLots.size > 0 && (
+          <div className="flex items-center gap-3 mt-1.5">
+            <span className="text-xs text-amber-400">{savedLots.size} lot{savedLots.size !== 1 ? "s" : ""} already saved in this run</span>
+            <button
+              onClick={() => setSelected(s => { const n = new Set(s); savedLots.forEach(l => n.delete(l)); return n })}
+              className="text-xs px-2.5 py-0.5 bg-[#2C2C2E] border border-amber-600 text-amber-400 rounded hover:bg-amber-900/30 transition-colors">
+              ⏭ Skip Saved
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Step 1: Sort (optional) ── */}
@@ -1068,7 +1114,7 @@ function CopierTab() {
 // ─── Saved Runs Tab ───────────────────────────────────────────────────────────
 
 type RunSummary = { id: string; code: string; preset: string; updatedAt: string; _count: { lots: number } }
-type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: { id: string; lot: string; description: string; estimate: string }[] }
+type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: { id: string; lot: string; description: string; estimate: string; createdAt: string }[] }
 
 function SavedRunsTab() {
   const [runs,       setRuns]       = useState<RunSummary[]>([])
@@ -1111,7 +1157,12 @@ function SavedRunsTab() {
   }
 
   function exportRun(run: RunDetail) {
-    const ws = XLSX.utils.json_to_sheet(run.lots.map(l => ({ Folder: l.lot, Description: l.description, Estimate: l.estimate })))
+    const rows = run.lots.map(l => {
+      const { low, high } = parseEstimate(l.estimate)
+      return { Folder: l.lot, Description: l.description, Estimate: l.estimate, "Estimate Low": low, "Estimate High": high, Status: "OK", Updated: new Date(l.createdAt).toISOString() }
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws["!cols"] = [{ wch: 16 }, { wch: 70 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 26 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, run.code)
     XLSX.writeFile(wb, `${run.code}.xlsx`)
