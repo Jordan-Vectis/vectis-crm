@@ -1060,10 +1060,12 @@ function BarcodeTab() {
 // ─── Description Copier Tab ───────────────────────────────────────────────────
 
 function CopierTab() {
-  const [rows, setRows]     = useState<{ folder: string; description: string; estimate: string }[]>([])
-  const [idx, setIdx]       = useState(0)
-  const [copied, setCopied] = useState(false)
-  const [error, setError]   = useState<string | null>(null)
+  const [rows, setRows]         = useState<{ folder: string; description: string; estimate: string }[]>([])
+  const [idx, setIdx]           = useState(0)
+  const [copiedType, setCopied] = useState<"desc" | "both" | null>(null)
+  const [error, setError]       = useState<string | null>(null)
+  const [jumpQuery, setJumpQuery] = useState("")
+  const [jumpOpen, setJumpOpen]   = useState(false)
 
   function loadFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1079,7 +1081,7 @@ function CopierTab() {
           description: String(r.Description ?? r.description ?? ""),
           estimate:    String(r.Estimate ?? r.estimate ?? ""),
         })).filter(r => r.description))
-        setIdx(0); setError(null)
+        setIdx(0); setError(null); setJumpQuery("")
       } catch (e: any) { setError("Failed to read Excel: " + e.message) }
     }
     reader.readAsBinaryString(file)
@@ -1087,11 +1089,28 @@ function CopierTab() {
 
   const row = rows[idx]
 
-  function copy() {
+  function copyDesc() {
+    if (!row) return
+    navigator.clipboard.writeText(row.description)
+    setCopied("desc"); setTimeout(() => setCopied(null), 1500)
+  }
+
+  function copyBoth() {
     if (!row) return
     navigator.clipboard.writeText(row.estimate ? `${row.description}\n${row.estimate}` : row.description)
-    setCopied(true); setTimeout(() => setCopied(false), 1500)
+    setCopied("both"); setTimeout(() => setCopied(null), 1500)
   }
+
+  function jumpTo(i: number) {
+    setIdx(i)
+    setJumpQuery(rows[i]?.folder ?? "")
+    setJumpOpen(false)
+  }
+
+  const filteredJump = rows
+    .map((r, i) => ({ ...r, i }))
+    .filter(r => r.folder.toLowerCase().includes(jumpQuery.toLowerCase()))
+    .slice(0, 50)
 
   return (
     <div>
@@ -1106,13 +1125,41 @@ function CopierTab() {
 
       {rows.length > 0 && (
         <>
-          <div className="flex items-center gap-3 mb-4">
+          {/* Navigation row */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
             <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
               className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">← Prev</button>
             <span className="text-sm text-gray-400 tabular-nums">{idx + 1} / {rows.length}</span>
             <button onClick={() => setIdx(i => Math.min(rows.length - 1, i + 1))} disabled={idx === rows.length - 1}
               className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">Next →</button>
+
+            {/* Jump to lot */}
+            <div className="relative ml-auto">
+              <div className="flex items-center">
+                <span className="text-xs text-gray-500 mr-2 whitespace-nowrap">Jump to lot:</span>
+                <input
+                  value={jumpQuery}
+                  onChange={e => { setJumpQuery(e.target.value); setJumpOpen(true) }}
+                  onFocus={() => setJumpOpen(true)}
+                  onBlur={() => setTimeout(() => setJumpOpen(false), 150)}
+                  placeholder="Search lot…"
+                  className="w-36 bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E]"
+                />
+              </div>
+              {jumpOpen && filteredJump.length > 0 && (
+                <div className="absolute right-0 z-50 w-56 bg-[#2C2C2E] border border-gray-700 rounded mt-0.5 max-h-56 overflow-y-auto shadow-xl">
+                  {filteredJump.map(r => (
+                    <button key={r.i} onMouseDown={() => jumpTo(r.i)}
+                      className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#3A3A3C] ${r.i === idx ? "text-[#C8A96E] font-semibold" : "text-gray-200"}`}>
+                      {r.folder || `Row ${r.i + 1}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Card */}
           {row && (
             <div className="bg-[#141416] border border-gray-800 rounded-lg p-5 mb-4">
               {row.folder && <p className="text-xs text-gray-600 uppercase tracking-wider mb-2">{row.folder}</p>}
@@ -1120,10 +1167,18 @@ function CopierTab() {
               {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
             </div>
           )}
-          <button onClick={copy}
-            className="px-6 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors">
-            {copied ? "✓ Copied!" : "Copy Description"}
-          </button>
+
+          {/* Copy buttons */}
+          <div className="flex gap-3">
+            <button onClick={copyDesc}
+              className="px-5 py-2 bg-[#2C2C2E] border border-[#C8A96E] hover:bg-[#C8A96E] hover:text-black text-[#C8A96E] text-sm font-bold rounded transition-colors">
+              {copiedType === "desc" ? "✓ Copied!" : "Copy Description"}
+            </button>
+            <button onClick={copyBoth}
+              className="px-5 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors">
+              {copiedType === "both" ? "✓ Copied!" : "Description + Estimate"}
+            </button>
+          </div>
         </>
       )}
     </div>
