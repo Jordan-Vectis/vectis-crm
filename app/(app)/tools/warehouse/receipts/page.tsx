@@ -31,7 +31,25 @@ function PrintLabel({ container, receipt, customer }: { container: any; receipt:
 function ContainerRow({ container, receipt, customer, onUpdated }: { container: any; receipt: any; customer: any; onUpdated: () => void }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ type: container.type, description: container.description, category: container.category || "", subcategory: container.subcategory || "" })
+  const [locationInput, setLocationInput] = useState("")
+  const [locating, setLocating] = useState(false)
+  const [locateError, setLocateError] = useState("")
   const [saving, setSaving] = useState(false)
+
+  async function locate() {
+    const code = locationInput.trim().toUpperCase()
+    if (!code) { setLocateError("Enter a location code"); return }
+    setLocating(true)
+    setLocateError("")
+    try {
+      const res = await fetch(`/api/warehouse/locations/${code}/place/${container.id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes: "" }),
+      })
+      if (!res.ok) { setLocateError("Error setting location"); return }
+      setLocationInput("")
+      onUpdated()
+    } finally { setLocating(false) }
+  }
 
   async function save() {
     setSaving(true)
@@ -77,8 +95,8 @@ function ContainerRow({ container, receipt, customer, onUpdated }: { container: 
   }
 
   return (
-    <div className="px-4 py-3">
-      <div className="flex items-center justify-between mb-1">
+    <div className="px-4 py-3 space-y-1.5">
+      <div className="flex items-center justify-between">
         <span className="font-mono font-bold text-sm">{container.id}</span>
         <div className="flex items-center gap-1">
           <span className="wh-badge wh-badge-blue capitalize">{container.type}</span>
@@ -88,14 +106,25 @@ function ContainerRow({ container, receipt, customer, onUpdated }: { container: 
       </div>
       <p className="text-xs text-gray-700">{container.description}</p>
       {(container.category || container.subcategory) && (
-        <p className="text-xs text-gray-500 mt-0.5">
+        <p className="text-xs text-gray-500">
           {container.category}{container.subcategory ? ` / ${container.subcategory}` : ""}
         </p>
       )}
-      <div className="mt-1">
+      <div className="flex items-center gap-2 pt-0.5">
+        <span className="text-xs text-gray-500 shrink-0">Location:</span>
         {container.current_location
           ? <span className="wh-badge wh-badge-green">{container.current_location}</span>
           : <span className="text-xs text-gray-400">Unlocated</span>}
+      </div>
+      <div className="flex gap-2 items-center">
+        <input className="wh-input font-mono uppercase text-sm" style={{ width: "6rem" }}
+          placeholder="A1A1" value={locationInput}
+          onChange={e => setLocationInput(e.target.value.toUpperCase())}
+          onKeyDown={e => e.key === "Enter" && locate()} />
+        <button className="wh-btn-secondary wh-btn-sm" onClick={locate} disabled={locating}>
+          {container.current_location ? "Move" : "Locate"}
+        </button>
+        {locateError && <span className="text-xs text-red-500">{locateError}</span>}
       </div>
     </div>
   )
