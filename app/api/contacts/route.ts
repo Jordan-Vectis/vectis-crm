@@ -21,22 +21,35 @@ async function genContactId(): Promise<string> {
 export async function GET(req: NextRequest) {
   try {
     await requireAuth()
-    const search = req.nextUrl.searchParams.get("search") || ""
-    const contacts = await prisma.contact.findMany({
-      where: search ? {
-        OR: [
-          { name: { contains: search, mode: "insensitive" } },
-          { phone: { contains: search, mode: "insensitive" } },
-          { email: { contains: search, mode: "insensitive" } },
-          { id: { contains: search, mode: "insensitive" } },
-          { postcode: { contains: search, mode: "insensitive" } },
-          { addressLine1: { contains: search, mode: "insensitive" } },
-          { addressLine2: { contains: search, mode: "insensitive" } },
-        ],
-      } : undefined,
-      orderBy: { name: "asc" },
-    })
-    return NextResponse.json(contacts)
+    const { searchParams } = req.nextUrl
+    const search = searchParams.get("search") || ""
+    const limit  = Math.min(parseInt(searchParams.get("limit") || "50"), 100)
+    const offset = parseInt(searchParams.get("offset") || "0")
+
+    const where = search ? {
+      OR: [
+        { name:         { contains: search, mode: "insensitive" as const } },
+        { phone:        { contains: search, mode: "insensitive" as const } },
+        { email:        { contains: search, mode: "insensitive" as const } },
+        { id:           { contains: search, mode: "insensitive" as const } },
+        { postcode:     { contains: search, mode: "insensitive" as const } },
+        { addressLine1: { contains: search, mode: "insensitive" as const } },
+        { addressLine2: { contains: search, mode: "insensitive" as const } },
+      ],
+    } : undefined
+
+    const [contacts, total] = await Promise.all([
+      prisma.contact.findMany({
+        where,
+        orderBy: { name: "asc" },
+        skip: offset,
+        take: limit,
+        include: { _count: { select: { receipts: true, submissions: true } } },
+      }),
+      prisma.contact.count({ where }),
+    ])
+
+    return NextResponse.json({ contacts, total, limit, offset })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 403 })
   }
