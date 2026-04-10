@@ -39,12 +39,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       data: {
         type: body.type,
         description: body.description,
+        category: body.category ?? undefined,
+        subcategory: body.subcategory ?? undefined,
       },
     })
     return NextResponse.json({
       id: container.id,
       type: container.type,
       description: container.description,
+      category: container.category,
+      subcategory: container.subcategory,
       receipt_id: container.receiptId,
     })
   } catch (e: any) {

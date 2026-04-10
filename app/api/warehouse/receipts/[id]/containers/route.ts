@@ -20,6 +20,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       id: c.id,
       type: c.type,
       description: c.description,
+      category: c.category,
+      subcategory: c.subcategory,
       receipt_id: c.receiptId,
       current_location: c.movements[0]?.location.code ?? null,
     })))

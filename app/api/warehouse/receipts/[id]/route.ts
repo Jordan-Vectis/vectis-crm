@@ -34,6 +34,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.commission_rate !== undefined) data.commissionRate = parseFloat(body.commission_rate) || 0
     if (body.notes !== undefined) data.notes = body.notes || null
     if (body.status !== undefined) data.status = body.status
+    if (body.customer_id !== undefined) data.customerId = body.customer_id
     const receipt = await prisma.warehouseReceipt.update({
       where: { id },
       data,

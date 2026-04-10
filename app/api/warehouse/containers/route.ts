@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
         id,
         type: body.type || "tote",
         description: body.description,
+        category: body.category || null,
+        subcategory: body.subcategory || null,
         receiptId: body.receipt_id,
       },
     })
@@ -26,6 +28,8 @@ export async function POST(req: NextRequest) {
       id: container.id,
       type: container.type,
       description: container.description,
+      category: container.category,
+      subcategory: container.subcategory,
       receipt_id: container.receiptId,
     })
   } catch (e: any) {

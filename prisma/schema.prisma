@@ -300,6 +300,8 @@ model WarehouseContainer {
   id          String           @id
   type        String
   description String
+  category    String?
+  subcategory String?
   receiptId   String
   receipt     WarehouseReceipt @relation(fields: [receiptId], references: [id])
   createdAt   DateTime         @default(now())

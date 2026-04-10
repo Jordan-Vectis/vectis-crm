@@ -28,6 +28,185 @@ function PrintLabel({ container, receipt, customer }: { container: any; receipt:
   )
 }
 
+function ContainerRow({ container, receipt, customer, onUpdated }: { container: any; receipt: any; customer: any; onUpdated: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({ type: container.type, description: container.description, category: container.category || "", subcategory: container.subcategory || "" })
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await fetch(`/api/warehouse/containers/${container.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+      })
+      setEditing(false)
+      onUpdated()
+    } finally { setSaving(false) }
+  }
+
+  if (editing) {
+    return (
+      <div className="px-4 py-3 space-y-2 bg-blue-50">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="wh-label">Type</label>
+            <select className="wh-input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+              <option value="tote">Tote</option>
+              <option value="pallet">Pallet</option>
+            </select>
+          </div>
+          <div>
+            <label className="wh-label">Category</label>
+            <input className="wh-input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="e.g. TV_FILM" />
+          </div>
+          <div className="col-span-2">
+            <label className="wh-label">Description</label>
+            <input className="wh-input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+          </div>
+          <div className="col-span-2">
+            <label className="wh-label">Subcategory</label>
+            <input className="wh-input" value={form.subcategory} onChange={e => setForm({ ...form, subcategory: e.target.value })} placeholder="e.g. DVD" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button className="wh-btn-primary wh-btn-sm" onClick={save} disabled={saving}>Save</button>
+          <button className="wh-btn-secondary wh-btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-4 py-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="font-mono font-bold text-sm">{container.id}</span>
+        <div className="flex items-center gap-1">
+          <span className="wh-badge wh-badge-blue capitalize">{container.type}</span>
+          <button className="wh-btn-secondary wh-btn-sm" onClick={() => setEditing(true)}>Edit</button>
+          <PrintLabel container={container} receipt={receipt} customer={customer} />
+        </div>
+      </div>
+      <p className="text-xs text-gray-700">{container.description}</p>
+      {(container.category || container.subcategory) && (
+        <p className="text-xs text-gray-500 mt-0.5">
+          {container.category}{container.subcategory ? ` / ${container.subcategory}` : ""}
+        </p>
+      )}
+      <div className="mt-1">
+        {container.current_location
+          ? <span className="wh-badge wh-badge-green">{container.current_location}</span>
+          : <span className="text-xs text-gray-400">Unlocated</span>}
+      </div>
+    </div>
+  )
+}
+
+function AddContainerForm({ receiptId, onAdded }: { receiptId: string; onAdded: () => void }) {
+  const [form, setForm] = useState({ type: "tote", description: "", category: "", subcategory: "" })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  async function save() {
+    if (!form.description.trim()) { setError("Description required"); return }
+    setSaving(true)
+    try {
+      const res = await fetch("/api/warehouse/containers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, receipt_id: receiptId }),
+      })
+      if (!res.ok) { setError("Error adding container"); return }
+      setForm({ type: "tote", description: "", category: "", subcategory: "" })
+      setError("")
+      onAdded()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 space-y-2">
+      <p className="text-xs font-semibold text-gray-600">Add Container</p>
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="wh-label">Type</label>
+          <select className="wh-input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+            <option value="tote">Tote</option>
+            <option value="pallet">Pallet</option>
+          </select>
+        </div>
+        <div>
+          <label className="wh-label">Category</label>
+          <input className="wh-input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="e.g. TV_FILM" />
+        </div>
+        <div className="col-span-2">
+          <label className="wh-label">Description *</label>
+          <input className="wh-input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="e.g. Mixed clothing" />
+        </div>
+        <div className="col-span-2">
+          <label className="wh-label">Subcategory</label>
+          <input className="wh-input" value={form.subcategory} onChange={e => setForm({ ...form, subcategory: e.target.value })} placeholder="e.g. DVD" />
+        </div>
+      </div>
+      <button className="wh-btn-primary wh-btn-sm" onClick={save} disabled={saving}>Add</button>
+    </div>
+  )
+}
+
+function ReassignModal({ receiptId, currentCustomerId, onDone, onClose }: { receiptId: string; currentCustomerId: string; onDone: () => void; onClose: () => void }) {
+  const [search, setSearch] = useState("")
+  const [results, setResults] = useState<any[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  async function doSearch() {
+    if (!search.trim()) return
+    const res = await fetch(`/api/warehouse/customers?search=${encodeURIComponent(search)}`)
+    setResults((await res.json()).filter((c: any) => c.id !== currentCustomerId))
+  }
+
+  async function reassign(customerId: string) {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/warehouse/receipts/${receiptId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customer_id: customerId }),
+      })
+      if (!res.ok) { setError("Error reassigning receipt"); return }
+      onDone()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: "rgba(0,0,0,0.4)" }}>
+      <div className="wh-card w-full max-w-md space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-lg">Reassign Receipt</h2>
+          <button className="wh-btn-secondary wh-btn-sm" onClick={onClose}>✕</button>
+        </div>
+        <p className="text-sm text-gray-500">Search for the customer you want to move this receipt to.</p>
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        <div className="flex gap-2">
+          <input className="wh-input flex-1" placeholder="Search by name, phone, ID…" value={search}
+            onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && doSearch()} />
+          <button className="wh-btn-primary" onClick={doSearch}>Search</button>
+        </div>
+        {results.length > 0 && (
+          <div className="border border-gray-200 rounded divide-y divide-gray-100 max-h-60 overflow-y-auto">
+            {results.map(c => (
+              <div key={c.id} className="px-3 py-2 flex items-center justify-between hover:bg-gray-50">
+                <div>
+                  <p className="font-medium text-sm">{c.name}</p>
+                  <p className="text-xs text-gray-400 font-mono">{c.id} {c.phone && `· ${c.phone}`}</p>
+                </div>
+                <button className="wh-btn-primary wh-btn-sm" onClick={() => reassign(c.id)} disabled={saving}>Move</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {results.length === 0 && search && <p className="text-sm text-gray-400">No customers found.</p>}
+      </div>
+    </div>
+  )
+}
+
 export default function ReceiptsPage() {
   const searchParams = useSearchParams()
   const [receipts, setReceipts] = useState<any[]>([])
@@ -39,6 +218,8 @@ export default function ReceiptsPage() {
   const [editNotes, setEditNotes] = useState("")
   const [editRate, setEditRate] = useState("")
   const [msg, setMsg] = useState("")
+  const [showAddContainer, setShowAddContainer] = useState(false)
+  const [showReassign, setShowReassign] = useState(false)
 
   async function load() {
     const res = await fetch(`/api/warehouse/receipts?status=${filterStatus}`)
@@ -60,12 +241,19 @@ export default function ReceiptsPage() {
     setSelected(r)
     setEditNotes(r.notes || "")
     setEditRate(String(r.commission_rate))
+    setShowAddContainer(false)
     const [contRes, custRes] = await Promise.all([
       fetch(`/api/warehouse/receipts/${r.id}/containers`),
       fetch(`/api/warehouse/customers/${r.customer_id}`),
     ])
     setContainers(await contRes.json())
     setCustomer(await custRes.json())
+  }
+
+  async function reloadContainers() {
+    if (!selected) return
+    const res = await fetch(`/api/warehouse/receipts/${selected.id}/containers`)
+    setContainers(await res.json())
   }
 
   async function doSave() {
@@ -80,7 +268,7 @@ export default function ReceiptsPage() {
         setSelected(data)
         setMsg("Saved")
         setTimeout(() => setMsg(""), 2000)
-        load()
+        load().then(setReceipts)
       }
     } finally { setLoading(false) }
   }
@@ -92,12 +280,30 @@ export default function ReceiptsPage() {
       const res = await fetch(`/api/warehouse/receipts/${selected.id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: newStatus }),
       })
-      if (res.ok) { const data = await res.json(); setSelected(data); load() }
+      if (res.ok) { const data = await res.json(); setSelected(data); load().then(setReceipts) }
     } finally { setLoading(false) }
+  }
+
+  async function onReassignDone() {
+    setShowReassign(false)
+    const updatedReceipt = await fetch(`/api/warehouse/receipts/${selected.id}`).then(r => r.json())
+    const updatedCustomer = await fetch(`/api/warehouse/customers/${updatedReceipt.customer_id}`).then(r => r.json())
+    setSelected(updatedReceipt)
+    setCustomer(updatedCustomer)
+    load().then(setReceipts)
   }
 
   return (
     <div className="p-6 space-y-4" style={{ fontFamily: "Arial, sans-serif" }}>
+      {showReassign && selected && (
+        <ReassignModal
+          receiptId={selected.id}
+          currentCustomerId={selected.customer_id}
+          onDone={onReassignDone}
+          onClose={() => setShowReassign(false)}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Receipts</h1>
         <select className="wh-input" style={{ width: "9rem" }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
@@ -144,16 +350,19 @@ export default function ReceiptsPage() {
         </div>
 
         {selected && (
-          <div style={{ width: "20rem" }} className="space-y-4">
+          <div style={{ width: "22rem" }} className="space-y-4">
             <div className="wh-card space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-mono font-bold text-lg">{selected.id}</span>
                 <span className={`wh-badge ${selected.status === "open" ? "wh-badge-green" : "wh-badge-gray"}`}>{selected.status}</span>
               </div>
               {customer && (
-                <p className="text-sm text-gray-600">
-                  <span className="font-mono text-xs">{customer.id}</span> — {customer.name}
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-mono text-xs">{customer.id}</span> — {customer.name}
+                  </p>
+                  <button className="wh-btn-secondary wh-btn-sm" onClick={() => setShowReassign(true)}>Reassign</button>
+                </div>
               )}
               <div>
                 <label className="wh-label">Commission Rate (%)</label>
@@ -171,23 +380,20 @@ export default function ReceiptsPage() {
                 </button>
               </div>
             </div>
+
             <div className="wh-card p-0 overflow-hidden">
-              <p className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-50">Containers ({containers.length})</p>
-              <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+              <div className="px-4 py-2 flex items-center justify-between bg-gray-50">
+                <p className="text-sm font-semibold text-gray-600">Containers ({containers.length})</p>
+                <button className="wh-btn-primary wh-btn-sm" onClick={() => setShowAddContainer(v => !v)}>
+                  {showAddContainer ? "Cancel" : "+ Add"}
+                </button>
+              </div>
+              {showAddContainer && (
+                <AddContainerForm receiptId={selected.id} onAdded={() => { reloadContainers(); setShowAddContainer(false) }} />
+              )}
+              <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
                 {containers.map((c: any) => (
-                  <div key={c.id} className="px-4 py-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono font-bold text-sm">{c.id}</span>
-                      <span className="wh-badge wh-badge-blue capitalize">{c.type}</span>
-                    </div>
-                    <p className="text-xs text-gray-600">{c.description}</p>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-xs text-gray-400">
-                        {c.current_location ? <span className="wh-badge wh-badge-green">{c.current_location}</span> : "Unlocated"}
-                      </span>
-                      <PrintLabel container={c} receipt={selected} customer={customer} />
-                    </div>
-                  </div>
+                  <ContainerRow key={c.id} container={c} receipt={selected} customer={customer} onUpdated={reloadContainers} />
                 ))}
                 {containers.length === 0 && <p className="px-4 py-3 text-sm text-gray-400">No containers</p>}
               </div>
