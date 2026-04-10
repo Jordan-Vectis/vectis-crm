@@ -76,7 +76,6 @@ const apps: {
     iconBg:      "text-cyan-400",
     btnBg:       "bg-cyan-600 hover:bg-cyan-500",
     glow:        "hover:shadow-cyan-900/40",
-    soon:        true,
     appKey:      "WAREHOUSE",
   },
   {
