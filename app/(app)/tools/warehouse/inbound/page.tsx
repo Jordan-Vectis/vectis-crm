@@ -236,15 +236,22 @@ function PrintLabel({ container, receipt, customer }: { container: any; receipt:
 }
 
 function ContainersStep({ receipt, customer, onNext, onBack }: { receipt: any; customer: any; onNext: (c: any[]) => void; onBack: () => void }) {
-  const [rows, setRows] = useState([{ type: "tote", description: "" }])
+  const [rows, setRows] = useState([{ type: "tote", description: "", manualId: "" }])
   const [created, setCreated] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
-  function addRow() { setRows([...rows, { type: "tote", description: "" }]) }
+  function addRow() { setRows([...rows, { type: "tote", description: "", manualId: "" }]) }
   function removeRow(i: number) { setRows(rows.filter((_, idx) => idx !== i)) }
   function updateRow(i: number, field: string, val: string) {
     setRows(rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
+  }
+
+  async function fillNextId(i: number) {
+    const type = rows[i].type
+    const res = await fetch(`/api/warehouse/containers/next?type=${type}`)
+    const data = await res.json()
+    updateRow(i, "manualId", data.id)
   }
 
   async function doCreate() {
@@ -253,10 +260,12 @@ function ContainersStep({ receipt, customer, onNext, onBack }: { receipt: any; c
     try {
       const results = []
       for (const row of rows) {
+        const body: any = { type: row.type, receipt_id: receipt.id, description: row.description }
+        if (row.manualId.trim()) body.id = row.manualId.trim()
         const res = await fetch("/api/warehouse/containers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: row.type, receipt_id: receipt.id, description: row.description }),
+          body: JSON.stringify(body),
         })
         const data = await res.json()
         if (!res.ok) { setError(data.error || "Error"); setLoading(false); return }
@@ -307,21 +316,30 @@ function ContainersStep({ receipt, customer, onNext, onBack }: { receipt: any; c
           Receipt: <strong className="font-mono">{receipt.id}</strong> · Customer: <strong>{customer.name}</strong> · Commission: <strong>{receipt.commission_rate}%</strong>
         </p>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-3">
         {rows.map((row, i) => (
-          <div key={i} className="flex gap-2 items-end">
-            <div>
-              <label className="wh-label">Type</label>
-              <select className="wh-input" style={{ width: "7rem" }} value={row.type} onChange={e => updateRow(i, "type", e.target.value)}>
-                <option value="tote">Tote</option>
-                <option value="pallet">Pallet</option>
-              </select>
+          <div key={i} className="wh-card space-y-2 p-3">
+            <div className="flex gap-2 items-end">
+              <div>
+                <label className="wh-label">Type</label>
+                <select className="wh-input" style={{ width: "7rem" }} value={row.type} onChange={e => updateRow(i, "type", e.target.value)}>
+                  <option value="tote">Tote</option>
+                  <option value="pallet">Pallet</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="wh-label">Description</label>
+                <input className="wh-input" value={row.description} onChange={e => updateRow(i, "description", e.target.value)} placeholder="e.g. Mixed clothing, Electronics…" />
+              </div>
+              {rows.length > 1 && <button className="wh-btn-danger wh-btn-sm" style={{ marginBottom: "0.125rem" }} onClick={() => removeRow(i)}>✕</button>}
             </div>
-            <div className="flex-1">
-              <label className="wh-label">Description</label>
-              <input className="wh-input" value={row.description} onChange={e => updateRow(i, "description", e.target.value)} placeholder="e.g. Mixed clothing, Electronics…" />
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <label className="wh-label">Tote / Pallet ID <span className="text-gray-400 font-normal">(leave blank to auto-assign)</span></label>
+                <input className="wh-input font-mono" value={row.manualId} onChange={e => updateRow(i, "manualId", e.target.value)} placeholder="e.g. t000042" />
+              </div>
+              <button className="wh-btn-secondary wh-btn-sm" style={{ marginBottom: "0.125rem" }} onClick={() => fillNextId(i)}>Next {row.type === "pallet" ? "Pallet" : "Tote"} No.</button>
             </div>
-            {rows.length > 1 && <button className="wh-btn-danger wh-btn-sm" style={{ marginBottom: "0.125rem" }} onClick={() => removeRow(i)}>✕</button>}
           </div>
         ))}
       </div>

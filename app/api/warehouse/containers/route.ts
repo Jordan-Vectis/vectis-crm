@@ -13,7 +13,14 @@ export async function POST(req: NextRequest) {
   try {
     await requireWarehouseAccess("warehouse")
     const body = await req.json()
-    const id = await genContainerId(body.type || "tote")
+    let id: string
+    if (body.id) {
+      const existing = await prisma.warehouseContainer.findUnique({ where: { id: body.id } })
+      if (existing) return NextResponse.json({ error: `ID ${body.id} is already in use` }, { status: 400 })
+      id = body.id
+    } else {
+      id = await genContainerId(body.type || "tote")
+    }
     const container = await prisma.warehouseContainer.create({
       data: {
         id,

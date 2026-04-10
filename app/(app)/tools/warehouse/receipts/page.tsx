@@ -102,20 +102,29 @@ function ContainerRow({ container, receipt, customer, onUpdated }: { container: 
 }
 
 function AddContainerForm({ receiptId, onAdded }: { receiptId: string; onAdded: () => void }) {
-  const [form, setForm] = useState({ type: "tote", description: "", category: "", subcategory: "" })
+  const [form, setForm] = useState({ type: "tote", description: "", category: "", subcategory: "", manualId: "" })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+
+  async function fillNextId() {
+    const res = await fetch(`/api/warehouse/containers/next?type=${form.type}`)
+    const data = await res.json()
+    setForm(f => ({ ...f, manualId: data.id }))
+  }
 
   async function save() {
     if (!form.description.trim()) { setError("Description required"); return }
     setSaving(true)
     try {
+      const body: any = { type: form.type, description: form.description, category: form.category, subcategory: form.subcategory, receipt_id: receiptId }
+      if (form.manualId.trim()) body.id = form.manualId.trim()
       const res = await fetch("/api/warehouse/containers", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, receipt_id: receiptId }),
+        body: JSON.stringify(body),
       })
-      if (!res.ok) { setError("Error adding container"); return }
-      setForm({ type: "tote", description: "", category: "", subcategory: "" })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || "Error adding container"); return }
+      setForm({ type: "tote", description: "", category: "", subcategory: "", manualId: "" })
       setError("")
       onAdded()
     } finally { setSaving(false) }
@@ -144,6 +153,13 @@ function AddContainerForm({ receiptId, onAdded }: { receiptId: string; onAdded: 
         <div className="col-span-2">
           <label className="wh-label">Subcategory</label>
           <input className="wh-input" value={form.subcategory} onChange={e => setForm({ ...form, subcategory: e.target.value })} placeholder="e.g. DVD" />
+        </div>
+        <div className="col-span-2">
+          <label className="wh-label">ID <span className="text-gray-400 font-normal">(leave blank to auto-assign)</span></label>
+          <div className="flex gap-2">
+            <input className="wh-input font-mono flex-1" value={form.manualId} onChange={e => setForm({ ...form, manualId: e.target.value })} placeholder="e.g. t000042" />
+            <button className="wh-btn-secondary wh-btn-sm whitespace-nowrap" onClick={fillNextId}>Next {form.type === "pallet" ? "Pallet" : "Tote"} No.</button>
+          </div>
         </div>
       </div>
       <button className="wh-btn-primary wh-btn-sm" onClick={save} disabled={saving}>Add</button>
