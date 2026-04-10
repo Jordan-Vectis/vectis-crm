@@ -8,6 +8,7 @@ export default function ChangePasswordButton({ userId, userName }: { userId: str
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   function handleSubmit(e: React.FormEvent) {
@@ -30,6 +31,8 @@ export default function ChangePasswordButton({ userId, userName }: { userId: str
         setOpen(false)
         setPassword("")
         setConfirm("")
+        setSuccess(true)
+        setTimeout(() => setSuccess(false), 3000)
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong.")
       }
@@ -38,12 +41,15 @@ export default function ChangePasswordButton({ userId, userName }: { userId: str
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="text-blue-400 hover:text-blue-600 text-sm"
-      >
-        Change password
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => { setOpen(true); setSuccess(false) }}
+          className="text-blue-400 hover:text-blue-600 text-sm"
+        >
+          Change password
+        </button>
+        {success && <span className="text-xs text-green-600">Password updated.</span>}
+      </div>
     )
   }
 
