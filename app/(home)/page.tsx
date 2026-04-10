@@ -39,6 +39,7 @@ export default async function HomePage() {
     .filter(c => c.visible)
     // Filter by access
     .filter(c => {
+      if (c.allUsers) return true
       if (!c.appKey) return dbUser?.role === "ADMIN"
       return hasAppAccess(dbUser?.role ?? "", dbUser?.allowedApps ?? [], c.appKey)
     })

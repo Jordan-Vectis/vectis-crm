@@ -18,7 +18,7 @@ export default function WarehouseSidebar({ whRole }: WarehouseSidebarProps) {
     { href: "/tools/warehouse/locate",    label: "Locate",     icon: "📍" },
     { href: "/tools/warehouse/warehouse", label: "Lookup",     icon: "🔍" },
     ...(["manager","admin"].includes(whRole) ? [
-      { href: "/tools/warehouse/customers", label: "Customers", icon: "👥" },
+      { href: "/contacts", label: "Customers", icon: "👥" },
       { href: "/tools/warehouse/receipts",  label: "Receipts",  icon: "📋" },
       { href: "/tools/warehouse/history",   label: "History",   icon: "📅" },
     ] : []),

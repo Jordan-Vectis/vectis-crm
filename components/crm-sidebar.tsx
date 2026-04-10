@@ -3,10 +3,9 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
-const CRM_ROUTES = ["/submissions", "/follow-ups", "/cataloguer", "/crm-settings", "/contacts"]
+const CRM_ROUTES = ["/submissions", "/follow-ups", "/cataloguer", "/crm-settings"]
 
 const links = [
-  { href: "/contacts",     label: "Contacts",   icon: "👥" },
   { href: "/submissions",  label: "Submissions", icon: "📋" },
   { href: "/follow-ups",   label: "Follow-ups",  icon: "🔔" },
   { href: "/cataloguer",   label: "Cataloguer",  icon: "🏷" },

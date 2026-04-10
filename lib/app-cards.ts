@@ -11,9 +11,22 @@ export type AppCardDef = {
   btnBg: string
   glow: string
   appKey?: AppKey // undefined = admin-only card
+  allUsers?: boolean // true = visible to all logged-in users regardless of role/apps
 }
 
 export const APP_CARD_DEFS: AppCardDef[] = [
+  {
+    key:                "CUSTOMERS",
+    href:               "/contacts",
+    defaultLabel:       "Customers",
+    defaultDescription: "Unified customer database — view seller history, buyer activity, and contact details in one place.",
+    icon:               "👥",
+    border:             "border-green-500",
+    iconBg:             "text-green-400",
+    btnBg:              "bg-green-600 hover:bg-green-500",
+    glow:               "hover:shadow-green-900/40",
+    allUsers:           true,
+  },
   {
     key:                "CRM",
     href:               "/submissions",

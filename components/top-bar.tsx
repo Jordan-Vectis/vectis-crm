@@ -34,6 +34,12 @@ export default function TopBar({ userName }: TopBarProps) {
         >
           Home
         </Link>
+        <Link
+          href="/contacts"
+          className="text-gray-400 hover:text-white text-sm font-medium transition-colors ml-3"
+        >
+          Customers
+        </Link>
       </div>
 
       <div className="flex items-center gap-4">
