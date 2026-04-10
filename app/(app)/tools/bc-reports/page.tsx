@@ -176,6 +176,26 @@ function LoadBtn({ loading, onClick }: { loading: boolean; onClick: () => void }
   )
 }
 
+// ─── Progress bar ─────────────────────────────────────────────────────────────
+
+function ProgressBar({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+  return (
+    <div className="mb-5">
+      <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+        <span>Fetching data…</span>
+        <span>{done} / {total} chunks ({pct}%)</span>
+      </div>
+      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-[#0078D4] rounded-full transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 // ─── Cataloguing tab ──────────────────────────────────────────────────────────
 
 function CataloguingTab() {
@@ -183,18 +203,38 @@ function CataloguingTab() {
   const [to, setTo]     = useState(today())
   const [data, setData] = useState<CatData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [error, setError]     = useState<string | null>(null)
   const [subTab, setSubTab]   = useState("Daily Average")
 
   async function load() {
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setProgress(null); setData(null)
     try {
-      const res  = await window.fetch(`/api/bc/cataloguing?from=${from}&to=${to}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? res.statusText)
-      setData(json)
+      const res = await window.fetch(`/api/bc/cataloguing?from=${from}&to=${to}`)
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? res.statusText) }
+
+      const reader  = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop()!
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "progress") {
+            setProgress({ done: msg.done, total: msg.total })
+          } else if (msg.type === "result") {
+            setData(msg.data)
+          }
+        }
+      }
     } catch (e: any) { setError(e.message) }
-    finally { setLoading(false) }
+    finally { setLoading(false); setProgress(null) }
   }
 
   return (
@@ -202,6 +242,8 @@ function CataloguingTab() {
       <h2 className="text-lg font-semibold text-white mb-4">Cataloguing Report</h2>
       <DateRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
       <LoadBtn loading={loading} onClick={load} />
+      {loading && progress && <ProgressBar done={progress.done} total={progress.total} />}
+      {loading && !progress && <p className="text-xs text-gray-500 mb-4">Connecting…</p>}
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
       {data && (
         <>
