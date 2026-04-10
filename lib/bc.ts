@@ -49,6 +49,22 @@ async function refreshBCToken(userId: string, refreshToken: string): Promise<str
   }
 }
 
+/** For cron jobs / system use — picks any valid token from the DB without requiring a session */
+export async function getBCTokenAny(): Promise<string | null> {
+  // Try a non-expired token first
+  const valid = await prisma.bCToken.findFirst({
+    where: { expiresAt: { gt: new Date(Date.now() + 60_000) } },
+  })
+  if (valid) return valid.accessToken
+
+  // Try refreshing any token that has a refresh token
+  const any = await prisma.bCToken.findFirst({
+    where: { refreshToken: { not: "" } },
+  })
+  if (!any) return null
+  return refreshBCToken(any.userId, any.refreshToken)
+}
+
 export async function getBCToken(): Promise<string | null> {
   const session = await auth()
   if (!session) return null
