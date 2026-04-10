@@ -25,10 +25,14 @@ export default function ChangePasswordButton({ userId, userName }: { userId: str
     formData.set("name", userName)
     formData.set("password", password)
     startTransition(async () => {
-      await updateUser(userId, formData)
-      setOpen(false)
-      setPassword("")
-      setConfirm("")
+      try {
+        await updateUser(userId, formData)
+        setOpen(false)
+        setPassword("")
+        setConfirm("")
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong.")
+      }
     })
   }
 
