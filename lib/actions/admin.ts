@@ -48,7 +48,7 @@ export async function updateUser(userId: string, formData: FormData) {
 
   const data: Record<string, unknown> = {
     name,
-    role,
+    ...(role ? { role } : {}),
     departmentId: departmentId || null,
   }
 
