@@ -236,12 +236,12 @@ function PrintLabel({ container, receipt, customer }: { container: any; receipt:
 }
 
 function ContainersStep({ receipt, customer, onNext, onBack }: { receipt: any; customer: any; onNext: (c: any[]) => void; onBack: () => void }) {
-  const [rows, setRows] = useState([{ type: "tote", description: "", manualId: "" }])
+  const [rows, setRows] = useState([{ type: "tote", description: "", category: "", subcategory: "", manualId: "" }])
   const [created, setCreated] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
-  function addRow() { setRows([...rows, { type: "tote", description: "", manualId: "" }]) }
+  function addRow() { setRows([...rows, { type: "tote", description: "", category: "", subcategory: "", manualId: "" }]) }
   function removeRow(i: number) { setRows(rows.filter((_, idx) => idx !== i)) }
   function updateRow(i: number, field: string, val: string) {
     setRows(rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
@@ -260,7 +260,7 @@ function ContainersStep({ receipt, customer, onNext, onBack }: { receipt: any; c
     try {
       const results = []
       for (const row of rows) {
-        const body: any = { type: row.type, receipt_id: receipt.id, description: row.description }
+        const body: any = { type: row.type, receipt_id: receipt.id, description: row.description, category: row.category || null, subcategory: row.subcategory || null }
         if (row.manualId.trim()) body.id = row.manualId.trim()
         const res = await fetch("/api/warehouse/containers", {
           method: "POST",
@@ -333,9 +333,19 @@ function ContainersStep({ receipt, customer, onNext, onBack }: { receipt: any; c
               </div>
               {rows.length > 1 && <button className="wh-btn-danger wh-btn-sm" style={{ marginBottom: "0.125rem" }} onClick={() => removeRow(i)}>✕</button>}
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="wh-label">Category</label>
+                <input className="wh-input" value={row.category} onChange={e => updateRow(i, "category", e.target.value)} placeholder="e.g. TV_FILM" />
+              </div>
+              <div>
+                <label className="wh-label">Subcategory</label>
+                <input className="wh-input" value={row.subcategory} onChange={e => updateRow(i, "subcategory", e.target.value)} placeholder="e.g. DVD" />
+              </div>
+            </div>
             <div className="flex gap-2 items-end">
               <div className="flex-1">
-                <label className="wh-label">Tote / Pallet ID <span className="text-gray-400 font-normal">(leave blank to auto-assign)</span></label>
+                <label className="wh-label">ID <span className="text-gray-400 font-normal">(leave blank to auto-assign)</span></label>
                 <input className="wh-input font-mono" value={row.manualId} onChange={e => updateRow(i, "manualId", e.target.value)} placeholder="e.g. t000042" />
               </div>
               <button className="wh-btn-secondary wh-btn-sm" style={{ marginBottom: "0.125rem" }} onClick={() => fillNextId(i)}>Next {row.type === "pallet" ? "Pallet" : "Tote"} No.</button>
