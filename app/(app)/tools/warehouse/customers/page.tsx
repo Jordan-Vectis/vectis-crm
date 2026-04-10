@@ -7,7 +7,7 @@ export default function CustomersPage() {
   const [search, setSearch] = useState("")
   const [selected, setSelected] = useState<any>(null)
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ name: "", email: "", phone: "", address: "" })
+  const [form, setForm] = useState({ salutation: "", name: "", email: "", phone: "", addressLine1: "", addressLine2: "", postcode: "", notes: "" })
   const [editForm, setEditForm] = useState<any>(null)
   const [receipts, setReceipts] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -22,7 +22,7 @@ export default function CustomersPage() {
 
   async function selectCustomer(c: any) {
     setSelected(c)
-    setEditForm({ name: c.name, email: c.email || "", phone: c.phone || "", address: c.address || "" })
+    setEditForm({ salutation: c.salutation || "", name: c.name, email: c.email || "", phone: c.phone || "", addressLine1: c.addressLine1 || "", addressLine2: c.addressLine2 || "", postcode: c.postcode || "", notes: c.notes || "" })
     const res = await fetch(`/api/warehouse/receipts?customer_id=${c.id}`)
     setReceipts(await res.json())
   }
@@ -36,7 +36,7 @@ export default function CustomersPage() {
       })
       if (res.ok) {
         setShowCreate(false)
-        setForm({ name: "", email: "", phone: "", address: "" })
+        setForm({ salutation: "", name: "", email: "", phone: "", addressLine1: "", addressLine2: "", postcode: "", notes: "" })
         setMsg("")
         load()
       } else { setMsg("Error creating customer") }
@@ -69,7 +69,7 @@ export default function CustomersPage() {
       {msg && <p className="text-sm text-green-600">{msg}</p>}
 
       <div className="flex gap-2">
-        <input className="wh-input flex-1" placeholder="Search name, phone, ID…" value={search}
+        <input className="wh-input flex-1" placeholder="Search name, phone, email, postcode, address…" value={search}
           onChange={e => setSearch(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") load(search) }} />
         <button className="wh-btn-primary" onClick={() => load(search)}>Search</button>
@@ -81,10 +81,19 @@ export default function CustomersPage() {
           <div className="wh-card w-full max-w-md space-y-4">
             <h2 className="font-semibold text-lg">New Customer</h2>
             <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><label className="wh-label">Name *</label><input className="wh-input" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
+              <div><label className="wh-label">Salutation</label>
+                <select className="wh-input" value={form.salutation} onChange={e => setForm({...form, salutation: e.target.value})}>
+                  <option value="">—</option>
+                  <option>Mr</option><option>Mrs</option><option>Ms</option><option>Miss</option><option>Dr</option><option>Prof</option>
+                </select>
+              </div>
+              <div><label className="wh-label">Name *</label><input className="wh-input" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
               <div><label className="wh-label">Phone</label><input className="wh-input" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></div>
               <div><label className="wh-label">Email</label><input className="wh-input" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
-              <div className="col-span-2"><label className="wh-label">Address</label><input className="wh-input" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
+              <div className="col-span-2"><label className="wh-label">Address Line 1</label><input className="wh-input" value={form.addressLine1} onChange={e => setForm({...form, addressLine1: e.target.value})} /></div>
+              <div className="col-span-2"><label className="wh-label">Address Line 2</label><input className="wh-input" value={form.addressLine2} onChange={e => setForm({...form, addressLine2: e.target.value})} /></div>
+              <div><label className="wh-label">Postcode</label><input className="wh-input" value={form.postcode} onChange={e => setForm({...form, postcode: e.target.value})} /></div>
+              <div className="col-span-2"><label className="wh-label">Notes</label><textarea className="wh-input" rows={2} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} /></div>
             </div>
             <div className="flex gap-2">
               <button className="wh-btn-secondary flex-1" onClick={() => setShowCreate(false)}>Cancel</button>
@@ -127,10 +136,19 @@ export default function CustomersPage() {
                 <span className="wh-badge wh-badge-blue font-mono">{selected.id}</span>
               </div>
               <div className="space-y-2">
+                <div><label className="wh-label">Salutation</label>
+                  <select className="wh-input" value={editForm.salutation} onChange={e => setEditForm({...editForm, salutation: e.target.value})}>
+                    <option value="">—</option>
+                    <option>Mr</option><option>Mrs</option><option>Ms</option><option>Miss</option><option>Dr</option><option>Prof</option>
+                  </select>
+                </div>
                 <div><label className="wh-label">Name</label><input className="wh-input" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} /></div>
                 <div><label className="wh-label">Phone</label><input className="wh-input" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} /></div>
                 <div><label className="wh-label">Email</label><input className="wh-input" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} /></div>
-                <div><label className="wh-label">Address</label><input className="wh-input" value={editForm.address} onChange={e => setEditForm({...editForm, address: e.target.value})} /></div>
+                <div><label className="wh-label">Address Line 1</label><input className="wh-input" value={editForm.addressLine1} onChange={e => setEditForm({...editForm, addressLine1: e.target.value})} /></div>
+                <div><label className="wh-label">Address Line 2</label><input className="wh-input" value={editForm.addressLine2} onChange={e => setEditForm({...editForm, addressLine2: e.target.value})} /></div>
+                <div><label className="wh-label">Postcode</label><input className="wh-input" value={editForm.postcode} onChange={e => setEditForm({...editForm, postcode: e.target.value})} /></div>
+                <div><label className="wh-label">Notes</label><textarea className="wh-input" rows={2} value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value})} /></div>
               </div>
               <button className="wh-btn-primary w-full justify-center" onClick={doSave} disabled={loading}>Save Changes</button>
             </div>

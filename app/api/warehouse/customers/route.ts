@@ -18,6 +18,9 @@ export async function GET(req: NextRequest) {
           { phone: { contains: search, mode: "insensitive" } },
           { email: { contains: search, mode: "insensitive" } },
           { id: { contains: search, mode: "insensitive" } },
+          { postcode: { contains: search, mode: "insensitive" } },
+          { addressLine1: { contains: search, mode: "insensitive" } },
+          { addressLine2: { contains: search, mode: "insensitive" } },
         ],
       } : undefined,
       orderBy: { name: "asc" },
@@ -36,10 +39,14 @@ export async function POST(req: NextRequest) {
     const customer = await prisma.warehouseCustomer.create({
       data: {
         id,
+        salutation: body.salutation || null,
         name: body.name,
         email: body.email || null,
         phone: body.phone || null,
-        address: body.address || null,
+        addressLine1: body.addressLine1 || null,
+        addressLine2: body.addressLine2 || null,
+        postcode: body.postcode || null,
+        notes: body.notes || null,
       },
     })
     return NextResponse.json(customer)

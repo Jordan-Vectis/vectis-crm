@@ -268,13 +268,17 @@ model BCCatalogueEntry {
 }
 
 model WarehouseCustomer {
-  id        String   @id
-  name      String
-  email     String?
-  phone     String?
-  address   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id
+  salutation   String?
+  name         String
+  email        String?
+  phone        String?
+  addressLine1 String?
+  addressLine2 String?
+  postcode     String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   receipts WarehouseReceipt[]
 }

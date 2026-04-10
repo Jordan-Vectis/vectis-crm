@@ -22,10 +22,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const customer = await prisma.warehouseCustomer.update({
       where: { id },
       data: {
+        salutation: body.salutation || null,
         name: body.name,
         email: body.email || null,
         phone: body.phone || null,
-        address: body.address || null,
+        addressLine1: body.addressLine1 || null,
+        addressLine2: body.addressLine2 || null,
+        postcode: body.postcode || null,
+        notes: body.notes || null,
       },
     })
     return NextResponse.json(customer)
