@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest) {
     await requireWarehouseAccess("manager")
     const containers = await prisma.warehouseContainer.findMany({
       include: {
-        receipt: { include: { customer: true } },
+        receipt: { include: { contact: true } },
         movements: {
           orderBy: { movedAt: "desc" },
           take: 1,
@@ -23,8 +23,8 @@ export async function GET(_req: NextRequest) {
       "Type": c.type,
       "Description": c.description,
       "Receipt": c.receiptId,
-      "Customer ID": c.receipt.customerId,
-      "Customer Name": c.receipt.customer.name,
+      "Customer ID": c.receipt.contactId,
+      "Customer Name": c.receipt.contact.name,
       "Location": c.movements[0]?.location.code ?? "Unlocated",
       "Created": new Date(c.createdAt).toLocaleDateString(),
     }))

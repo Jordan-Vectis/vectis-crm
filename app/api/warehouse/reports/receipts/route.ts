@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
     const receipts = await prisma.warehouseReceipt.findMany({
       where: {
-        ...(customerId ? { customerId } : {}),
+        ...(customerId ? { contactId: customerId } : {}),
         ...(dateFrom || dateTo ? {
           createdAt: {
             ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
         } : {}),
       },
       include: {
-        customer: true,
+        contact: true,
         containers: true,
       },
       orderBy: { createdAt: "desc" },
@@ -29,8 +29,8 @@ export async function GET(req: NextRequest) {
 
     const rows = receipts.map(r => ({
       "Receipt ID": r.id,
-      "Customer ID": r.customerId,
-      "Customer Name": r.customer.name,
+      "Customer ID": r.contactId,
+      "Customer Name": r.contact.name,
       "Commission Rate (%)": r.commissionRate,
       "Container Count": r.containers.length,
       "Status": r.status,

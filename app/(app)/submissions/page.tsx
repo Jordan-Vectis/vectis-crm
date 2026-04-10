@@ -46,14 +46,14 @@ export default async function SubmissionsPage({
         ...(search
           ? {
               OR: [
-                { customer: { name: { contains: search, mode: "insensitive" } } },
+                { contact: { name: { contains: search, mode: "insensitive" } } },
                 { reference: { contains: search, mode: "insensitive" } },
               ],
             }
           : {}),
       },
       include: {
-        customer: true,
+        contact: true,
         department: true,
         cataloguer: true,
         _count: { select: { items: true } },
@@ -165,7 +165,7 @@ export default async function SubmissionsPage({
                         {sub.reference.slice(0, 8).toUpperCase()}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{sub.customer.name}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{sub.contact.name}</td>
                     <td className="px-4 py-3 text-gray-500">{channelLabels[sub.channel]}</td>
                     <td className="px-4 py-3 text-gray-500">{sub._count.items}</td>
                     <td className="px-4 py-3 text-gray-500">{sub.department?.name ?? "—"}</td>

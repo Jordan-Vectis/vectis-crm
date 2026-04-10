@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireWarehouseAccess } from "@/lib/warehouse-auth"
+import { auth } from "@/auth"
+
+async function requireAuth() {
+  const session = await auth()
+  if (!session) throw new Error("Not authenticated")
+  return session
+}
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireWarehouseAccess("warehouse")
+    await requireAuth()
     const { id } = await params
     const contact = await prisma.contact.findUnique({ where: { id } })
     if (!contact) return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -16,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireWarehouseAccess("warehouse")
+    await requireAuth()
     const { id } = await params
     const body = await req.json()
     const contact = await prisma.contact.update({

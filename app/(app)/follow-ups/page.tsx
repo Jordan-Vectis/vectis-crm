@@ -18,7 +18,7 @@ export default async function FollowUpsPage() {
       },
     },
     include: {
-      customer: true,
+      contact: true,
       items: { include: { valuation: true } },
       contactLogs: {
         where: { isFollowUp: true },
@@ -66,16 +66,16 @@ export default async function FollowUpsPage() {
                   <tr key={sub.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
                       <Link href={`/submissions/${sub.id}`} className="font-medium text-gray-900 hover:text-blue-600">
-                        {sub.customer.name}
+                        {sub.contact.name}
                       </Link>
                       <div className="text-xs font-mono text-gray-400">
                         {sub.reference.slice(0, 8).toUpperCase()}
                       </div>
-                      {sub.customer.email && (
-                        <div className="text-xs text-gray-400">{sub.customer.email}</div>
+                      {sub.contact.email && (
+                        <div className="text-xs text-gray-400">{sub.contact.email}</div>
                       )}
-                      {sub.customer.phone && (
-                        <div className="text-xs text-gray-400">{sub.customer.phone}</div>
+                      {sub.contact.phone && (
+                        <div className="text-xs text-gray-400">{sub.contact.phone}</div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-500">{sub.items.length}</td>

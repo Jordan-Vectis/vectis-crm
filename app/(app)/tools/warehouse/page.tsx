@@ -8,7 +8,7 @@ export default async function WarehouseDashboard() {
   if (!session) redirect("/login")
 
   const [customerCount, receiptCount, openReceiptCount, containerCount, recentMovements] = await Promise.all([
-    prisma.warehouseCustomer.count(),
+    prisma.contact.count(),
     prisma.warehouseReceipt.count(),
     prisma.warehouseReceipt.count({ where: { status: "open" } }),
     prisma.warehouseContainer.count(),

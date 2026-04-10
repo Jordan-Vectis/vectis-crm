@@ -13,18 +13,25 @@ export async function submitPublicForm(formData: FormData) {
 
   const name = `${title} ${firstName} ${lastName}`.trim()
 
-  // Find or create customer
-  let customer = await prisma.customer.findFirst({
+  // Find or create contact
+  let contact = await prisma.contact.findFirst({
     where: { email: email || undefined },
   })
 
-  if (!customer) {
-    customer = await prisma.customer.create({
-      data: { name, email: email || null, phone: phone || null },
+  if (!contact) {
+    const contacts = await prisma.contact.findMany({ select: { id: true } })
+    let maxNum = 0
+    for (const c of contacts) {
+      const num = parseInt(c.id.replace(/^\D+/, ""), 10)
+      if (!isNaN(num) && num > maxNum) maxNum = num
+    }
+    const id = `c${String(maxNum + 1).padStart(5, "0")}`
+    contact = await prisma.contact.create({
+      data: { id, name, email: email || null, phone: phone || null },
     })
   } else {
-    await prisma.customer.update({
-      where: { id: customer.id },
+    contact = await prisma.contact.update({
+      where: { id: contact.id },
       data: { name, phone: phone || null },
     })
   }
@@ -35,7 +42,7 @@ export async function submitPublicForm(formData: FormData) {
   await prisma.submission.create({
     data: {
       channel: "WEB_FORM",
-      customerId: customer.id,
+      contactId: contact.id,
       createdById: adminUser.id,
       items: {
         create: {

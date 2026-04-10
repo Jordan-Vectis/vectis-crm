@@ -8,13 +8,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params
     const receipt = await prisma.warehouseReceipt.findUnique({
       where: { id },
-      include: { customer: true },
+      include: { contact: true },
     })
     if (!receipt) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json({
       id: receipt.id,
-      customer_id: receipt.customerId,
-      customer_name: receipt.customer.name,
+      customer_id: receipt.contactId,
+      customer_name: receipt.contact.name,
       commission_rate: receipt.commissionRate,
       notes: receipt.notes,
       status: receipt.status,
@@ -34,16 +34,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.commission_rate !== undefined) data.commissionRate = parseFloat(body.commission_rate) || 0
     if (body.notes !== undefined) data.notes = body.notes || null
     if (body.status !== undefined) data.status = body.status
-    if (body.customer_id !== undefined) data.customerId = body.customer_id
+    if (body.customer_id !== undefined) data.contactId = body.customer_id
     const receipt = await prisma.warehouseReceipt.update({
       where: { id },
       data,
-      include: { customer: true },
+      include: { contact: true },
     })
     return NextResponse.json({
       id: receipt.id,
-      customer_id: receipt.customerId,
-      customer_name: receipt.customer.name,
+      customer_id: receipt.contactId,
+      customer_name: receipt.contact.name,
       commission_rate: receipt.commissionRate,
       notes: receipt.notes,
       status: receipt.status,

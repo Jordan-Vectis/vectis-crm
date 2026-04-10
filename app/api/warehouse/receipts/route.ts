@@ -3,27 +3,32 @@ import { prisma } from "@/lib/prisma"
 import { requireWarehouseAccess } from "@/lib/warehouse-auth"
 
 async function genReceiptId(): Promise<string> {
-  const count = await prisma.warehouseReceipt.count()
-  return `r${String(count + 1).padStart(5, "0")}`
+  const receipts = await prisma.warehouseReceipt.findMany({ select: { id: true } })
+  let maxNum = 0
+  for (const r of receipts) {
+    const num = parseInt(r.id.replace(/^\D+/, ""), 10)
+    if (!isNaN(num) && num > maxNum) maxNum = num
+  }
+  return `r${String(maxNum + 1).padStart(5, "0")}`
 }
 
 export async function GET(req: NextRequest) {
   try {
     await requireWarehouseAccess("warehouse")
-    const customerId = req.nextUrl.searchParams.get("customer_id")
+    const contactId = req.nextUrl.searchParams.get("customer_id")
     const status = req.nextUrl.searchParams.get("status")
     const receipts = await prisma.warehouseReceipt.findMany({
       where: {
-        ...(customerId ? { customerId } : {}),
+        ...(contactId ? { contactId } : {}),
         ...(status ? { status } : {}),
       },
-      include: { customer: true },
+      include: { contact: true },
       orderBy: { createdAt: "desc" },
     })
     return NextResponse.json(receipts.map(r => ({
       id: r.id,
-      customer_id: r.customerId,
-      customer_name: r.customer.name,
+      customer_id: r.contactId,
+      customer_name: r.contact.name,
       commission_rate: r.commissionRate,
       notes: r.notes,
       status: r.status,
@@ -42,14 +47,16 @@ export async function POST(req: NextRequest) {
     const receipt = await prisma.warehouseReceipt.create({
       data: {
         id,
-        customerId: body.customer_id,
+        contactId: body.customer_id,
         commissionRate: parseFloat(body.commission_rate) || 0,
         notes: body.notes || null,
       },
+      include: { contact: true },
     })
     return NextResponse.json({
       id: receipt.id,
-      customer_id: receipt.customerId,
+      customer_id: receipt.contactId,
+      customer_name: receipt.contact.name,
       commission_rate: receipt.commissionRate,
       notes: receipt.notes,
       status: receipt.status,

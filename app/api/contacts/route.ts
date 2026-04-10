@@ -1,11 +1,26 @@
-// Redirects to unified /api/contacts
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireWarehouseAccess } from "@/lib/warehouse-auth"
+import { auth } from "@/auth"
+
+async function requireAuth() {
+  const session = await auth()
+  if (!session) throw new Error("Not authenticated")
+  return session
+}
+
+async function genContactId(): Promise<string> {
+  const contacts = await prisma.contact.findMany({ select: { id: true } })
+  let maxNum = 0
+  for (const c of contacts) {
+    const num = parseInt(c.id.replace(/^\D+/, ""), 10)
+    if (!isNaN(num) && num > maxNum) maxNum = num
+  }
+  return `c${String(maxNum + 1).padStart(5, "0")}`
+}
 
 export async function GET(req: NextRequest) {
   try {
-    await requireWarehouseAccess("warehouse")
+    await requireAuth()
     const search = req.nextUrl.searchParams.get("search") || ""
     const contacts = await prisma.contact.findMany({
       where: search ? {
@@ -29,18 +44,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireWarehouseAccess("warehouse")
+    await requireAuth()
     const body = await req.json()
     if (!body.name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 })
-
-    const contacts = await prisma.contact.findMany({ select: { id: true } })
-    let maxNum = 0
-    for (const c of contacts) {
-      const num = parseInt(c.id.replace(/^\D+/, ""), 10)
-      if (!isNaN(num) && num > maxNum) maxNum = num
-    }
-    const id = `c${String(maxNum + 1).padStart(5, "0")}`
-
+    const id = await genContactId()
     const contact = await prisma.contact.create({
       data: {
         id,

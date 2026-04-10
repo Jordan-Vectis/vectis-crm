@@ -79,15 +79,21 @@ model Department {
   submissions Submission[]
 }
 
-model Customer {
-  id        String   @id @default(cuid())
-  name      String
-  email     String?
-  phone     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Contact {
+  id           String   @id
+  salutation   String?
+  name         String
+  email        String?
+  phone        String?
+  addressLine1 String?
+  addressLine2 String?
+  postcode     String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  submissions Submission[]
+  receipts    WarehouseReceipt[] @relation("ContactReceipts")
+  submissions Submission[]       @relation("ContactSubmissions")
 }
 
 model Submission {
@@ -99,8 +105,8 @@ model Submission {
   followUpCount  Int               @default(0)
   lastFollowUpAt DateTime?
 
-  customerId   String
-  customer     Customer    @relation(fields: [customerId], references: [id])
+  contactId    String
+  contact      Contact     @relation("ContactSubmissions", fields: [contactId], references: [id])
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
   cataloguerId String?
@@ -267,31 +273,15 @@ model BCCatalogueEntry {
   @@index([date])
 }
 
-model WarehouseCustomer {
-  id           String   @id
-  salutation   String?
-  name         String
-  email        String?
-  phone        String?
-  addressLine1 String?
-  addressLine2 String?
-  postcode     String?
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  receipts WarehouseReceipt[]
-}
-
 model WarehouseReceipt {
-  id             String            @id
-  customerId     String
-  customer       WarehouseCustomer @relation(fields: [customerId], references: [id])
-  commissionRate Float             @default(0)
+  id             String   @id
+  contactId      String
+  contact        Contact  @relation("ContactReceipts", fields: [contactId], references: [id])
+  commissionRate Float    @default(0)
   notes          String?
-  status         String            @default("open")
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  status         String   @default("open")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   containers WarehouseContainer[]
 }

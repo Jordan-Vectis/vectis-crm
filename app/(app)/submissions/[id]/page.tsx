@@ -33,7 +33,7 @@ export default async function SubmissionDetailPage({
   const submission = await prisma.submission.findUnique({
     where: { id },
     include: {
-      customer: true,
+      contact: true,
       department: true,
       cataloguer: true,
       createdBy: true,
@@ -69,7 +69,7 @@ export default async function SubmissionDetailPage({
             &larr; Back to submissions
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">
-            {submission.customer.name}
+            {submission.contact.name}
           </h1>
           <p className="text-xs font-mono text-gray-400 mt-0.5">
             REF: {submission.reference.slice(0, 8).toUpperCase()}
@@ -89,18 +89,18 @@ export default async function SubmissionDetailPage({
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <dt className="text-gray-400">Name</dt>
-                <dd className="text-gray-800 font-medium">{submission.customer.name}</dd>
+                <dd className="text-gray-800 font-medium">{submission.contact.name}</dd>
               </div>
-              {submission.customer.email && (
+              {submission.contact.email && (
                 <div>
                   <dt className="text-gray-400">Email</dt>
-                  <dd className="text-gray-800">{submission.customer.email}</dd>
+                  <dd className="text-gray-800">{submission.contact.email}</dd>
                 </div>
               )}
-              {submission.customer.phone && (
+              {submission.contact.phone && (
                 <div>
                   <dt className="text-gray-400">Phone</dt>
-                  <dd className="text-gray-800">{submission.customer.phone}</dd>
+                  <dd className="text-gray-800">{submission.contact.phone}</dd>
                 </div>
               )}
               <div>
