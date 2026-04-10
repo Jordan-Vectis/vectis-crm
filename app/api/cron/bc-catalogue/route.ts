@@ -13,9 +13,9 @@ function addDays(date: Date, n: number): Date {
 }
 
 export async function GET(req: NextRequest) {
-  // Verify cron secret (passed as ?secret= query param)
-  const secret = req.nextUrl.searchParams.get("secret")
-  if (!secret || secret !== process.env.CRON_SECRET) {
+  // Verify cron secret
+  const auth = req.headers.get("authorization")
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return Response.json({ error: "Unauthorised" }, { status: 401 })
   }
 
