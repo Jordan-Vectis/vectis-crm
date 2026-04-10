@@ -22,17 +22,13 @@ export async function GET(req: NextRequest) {
   const token = await getBCTokenAny()
   if (!token) return Response.json({ error: "No BC token available" }, { status: 503 })
 
-  // Fetch any uncached past dates from the last 90 days (catches gaps + yesterday)
+  // Only fetch the last 3 days — catches yesterday + any recent misses
   const today = toDateStr(new Date())
-  const ninetyDaysAgo = toDateStr(addDays(new Date(), -90))
-
-  const allPastDates: string[] = []
-  let cur = new Date(ninetyDaysAgo + "T00:00:00Z")
-  const todayDate = new Date(today + "T00:00:00Z")
-  while (cur < todayDate) {
-    allPastDates.push(toDateStr(cur))
-    cur = addDays(cur, 1)
-  }
+  const allPastDates = [
+    toDateStr(addDays(new Date(), -3)),
+    toDateStr(addDays(new Date(), -2)),
+    toDateStr(addDays(new Date(), -1)),
+  ].filter(dt => dt < today)
 
   // Find which are already cached
   const cached = await prisma.bCCatalogueDay.findMany({
