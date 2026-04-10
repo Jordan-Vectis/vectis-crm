@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { updateUser } from "@/lib/actions/admin"
+import { changePassword } from "@/lib/actions/admin"
 
 export default function ChangePasswordButton({ userId, userName }: { userId: string; userName: string }) {
   const [open, setOpen] = useState(false)
@@ -27,7 +27,7 @@ export default function ChangePasswordButton({ userId, userName }: { userId: str
     formData.set("password", password)
     startTransition(async () => {
       try {
-        await updateUser(userId, formData)
+        await changePassword(userId, password)
         setOpen(false)
         setPassword("")
         setConfirm("")

@@ -61,6 +61,12 @@ export async function updateUser(userId: string, formData: FormData) {
   revalidatePath("/admin/users")
 }
 
+export async function changePassword(userId: string, newPassword: string) {
+  await requireAdmin()
+  const hashed = await bcrypt.hash(newPassword, 12)
+  await prisma.user.update({ where: { id: userId }, data: { password: hashed } })
+}
+
 export async function deleteUser(userId: string) {
   await requireAdmin()
   await prisma.user.delete({ where: { id: userId } })
