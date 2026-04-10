@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   LabelList, ResponsiveContainer, Cell,
@@ -90,13 +90,17 @@ function HBar({ data, valueKey, labelKey }: { data: object[]; valueKey: string; 
 
 // ─── Date presets + range ─────────────────────────────────────────────────────
 
-function DateRange({ from, to, onChange }: { from: string; to: string; onChange: (f: string, t: string) => void }) {
+function DateRange({ from, to, onChange, onPreset }: {
+  from: string; to: string
+  onChange: (f: string, t: string) => void
+  onPreset: (f: string, t: string) => void
+}) {
   const presets = [
-    { label: "Last 7 days",  from: daysAgo(6),        to: today() },
-    { label: "Last 30 days", from: daysAgo(29),        to: today() },
-    { label: "This month",   from: startOfMonth(),      to: today() },
-    { label: "Last month",   from: lastMonthRange()[0], to: lastMonthRange()[1] },
-    { label: "This year",    from: startOfYear(),        to: today() },
+    { label: "Last 7 days",  from: daysAgo(6),         to: today() },
+    { label: "Last 30 days", from: daysAgo(29),         to: today() },
+    { label: "This month",   from: startOfMonth(),       to: today() },
+    { label: "Last month",   from: lastMonthRange()[0],  to: lastMonthRange()[1] },
+    { label: "This year",    from: startOfYear(),         to: today() },
   ]
   return (
     <div className="space-y-3 mb-4">
@@ -104,7 +108,7 @@ function DateRange({ from, to, onChange }: { from: string; to: string; onChange:
         {presets.map((p) => (
           <button
             key={p.label}
-            onClick={() => onChange(p.from, p.to)}
+            onClick={() => onPreset(p.from, p.to)}
             className={`flex-1 px-2 py-1.5 text-xs font-medium rounded border transition-colors ${
               from === p.from && to === p.to
                 ? "bg-[#0078D4] text-white border-[#0078D4]"
@@ -171,7 +175,7 @@ function LoadBtn({ loading, onClick }: { loading: boolean; onClick: () => void }
       onClick={onClick} disabled={loading}
       className="mb-5 px-5 py-2 bg-[#0078D4] hover:bg-blue-500 text-white text-sm font-medium rounded transition-colors disabled:opacity-50"
     >
-      {loading ? "Loading…" : "Load Report"}
+      {loading ? "Loading…" : "↺ Reload"}
     </button>
   )
 }
@@ -202,15 +206,18 @@ function CataloguingTab() {
   const [from, setFrom] = useState(daysAgo(29))
   const [to, setTo]     = useState(today())
   const [data, setData] = useState<CatData | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading]   = useState(false)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
-  const [error, setError]     = useState<string | null>(null)
-  const [subTab, setSubTab]   = useState("Daily Average")
+  const [error, setError]       = useState<string | null>(null)
+  const [subTab, setSubTab]     = useState("Daily Average")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  async function load() {
-    setLoading(true); setError(null); setProgress(null); setData(null)
+  const load = useCallback(async (f: string, t: string) => {
+    if (!f || !t) return
+    setLoading(true); setError(null); setProgress(null)
+    // keep previous data visible while reloading
     try {
-      const res = await window.fetch(`/api/bc/cataloguing?from=${from}&to=${to}`)
+      const res = await window.fetch(`/api/bc/cataloguing?from=${f}&to=${t}`)
       if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? res.statusText) }
 
       const reader  = res.body!.getReader()
@@ -226,33 +233,49 @@ function CataloguingTab() {
         for (const line of lines) {
           if (!line.trim()) continue
           const msg = JSON.parse(line)
-          if (msg.type === "progress") {
-            setProgress({ done: msg.done, total: msg.total })
-          } else if (msg.type === "result") {
-            setData(msg.data)
-          }
+          if (msg.type === "progress") setProgress({ done: msg.done, total: msg.total })
+          else if (msg.type === "result") setData(msg.data)
         }
       }
     } catch (e: any) { setError(e.message) }
     finally { setLoading(false); setProgress(null) }
+  }, [])
+
+  // Auto-load on first render
+  useEffect(() => { load(from, to) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleManualChange(f: string, t: string) {
+    setFrom(f); setTo(t)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => load(f, t), 700)
+  }
+
+  function handlePreset(f: string, t: string) {
+    setFrom(f); setTo(t)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    load(f, t)
   }
 
   return (
     <div>
       <h2 className="text-lg font-semibold text-white mb-4">Cataloguing Report</h2>
-      <DateRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
-      <LoadBtn loading={loading} onClick={load} />
+      <DateRange from={from} to={to} onChange={handleManualChange} onPreset={handlePreset} />
+
+      {/* Progress bar sits above results — old data stays visible underneath */}
       {loading && progress && <ProgressBar done={progress.done} total={progress.total} />}
       {loading && !progress && <p className="text-xs text-gray-500 mb-4">Connecting…</p>}
+      {!loading && <LoadBtn loading={loading} onClick={() => load(from, to)} />}
+
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+
       {data && (
-        <>
+        <div className={loading ? "opacity-40 pointer-events-none transition-opacity" : "transition-opacity"}>
           <MetaBar text={`${from} — ${to}  ·  ${data.meta.total.toLocaleString()} entries  ·  ${data.meta.userCount} users`} />
           <SubTabs tabs={["Daily Average", "Total Lots", "Lots by Month"]} active={subTab} onChange={setSubTab} />
           {subTab === "Daily Average" && <><HBar data={data.dailyAvg} valueKey="avg" labelKey="user" /><ExportBtn onClick={() => exportXlsx(data.dailyAvg, "cataloguing_daily_avg")} /></>}
           {subTab === "Total Lots"    && <><HBar data={data.totalLots} valueKey="total" labelKey="user" /><ExportBtn onClick={() => exportXlsx(data.totalLots, "cataloguing_total_lots")} /></>}
           {subTab === "Lots by Month" && <><HBar data={data.monthly} valueKey="total" labelKey="label" /><ExportBtn onClick={() => exportXlsx(data.monthly, "cataloguing_monthly")} /></>}
-        </>
+        </div>
       )}
     </div>
   )
@@ -267,16 +290,32 @@ function PackingTab() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
   const [subTab, setSubTab]   = useState("Collections Daily Avg")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  async function load() {
+  const load = useCallback(async (f: string, t: string) => {
+    if (!f || !t) return
     setLoading(true); setError(null)
     try {
-      const res  = await window.fetch(`/api/bc/packing?from=${from}&to=${to}`)
+      const res  = await window.fetch(`/api/bc/packing?from=${f}&to=${t}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? res.statusText)
       setData(json)
     } catch (e: any) { setError(e.message) }
     finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load(from, to) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleManualChange(f: string, t: string) {
+    setFrom(f); setTo(t)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => load(f, t), 700)
+  }
+
+  function handlePreset(f: string, t: string) {
+    setFrom(f); setTo(t)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    load(f, t)
   }
 
   const subTabs = ["Collections Daily Avg", "Collections Total", "Lots Daily Avg", "Total Lots", "Raw Data"]
@@ -284,11 +323,12 @@ function PackingTab() {
   return (
     <div>
       <h2 className="text-lg font-semibold text-white mb-4">Packing Report</h2>
-      <DateRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
-      <LoadBtn loading={loading} onClick={load} />
+      <DateRange from={from} to={to} onChange={handleManualChange} onPreset={handlePreset} />
+      {!loading && <LoadBtn loading={loading} onClick={() => load(from, to)} />}
+      {loading && <p className="text-xs text-gray-500 mb-5">Loading…</p>}
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
       {data && (
-        <>
+        <div className={loading ? "opacity-40 pointer-events-none transition-opacity" : "transition-opacity"}>
           <MetaBar text={`${from} — ${to}  ·  ${data.meta.total.toLocaleString()} shipments  ·  ${data.meta.staffCount} staff`} />
           <SubTabs tabs={subTabs} active={subTab} onChange={setSubTab} />
           {subTab === "Collections Daily Avg" && <><HBar data={data.dailyAvgCollections} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgCollections, "packing_daily_avg")} /></>}
@@ -322,7 +362,7 @@ function PackingTab() {
               <ExportBtn onClick={() => exportXlsx(data.raw, "packing_raw")} />
             </>
           )}
-        </>
+        </div>
       )}
     </div>
   )
