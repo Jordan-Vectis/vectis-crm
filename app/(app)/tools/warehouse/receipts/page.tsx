@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 
 function PrintLabel({ container, receipt, customer }: { container: any; receipt: any; customer: any }) {
   return (
@@ -28,6 +29,7 @@ function PrintLabel({ container, receipt, customer }: { container: any; receipt:
 }
 
 export default function ReceiptsPage() {
+  const searchParams = useSearchParams()
   const [receipts, setReceipts] = useState<any[]>([])
   const [selected, setSelected] = useState<any>(null)
   const [containers, setContainers] = useState<any[]>([])
@@ -40,10 +42,19 @@ export default function ReceiptsPage() {
 
   async function load() {
     const res = await fetch(`/api/warehouse/receipts?status=${filterStatus}`)
-    setReceipts(await res.json())
+    return await res.json()
   }
 
-  useEffect(() => { load() }, [filterStatus])
+  useEffect(() => {
+    const idParam = searchParams.get("id")
+    load().then(data => {
+      setReceipts(data)
+      if (idParam) {
+        const match = data.find((r: any) => r.id === idParam)
+        if (match) selectReceipt(match)
+      }
+    })
+  }, [filterStatus])
 
   async function selectReceipt(r: any) {
     setSelected(r)

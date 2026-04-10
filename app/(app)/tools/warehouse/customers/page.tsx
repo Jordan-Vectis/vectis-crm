@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 
 export default function CustomersPage() {
+  const router = useRouter()
   const [customers, setCustomers] = useState<any[]>([])
   const [search, setSearch] = useState("")
   const [selected, setSelected] = useState<any>(null)
@@ -110,6 +112,9 @@ export default function CustomersPage() {
               <th className="wh-table-header">ID</th>
               <th className="wh-table-header">Name</th>
               <th className="wh-table-header">Phone</th>
+              <th className="wh-table-header">Email</th>
+              <th className="wh-table-header">Postcode</th>
+              <th className="wh-table-header">Address</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-100">
               {customers.map(c => (
@@ -119,10 +124,13 @@ export default function CustomersPage() {
                   <td className="wh-table-cell font-mono text-xs">{c.id}</td>
                   <td className="wh-table-cell font-medium">{c.name}</td>
                   <td className="wh-table-cell text-gray-500">{c.phone}</td>
+                  <td className="wh-table-cell text-gray-500">{c.email}</td>
+                  <td className="wh-table-cell text-gray-500">{c.postcode}</td>
+                  <td className="wh-table-cell text-gray-500">{c.addressLine1}</td>
                 </tr>
               ))}
               {customers.length === 0 && (
-                <tr><td colSpan={3} className="wh-table-cell text-center text-gray-400 py-8">No customers found</td></tr>
+                <tr><td colSpan={6} className="wh-table-cell text-center text-gray-400 py-8">No customers found</td></tr>
               )}
             </tbody>
           </table>
@@ -159,7 +167,10 @@ export default function CustomersPage() {
                   {receipts.map((r: any) => (
                     <div key={r.id} className="px-4 py-2 flex items-center justify-between">
                       <span className="font-mono text-sm">{r.id}</span>
-                      <span className={`wh-badge ${r.status === "open" ? "wh-badge-green" : "wh-badge-gray"}`}>{r.status}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`wh-badge ${r.status === "open" ? "wh-badge-green" : "wh-badge-gray"}`}>{r.status}</span>
+                        <button className="wh-btn-secondary wh-btn-sm" onClick={() => router.push(`/tools/warehouse/receipts?id=${r.id}`)}>View</button>
+                      </div>
                     </div>
                   ))}
                 </div>
