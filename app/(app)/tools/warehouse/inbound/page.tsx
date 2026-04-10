@@ -300,7 +300,7 @@ function ContainersStep({ receipt, customer, onNext, onBack }: { receipt: any; c
           </table>
         </div>
         <div className="flex gap-3">
-          <button className="wh-btn-secondary" onClick={() => { setCreated([]); setRows([{ type: "tote", description: "" }]) }}>+ Add More</button>
+          <button className="wh-btn-secondary" onClick={() => { setCreated([]); setRows([{ type: "tote", description: "", category: "", subcategory: "", manualId: "" }]) }}>+ Add More</button>
           <button className="wh-btn-primary" onClick={() => onNext(created)}>Next: Locate →</button>
         </div>
       </div>
