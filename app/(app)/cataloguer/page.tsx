@@ -33,7 +33,7 @@ export default async function CataloguerPage() {
   const submissions = await prisma.submission.findMany({
     where: whereClause,
     include: {
-      customer: true,
+      contact: true,
       department: true,
       cataloguer: true,
       items: { include: { valuation: true } },
@@ -69,7 +69,7 @@ export default async function CataloguerPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-gray-900">{sub.customer.name}</h3>
+                        <h3 className="font-semibold text-gray-900">{sub.contact.name}</h3>
                         {isAssignedToMe ? (
                           <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Assigned to you</span>
                         ) : (
