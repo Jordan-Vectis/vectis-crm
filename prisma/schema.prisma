@@ -244,6 +244,15 @@ model CatalogueLot {
   auction      CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
 }
 
+model AppCard {
+  key         String  @id
+  order       Int     @default(0)
+  visible     Boolean @default(true)
+  pinned      Boolean @default(false)
+  label       String?
+  description String?
+}
+
 model BCCatalogueDay {
   date      String   @id       // "YYYY-MM-DD" — marks this date was fully fetched from BC
   fetchedAt DateTime @default(now())

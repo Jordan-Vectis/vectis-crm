@@ -15,6 +15,12 @@ const sections = [
     description: "Manage cataloguer departments used across the CRM.",
     icon:        "🏢",
   },
+  {
+    href:        "/admin/home-cards",
+    label:       "Home Page",
+    description: "Reorder app cards, hide unused ones, feature favourites and customise labels.",
+    icon:        "🏠",
+  },
 ]
 
 export default async function AdminOverviewPage() {
