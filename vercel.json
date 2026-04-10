@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/bc-catalogue",
-      "schedule": "0 0 * * *"
-    }
-  ]
-}
