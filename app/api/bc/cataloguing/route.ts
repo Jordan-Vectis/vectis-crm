@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { auth } from "@/auth"
 import { getBCToken, bcFetchAll } from "@/lib/bc"
+import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 300
 
@@ -13,6 +14,23 @@ function addDays(date: Date, n: number): Date {
 }
 function toDateStr(d: Date): string {
   return d.toISOString().split("T")[0]
+}
+
+/** Group a sorted list of date strings into contiguous runs */
+function groupIntoRuns(dates: string[]): string[][] {
+  if (!dates.length) return []
+  const sorted = [...dates].sort()
+  const runs: string[][] = [[sorted[0]]]
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = new Date(sorted[i - 1] + "T00:00:00Z")
+    const curr = new Date(sorted[i]     + "T00:00:00Z")
+    if ((curr.getTime() - prev.getTime()) / 86_400_000 === 1) {
+      runs[runs.length - 1].push(sorted[i])
+    } else {
+      runs.push([sorted[i]])
+    }
+  }
+  return runs
 }
 
 export async function GET(req: NextRequest) {
@@ -30,17 +48,37 @@ export async function GET(req: NextRequest) {
   const dateFrom = new Date(from + "T00:00:00Z")
   const dateTo   = new Date(to   + "T00:00:00Z")
 
-  // Build all chunks upfront
-  const chunks: { start: Date; end: Date }[] = []
-  let chunkStart = dateFrom
-  while (chunkStart <= dateTo) {
-    const chunkEnd = addDays(chunkStart, 6) > dateTo ? dateTo : addDays(chunkStart, 6)
-    chunks.push({ start: chunkStart, end: chunkEnd })
-    chunkStart = addDays(chunkEnd, 1)
+  // All dates in the requested range
+  const allDates: string[] = []
+  let cur = new Date(dateFrom)
+  while (cur <= dateTo) {
+    allDates.push(toDateStr(cur))
+    cur = addDays(cur, 1)
+  }
+
+  const todayStr = toDateStr(new Date())
+
+  // Check which past dates are already cached (today is always live)
+  const pastDates = allDates.filter(dt => dt < todayStr)
+  const cachedDays = pastDates.length > 0
+    ? await prisma.bCCatalogueDay.findMany({ where: { date: { in: pastDates } }, select: { date: true } })
+    : []
+  const cachedSet = new Set(cachedDays.map(r => r.date))
+
+  // Dates we must fetch from BC: uncached past dates + today (if in range)
+  const toFetch = allDates.filter(dt => dt >= todayStr || !cachedSet.has(dt))
+
+  // Build 7-day chunks from contiguous runs of toFetch dates
+  const chunks: { start: string; end: string }[] = []
+  for (const run of groupIntoRuns(toFetch)) {
+    for (let i = 0; i < run.length; i += 7) {
+      const slice = run.slice(i, i + 7)
+      chunks.push({ start: slice[0], end: slice[slice.length - 1] })
+    }
   }
 
   const encoder = new TextEncoder()
-  const PARALLEL = 4 // fetch this many chunks at once
+  const PARALLEL = 4
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -48,40 +86,84 @@ export async function GET(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"))
       }
 
-      const allRows: any[] = []
+      // ── 1. Fetch uncached / today dates from BC ──────────────────────────────
+      const freshRows: { User_ID: string; Date_and_Time: string }[] = []
       const total = chunks.length
 
-      // Process in parallel batches
       for (let i = 0; i < chunks.length; i += PARALLEL) {
         const batch = chunks.slice(i, i + PARALLEL)
         const results = await Promise.all(
           batch.map(async ({ start, end }) => {
             const filter =
-              `Date_and_Time ge ${toDateStr(start)}T00:00:00Z ` +
-              `and Date_and_Time le ${toDateStr(end)}T23:59:59Z ` +
+              `Date_and_Time ge ${start}T00:00:00Z ` +
+              `and Date_and_Time le ${end}T23:59:59Z ` +
               `and Field_Caption eq 'Internal Barcode'`
             try {
-              return await bcFetchAll(token, "ChangeLogEntries", filter, "User_ID,Date_and_Time,Entry_No,Field_Caption")
+              return await bcFetchAll(token, "ChangeLogEntries", filter, "User_ID,Date_and_Time")
             } catch {
               return []
             }
           })
         )
-        results.forEach(rows => allRows.push(...rows))
+        results.forEach(rows => freshRows.push(...rows))
         send({ type: "progress", done: Math.min(i + PARALLEL, total), total })
       }
 
-      // Filter excluded users
-      const rows = allRows.filter(r => !EXCLUDED_USERS.has(r.User_ID))
+      // ── 2. Persist newly fetched past dates to cache ─────────────────────────
+      const daysToCache = toFetch.filter(dt => dt < todayStr)
+      if (daysToCache.length > 0) {
+        // Aggregate fresh rows: { day → { userId → count } }
+        const agg: Record<string, Record<string, number>> = {}
+        for (const r of freshRows) {
+          const day = r.Date_and_Time?.slice(0, 10) ?? ""
+          if (!day || day >= todayStr) continue
+          if (!agg[day]) agg[day] = {}
+          agg[day][r.User_ID] = (agg[day][r.User_ID] ?? 0) + 1
+        }
+
+        const entryUpserts = daysToCache.flatMap(day =>
+          Object.entries(agg[day] ?? {}).map(([userId, count]) =>
+            prisma.bCCatalogueEntry.upsert({
+              where:  { date_userId: { date: day, userId } },
+              create: { date: day, userId, count },
+              update: { count },
+            })
+          )
+        )
+        const dayUpserts = daysToCache.map(date =>
+          prisma.bCCatalogueDay.upsert({
+            where:  { date },
+            create: { date },
+            update: { fetchedAt: new Date() },
+          })
+        )
+        await Promise.all([...entryUpserts, ...dayUpserts])
+      }
+
+      // ── 3. Load already-cached dates from DB ─────────────────────────────────
+      const alreadyCached = pastDates.filter(dt => cachedSet.has(dt))
+      const dbEntries = alreadyCached.length > 0
+        ? await prisma.bCCatalogueEntry.findMany({ where: { date: { in: alreadyCached } } })
+        : []
+
+      // ── 4. Merge and compute stats ────────────────────────────────────────────
+      // userDayCounts[userId][date] = count
+      const userDayCounts: Record<string, Record<string, number>> = {}
+
+      for (const e of dbEntries) {
+        if (EXCLUDED_USERS.has(e.userId)) continue
+        if (!userDayCounts[e.userId]) userDayCounts[e.userId] = {}
+        userDayCounts[e.userId][e.date] = (userDayCounts[e.userId][e.date] ?? 0) + e.count
+      }
+      for (const r of freshRows) {
+        if (EXCLUDED_USERS.has(r.User_ID)) continue
+        const day = r.Date_and_Time?.slice(0, 10) ?? ""
+        if (!day) continue
+        if (!userDayCounts[r.User_ID]) userDayCounts[r.User_ID] = {}
+        userDayCounts[r.User_ID][day] = (userDayCounts[r.User_ID][day] ?? 0) + 1
+      }
 
       // Daily average
-      const userDayCounts: Record<string, Record<string, number>> = {}
-      for (const r of rows) {
-        const user = r.User_ID
-        const day  = r.Date_and_Time?.slice(0, 10) ?? ""
-        if (!userDayCounts[user]) userDayCounts[user] = {}
-        userDayCounts[user][day] = (userDayCounts[user][day] ?? 0) + 1
-      }
       const dailyAvg = Object.entries(userDayCounts)
         .map(([user, days]) => {
           const vals = Object.values(days)
@@ -90,28 +172,36 @@ export async function GET(req: NextRequest) {
         .sort((a, b) => b.avg - a.avg)
 
       // Total lots
-      const userTotals: Record<string, number> = {}
-      for (const r of rows) {
-        userTotals[r.User_ID] = (userTotals[r.User_ID] ?? 0) + 1
-      }
-      const totalLots = Object.entries(userTotals)
-        .map(([user, total]) => ({ user, total }))
+      const totalLots = Object.entries(userDayCounts)
+        .map(([user, days]) => ({ user, total: Object.values(days).reduce((a, b) => a + b, 0) }))
         .sort((a, b) => b.total - a.total)
 
-      // Monthly
+      // Monthly — from fresh rows (with real timestamps) + DB entries (date string only)
       const monthMap: Record<string, { label: string; sort: string; total: number }> = {}
-      for (const r of rows) {
-        const dt = new Date(r.Date_and_Time)
+
+      for (const r of freshRows) {
+        if (EXCLUDED_USERS.has(r.User_ID)) continue
+        const dt   = new Date(r.Date_and_Time)
         const sort  = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`
         const label = dt.toLocaleString("en-GB", { month: "long", year: "numeric" })
         if (!monthMap[sort]) monthMap[sort] = { label, sort, total: 0 }
         monthMap[sort].total++
       }
+      for (const e of dbEntries) {
+        if (EXCLUDED_USERS.has(e.userId)) continue
+        const dt   = new Date(e.date + "T00:00:00Z")
+        const sort  = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`
+        const label = dt.toLocaleString("en-GB", { month: "long", year: "numeric" })
+        if (!monthMap[sort]) monthMap[sort] = { label, sort, total: 0 }
+        monthMap[sort].total += e.count
+      }
       const monthly = Object.values(monthMap).sort((a, b) => a.sort.localeCompare(b.sort))
 
-      const userCount = new Set(rows.map(r => r.User_ID)).size
+      const totalCount = Object.values(userDayCounts)
+        .reduce((sum, days) => sum + Object.values(days).reduce((a, b) => a + b, 0), 0)
+      const userCount = Object.keys(userDayCounts).length
 
-      send({ type: "result", data: { dailyAvg, totalLots, monthly, meta: { total: rows.length, userCount } } })
+      send({ type: "result", data: { dailyAvg, totalLots, monthly, meta: { total: totalCount, userCount } } })
       controller.close()
     },
   })

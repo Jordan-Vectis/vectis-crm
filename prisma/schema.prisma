@@ -244,6 +244,20 @@ model CatalogueLot {
   auction      CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
 }
 
+model BCCatalogueDay {
+  date      String   @id       // "YYYY-MM-DD" — marks this date was fully fetched from BC
+  fetchedAt DateTime @default(now())
+}
+
+model BCCatalogueEntry {
+  date   String
+  userId String
+  count  Int
+
+  @@id([date, userId])
+  @@index([date])
+}
+
 model WarehouseCustomer {
   id        String   @id
   name      String
