@@ -71,7 +71,7 @@ function CustomerStep({ onNext }: { onNext: (c: any) => void }) {
   const [search, setSearch] = useState("")
   const [results, setResults] = useState<any[]>([])
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ name: "", email: "", phone: "", address: "" })
+  const [form, setForm] = useState({ salutation: "", name: "", email: "", phone: "", addressLine1: "", addressLine2: "", postcode: "", notes: "" })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
@@ -103,7 +103,7 @@ function CustomerStep({ onNext }: { onNext: (c: any) => void }) {
       <h2 className="text-lg font-semibold">Step 1 — Find or Create Customer</h2>
       {error && <p className="text-red-500 text-sm">{error}</p>}
       <div className="flex gap-2">
-        <input className="wh-input flex-1" placeholder="Search by name, phone, or ID…" value={search}
+        <input className="wh-input flex-1" placeholder="Search by name, phone, email, postcode, or ID…" value={search}
           onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && doSearch()} />
         <button className="wh-btn-primary" onClick={doSearch}>Search</button>
         <button className="wh-btn-secondary" onClick={() => setShowCreate(true)}>+ New</button>
@@ -136,10 +136,19 @@ function CustomerStep({ onNext }: { onNext: (c: any) => void }) {
         <div className="wh-card space-y-3">
           <p className="font-semibold text-gray-800">New Customer</p>
           <div className="grid grid-cols-2 gap-3">
+            <div><label className="wh-label">Salutation</label>
+              <select className="wh-input" value={form.salutation} onChange={e => setForm({...form, salutation: e.target.value})}>
+                <option value="">—</option>
+                <option>Mr</option><option>Mrs</option><option>Ms</option><option>Miss</option><option>Dr</option><option>Prof</option>
+              </select>
+            </div>
             <div><label className="wh-label">Name *</label><input className="wh-input" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
             <div><label className="wh-label">Phone</label><input className="wh-input" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></div>
             <div><label className="wh-label">Email</label><input className="wh-input" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
-            <div><label className="wh-label">Address</label><input className="wh-input" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
+            <div className="col-span-2"><label className="wh-label">Address Line 1</label><input className="wh-input" value={form.addressLine1} onChange={e => setForm({...form, addressLine1: e.target.value})} /></div>
+            <div className="col-span-2"><label className="wh-label">Address Line 2</label><input className="wh-input" value={form.addressLine2} onChange={e => setForm({...form, addressLine2: e.target.value})} /></div>
+            <div><label className="wh-label">Postcode</label><input className="wh-input" value={form.postcode} onChange={e => setForm({...form, postcode: e.target.value})} /></div>
+            <div className="col-span-2"><label className="wh-label">Notes</label><textarea className="wh-input" rows={2} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} /></div>
           </div>
           <button className="wh-btn-primary" onClick={doCreate} disabled={loading}>Create Customer</button>
         </div>
