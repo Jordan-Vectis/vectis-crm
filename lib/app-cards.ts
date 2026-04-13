@@ -101,6 +101,18 @@ export const APP_CARD_DEFS: AppCardDef[] = [
     // no appKey — admin-only
   },
   {
+    key:                "DATABASES",
+    href:               "/databases",
+    defaultLabel:       "Databases",
+    defaultDescription: "Search and manage all customers, receipts and totes in one unified place.",
+    icon:               "🗄️",
+    border:             "border-violet-500",
+    iconBg:             "text-violet-400",
+    btnBg:              "bg-violet-600 hover:bg-violet-500",
+    glow:               "hover:shadow-violet-900/40",
+    allUsers:           true,
+  },
+  {
     key:                "ACCOUNTS",
     href:               "#",
     defaultLabel:       "Accounts",
