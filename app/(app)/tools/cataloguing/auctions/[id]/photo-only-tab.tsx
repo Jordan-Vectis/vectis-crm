@@ -31,7 +31,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
   // Stop scanner on unmount
   useEffect(() => () => { controlsRef.current?.stop() }, [])
 
-  async function startScan(target: "lot" | "ref") {
+  async function startScan(target: "lot" | "tote") {
     setScanTarget(target)
     setScanError(null)
     setScanning(true)
