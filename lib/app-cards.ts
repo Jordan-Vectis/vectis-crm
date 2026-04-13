@@ -101,6 +101,19 @@ export const APP_CARD_DEFS: AppCardDef[] = [
     // no appKey — admin-only
   },
   {
+    key:                "ACCOUNTS",
+    href:               "#",
+    defaultLabel:       "Accounts",
+    defaultDescription: "Financial accounts, invoicing and vendor payments.",
+    icon:               "💰",
+    border:             "border-emerald-500",
+    iconBg:             "text-emerald-400",
+    btnBg:              "bg-emerald-600 hover:bg-emerald-500",
+    glow:               "hover:shadow-emerald-900/40",
+    allUsers:           true,
+    comingSoon:         true,
+  },
+  {
     key:                "PACKING_DISPATCH",
     href:               "#",
     defaultLabel:       "Packing / Dispatch",
