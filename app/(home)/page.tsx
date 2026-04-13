@@ -74,12 +74,18 @@ export default async function HomePage() {
 
             <p className="text-gray-400 text-sm leading-relaxed mb-6 flex-1">{app.description}</p>
 
-            <Link
-              href={app.href}
-              className={`w-full text-center text-sm font-semibold text-white py-2 px-4 rounded-lg transition-colors ${app.btnBg}`}
-            >
-              Open {app.label} →
-            </Link>
+            {app.comingSoon ? (
+              <span className="w-full text-center text-sm font-semibold text-gray-500 bg-gray-800 py-2 px-4 rounded-lg cursor-not-allowed">
+                Coming Soon
+              </span>
+            ) : (
+              <Link
+                href={app.href}
+                className={`w-full text-center text-sm font-semibold text-white py-2 px-4 rounded-lg transition-colors ${app.btnBg}`}
+              >
+                Open {app.label} →
+              </Link>
+            )}
           </div>
         ))}
       </div>

@@ -12,6 +12,7 @@ export type AppCardDef = {
   glow: string
   appKey?: AppKey // undefined = admin-only card
   allUsers?: boolean // true = visible to all logged-in users regardless of role/apps
+  comingSoon?: boolean
 }
 
 export const APP_CARD_DEFS: AppCardDef[] = [
@@ -98,6 +99,19 @@ export const APP_CARD_DEFS: AppCardDef[] = [
     btnBg:              "bg-slate-600 hover:bg-slate-500",
     glow:               "hover:shadow-slate-900/40",
     // no appKey — admin-only
+  },
+  {
+    key:                "PACKING_DISPATCH",
+    href:               "#",
+    defaultLabel:       "Packing / Dispatch",
+    defaultDescription: "Manage packing lists and dispatch for outgoing lots.",
+    icon:               "📦",
+    border:             "border-orange-500",
+    iconBg:             "text-orange-400",
+    btnBg:              "bg-orange-600 hover:bg-orange-500",
+    glow:               "hover:shadow-orange-900/40",
+    allUsers:           true,
+    comingSoon:         true,
   },
   {
     key:                "SALEROOM_TRAINER",
