@@ -1,16 +1,15 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { updateAuction, updateLot, deleteLot, deleteAuction } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto } from "@/lib/actions/catalogue"
 import LotWizardTab from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
-import LotPhotosTab from "./lot-photos-tab"
 import * as XLSX from "xlsx"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "lot-photos"
+type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only"
 
 interface Auction {
   id: string; code: string; name: string; auctionDate: Date | null
@@ -27,10 +26,6 @@ interface Lot {
   status: string; createdByName: string | null; imageUrls: string[]
 }
 
-interface PhotoSession {
-  id: string; lotBarcode: string | null; customerRef: string | null
-  itemPhotoKeys: string[]; status: string; createdByName: string | null; createdAt: string
-}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -55,19 +50,18 @@ const lbl   = "block text-xs font-medium text-gray-400 mb-1"
 
 // ─── Main tabbed component ────────────────────────────────────────────────────
 
-export default function AuctionTabs({ auction, lots, photoSessions }: { auction: Auction; lots: Lot[]; photoSessions: PhotoSession[] }) {
+export default function AuctionTabs({ auction, lots }: { auction: Auction; lots: Lot[] }) {
   const router = useRouter()
-  const [tab, setTab]              = useState<Tab>("settings")
+  const [tab, setTab]              = useState<Tab>("manage-lots")
   const [editingLotId, setEditing] = useState<string | null>(null)
 
   const editingLot = lots.find(l => l.id === editingLotId) ?? null
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "settings",     label: "Auction Settings" },
-    { id: "add-lot",      label: "Add Lot" },
     { id: "manage-lots",  label: `Manage Lots (${lots.length})` },
-    { id: "lot-photos",   label: "Lot Photos" },
+    { id: "add-lot",      label: "Add Lot" },
     { id: "photo-only",   label: "Photo Only Cataloguing" },
+    { id: "settings",     label: "Auction Settings" },
   ]
 
   function switchTab(t: Tab) { setTab(t); setEditing(null) }
@@ -120,15 +114,8 @@ export default function AuctionTabs({ auction, lots, photoSessions }: { auction:
               onDelete={() => router.refresh()} />
       )}
 
-      {tab === "lot-photos" && (
-        <LotPhotosTab
-          auctionId={auction.id}
-          lots={lots.map(l => ({ id: l.id, lotNumber: l.lotNumber, title: l.title, imageUrls: l.imageUrls }))}
-        />
-      )}
-
       {tab === "photo-only" && (
-        <PhotoOnlyTab auctionId={auction.id} initialSessions={photoSessions} />
+        <PhotoOnlyTab auctionId={auction.id} auctionCode={auction.code} onCreated={() => router.refresh()} />
       )}
     </div>
   )
@@ -313,47 +300,49 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
           ⬇ Export to Excel
         </button>
       </div>
-    <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl overflow-x-auto">
+      <table className="w-full text-sm min-w-[600px]">
         <thead>
           <tr className="border-b border-gray-700 bg-[#141416]">
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Lot No.</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Estimate</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Condition</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Receipt</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Category</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Photos</th>
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Added by</th>
             <th className="px-4 py-3" />
           </tr>
         </thead>
         <tbody>
           {lots.map(lot => (
-            <tr key={lot.id} className="border-b border-gray-800 last:border-0 hover:bg-[#2C2C2E] transition-colors">
-              <td className="px-4 py-3 font-mono font-semibold text-[#2AB4A6]">{lot.lotNumber}</td>
-              <td className="px-4 py-3 text-gray-200 max-w-xs truncate">{lot.title}</td>
-              <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
-                {lot.estimateLow && lot.estimateHigh
-                  ? `£${lot.estimateLow.toLocaleString("en-GB")}–£${lot.estimateHigh.toLocaleString("en-GB")}`
-                  : lot.estimateLow ? `£${lot.estimateLow.toLocaleString("en-GB")}` : "—"}
+            <tr key={lot.id} className="border-b border-gray-800 last:border-0 hover:bg-[#2C2C2E] transition-colors cursor-pointer" onClick={() => onEdit(lot.id)}>
+              <td className="px-4 py-3 font-mono font-semibold text-[#2AB4A6] whitespace-nowrap">{lot.lotNumber}</td>
+              <td className="px-4 py-3 text-gray-200 max-w-[160px] truncate">{lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}</td>
+              <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.vendor ?? "—"}</td>
+              <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.receipt ?? "—"}</td>
+              <td className="px-4 py-3 text-gray-400 text-xs">
+                {lot.category ? (
+                  <span>{lot.category}{lot.subCategory && <span className="text-gray-600"> › {lot.subCategory}</span>}</span>
+                ) : "—"}
               </td>
-              <td className="px-4 py-3 text-gray-400">{lot.condition ?? "—"}</td>
+              <td className="px-4 py-3">
+                {lot.imageUrls.length > 0 ? (
+                  <span className="text-xs bg-[#2AB4A6]/20 text-[#2AB4A6] px-2 py-0.5 rounded-full font-medium">
+                    {lot.imageUrls.length}
+                  </span>
+                ) : <span className="text-gray-700 text-xs">—</span>}
+              </td>
               <td className="px-4 py-3">
                 <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[lot.status] ?? "bg-gray-700 text-gray-300"}`}>
                   {lot.status}
                 </span>
               </td>
-              <td className="px-4 py-3 text-gray-500 text-xs">{lot.createdByName ?? "—"}</td>
-              <td className="px-4 py-3 text-right">
-                <div className="flex items-center justify-end gap-3">
-                  <button onClick={() => onEdit(lot.id)}
-                    className="text-xs text-[#2AB4A6] hover:text-[#24a090] transition-colors">
-                    Edit
-                  </button>
-                  <button onClick={() => handleDelete(lot)} disabled={deleting === lot.id || pending}
-                    className="text-xs text-red-500 hover:text-red-400 transition-colors disabled:opacity-40">
-                    {deleting === lot.id ? "…" : "Delete"}
-                  </button>
-                </div>
+              <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                <button onClick={() => handleDelete(lot)} disabled={deleting === lot.id || pending}
+                  className="text-xs text-red-500 hover:text-red-400 transition-colors disabled:opacity-40">
+                  {deleting === lot.id ? "…" : "Delete"}
+                </button>
               </td>
             </tr>
           ))}
@@ -367,7 +356,49 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
 // ─── Lot edit view (inside manage-lots tab) ───────────────────────────────────
 
 function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: string; onDone: () => void }) {
-  const [pending, start] = useTransition()
+  const [pending, start]             = useTransition()
+  const [imageKeys, setImageKeys]    = useState<string[]>(lot?.imageUrls ?? [])
+  const [signedUrls, setSignedUrls]  = useState<Record<string, string>>({})
+  const [loadingPhotos, setLoadingPhotos] = useState(false)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const photoRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!lot || imageKeys.length === 0) return
+    const missing = imageKeys.filter(k => !signedUrls[k])
+    if (missing.length === 0) return
+    setLoadingPhotos(true)
+    Promise.all(
+      missing.map(async key => {
+        const res = await fetch(`/api/catalogue/signed-url?key=${encodeURIComponent(key)}`)
+        const { url } = await res.json()
+        return [key, url] as [string, string]
+      })
+    ).then(results => {
+      setSignedUrls(prev => ({ ...prev, ...Object.fromEntries(results) }))
+      setLoadingPhotos(false)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageKeys])
+
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !lot) return
+    e.target.value = ""
+    setUploadingPhoto(true)
+    try {
+      const fd = new FormData()
+      fd.set("photo", file)
+      const updated = await uploadLotPhoto(lot.id, auctionId, fd)
+      setImageKeys(updated)
+    } finally { setUploadingPhoto(false) }
+  }
+
+  async function handlePhotoDelete(key: string) {
+    if (!lot || !confirm("Remove this photo?")) return
+    const updated = await deleteLotPhoto(lot.id, auctionId, key)
+    setImageKeys(updated)
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -488,6 +519,44 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
           </button>
         </div>
       </form>
+
+      {/* ── Photo management ── */}
+      <div className="mt-6 border-t border-gray-800 pt-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-300">Photos ({imageKeys.length})</h3>
+          <input ref={photoRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoUpload} />
+          <button onClick={() => photoRef.current?.click()} disabled={uploadingPhoto}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] text-xs transition-colors disabled:opacity-50">
+            {uploadingPhoto ? "Uploading…" : "📷 Add photo"}
+          </button>
+        </div>
+
+        {loadingPhotos && <p className="text-xs text-gray-600">Loading photos…</p>}
+
+        {!loadingPhotos && imageKeys.length > 0 && (
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            {imageKeys.map(key => (
+              <div key={key} className="relative aspect-square group">
+                {signedUrls[key] ? (
+                  <a href={signedUrls[key]} target="_blank" rel="noopener noreferrer">
+                    <img src={signedUrls[key]} alt="Lot photo" className="w-full h-full object-cover rounded-lg border border-gray-700" />
+                  </a>
+                ) : (
+                  <div className="w-full h-full rounded-lg bg-gray-800 animate-pulse" />
+                )}
+                <button onClick={() => handlePhotoDelete(key)}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-700 rounded-full text-white text-xs items-center justify-center hidden group-hover:flex">
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loadingPhotos && imageKeys.length === 0 && (
+          <p className="text-xs text-gray-600">No photos yet.</p>
+        )}
+      </div>
     </div>
   )
 }

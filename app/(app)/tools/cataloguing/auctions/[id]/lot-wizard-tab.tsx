@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useRef } from "react"
 import { createLot } from "@/lib/actions/catalogue"
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -323,7 +323,7 @@ const CAT_ACCENT     = "#2AB4A6"
 const CONDITIONS     = ["Mint", "Near Mint", "Excellent", "Good Plus", "Good", "Fair", "Poor"]
 const PARCEL_OPTIONS = ["Small", "Medium", "Large", "Contact", "Collection Only"]
 const QUICK_RANGES   = [[20,40],[40,60],[60,80],[80,100],[100,140],[140,180],[180,220],[220,260],[260,300]]
-const STEP_LABELS    = ["Vendor & Tote", "Barcode", "Key Points", "Categories", "Estimate", "Condition", "Parcel Size"]
+const STEP_LABELS    = ["Vendor & Tote", "Barcode", "Key Points", "Categories", "Estimate", "Condition", "Parcel Size", "Photos"]
 
 // ─── Autocomplete ─────────────────────────────────────────────────────────────
 
@@ -426,6 +426,8 @@ export default function LotWizardTab({
   const [cond1,       setCond1]       = useState("")
   const [cond2,       setCond2]       = useState("")
   const [parcel,      setParcel]      = useState("")
+  const [photoFiles,  setPhotoFiles]  = useState<{ file: File; preview: string }[]>([])
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   // Pinned values — restored after each lot save
   const [pinnedVendor,  setPinnedVendor]  = useState("")
@@ -483,7 +485,7 @@ export default function LotWizardTab({
     const err = validateStep(step)
     if (err) { setValidErr(err); return }
     setValidErr("")
-    if (step < 7) setStep(step + 1)
+    if (step < 8) setStep(step + 1)
   }
 
   function goBack() { setValidErr(""); if (step > 1) setStep(step - 1) }
@@ -521,6 +523,7 @@ export default function LotWizardTab({
     fd.append("brand",        brand)
     fd.append("notes",        parcel)
     fd.append("status",       "ENTERED")
+    photoFiles.forEach(p => fd.append("photo", p.file))
 
     start(async () => {
       await createLot(auctionId, fd)
@@ -535,6 +538,8 @@ export default function LotWizardTab({
       setBarcode(""); setKeyPoints("")
       setMainCat(pinnedMain); setSubCat(pinnedSub); setBrand("")
       setEstLow(""); setEstHigh(""); setCond1(""); setCond2(""); setParcel("")
+      photoFiles.forEach(p => URL.revokeObjectURL(p.preview))
+      setPhotoFiles([])
       setStep(1)
       onCreated()
     })
@@ -775,6 +780,47 @@ export default function LotWizardTab({
               <p><span className="text-gray-600">Condition:</span> {[cond1, cond2].filter(Boolean).join(" to ") || "—"}</p>
               <p><span className="text-gray-600">Parcel:</span> {parcel || "—"}</p>
             </div>
+          </div>
+        )}
+
+        {step === 8 && (
+          <div className="max-w-lg space-y-4">
+            <p className="text-xs text-gray-500">Add photos to this lot. You can skip this and add them later.</p>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={e => {
+                const files = Array.from(e.target.files ?? [])
+                setPhotoFiles(prev => [...prev, ...files.map(f => ({ file: f, preview: URL.createObjectURL(f) }))])
+                e.target.value = ""
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="w-full py-4 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex flex-col items-center gap-1"
+            >
+              <span className="text-2xl">📷</span>
+              <span className="text-sm font-medium">Take photo</span>
+            </button>
+            {photoFiles.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {photoFiles.map((p, i) => (
+                  <div key={i} className="relative aspect-square">
+                    <img src={p.preview} alt={`Photo ${i + 1}`} className="w-full h-full object-cover rounded-lg border border-gray-700" />
+                    <button type="button"
+                      onClick={() => setPhotoFiles(prev => { URL.revokeObjectURL(prev[i].preview); return prev.filter((_, j) => j !== i) })}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full text-white text-xs flex items-center justify-center">
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-gray-600">{photoFiles.length} photo{photoFiles.length !== 1 ? "s" : ""} added</p>
             {saveStatus && <p className="text-green-400 text-sm font-medium">{saveStatus}</p>}
           </div>
         )}
@@ -786,8 +832,8 @@ export default function LotWizardTab({
           className="px-5 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-300 text-sm rounded transition-colors disabled:opacity-30 hover:border-gray-500">
           ← Back
         </button>
-        <span className="text-xs text-gray-600">{step} / 7</span>
-        {step < 7 ? (
+        <span className="text-xs text-gray-600">{step} / 8</span>
+        {step < 8 ? (
           <button onClick={goNext}
             className="px-5 py-2 text-sm font-semibold rounded transition-colors"
             style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
@@ -797,7 +843,7 @@ export default function LotWizardTab({
           <button onClick={saveLot} disabled={pending}
             className="px-5 py-2 text-sm font-semibold rounded transition-colors disabled:opacity-50"
             style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
-            {pending ? "Saving…" : "Save Lot ✓"}
+            {pending ? "Saving…" : photoFiles.length > 0 ? "Save Lot ✓" : "Skip & Save ✓"}
           </button>
         )}
       </div>

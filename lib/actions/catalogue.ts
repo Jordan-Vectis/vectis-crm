@@ -52,7 +52,45 @@ export async function createLot(auctionId: string, formData: FormData) {
   const session = await requireCataloguer()
   const data = extractLotData(formData)
   const createdByName = session.user.name ?? session.user.email ?? "Unknown"
-  await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName } })
+
+  const photoFiles = formData.getAll("photo") as File[]
+  const imageUrls: string[] = []
+  for (let i = 0; i < photoFiles.length; i++) {
+    const f = photoFiles[i]
+    if (f && f.size > 0) {
+      const ext = f.name.split(".").pop() || "jpg"
+      const buf = Buffer.from(await f.arrayBuffer())
+      const key = await uploadBufferToR2(buf, `lot-photos/${auctionId}/${data.lotNumber || "lot"}-${Date.now()}-${i}.${ext}`, f.type || "image/jpeg")
+      imageUrls.push(key)
+    }
+  }
+
+  await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName, imageUrls } })
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+}
+
+export async function createPhotoOnlyLot(auctionId: string, formData: FormData) {
+  const session = await requireCataloguer()
+
+  const lotNumber   = (formData.get("lotNumber") as string)?.trim() || ""
+  const customerRef = (formData.get("customerRef") as string)?.trim() || null
+  const photoFiles  = formData.getAll("itemPhoto") as File[]
+
+  const imageUrls: string[] = []
+  for (let i = 0; i < photoFiles.length; i++) {
+    const f = photoFiles[i]
+    if (f && f.size > 0) {
+      const ext = f.name.split(".").pop() || "jpg"
+      const buf = Buffer.from(await f.arrayBuffer())
+      const key = await uploadBufferToR2(buf, `lot-photos/${auctionId}/${lotNumber}-${Date.now()}-${i}.${ext}`, f.type || "image/jpeg")
+      imageUrls.push(key)
+    }
+  }
+
+  const createdByName = session.user.name ?? session.user.email ?? "Unknown"
+  await prisma.catalogueLot.create({
+    data: { auctionId, lotNumber, title: "", description: "", vendor: customerRef || null, status: "ENTERED", imageUrls, createdByName },
+  })
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
