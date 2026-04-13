@@ -4,11 +4,13 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updateAuction, updateLot, deleteLot, deleteAuction } from "@/lib/actions/catalogue"
 import LotWizardTab from "./lot-wizard-tab"
+import PhotoOnlyTab from "./photo-only-tab"
+import LotPhotosTab from "./lot-photos-tab"
 import * as XLSX from "xlsx"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "settings" | "add-lot" | "manage-lots"
+type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "lot-photos"
 
 interface Auction {
   id: string; code: string; name: string; auctionDate: Date | null
@@ -22,7 +24,12 @@ interface Lot {
   hammerPrice: number | null; condition: string | null; vendor: string | null
   tote: string | null; receipt: string | null; category: string | null
   subCategory: string | null; brand: string | null; notes: string | null
-  status: string; createdByName: string | null
+  status: string; createdByName: string | null; imageUrls: string[]
+}
+
+interface PhotoSession {
+  id: string; lotBarcode: string | null; customerRef: string | null
+  itemPhotoKeys: string[]; status: string; createdByName: string | null; createdAt: string
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -48,7 +55,7 @@ const lbl   = "block text-xs font-medium text-gray-400 mb-1"
 
 // ─── Main tabbed component ────────────────────────────────────────────────────
 
-export default function AuctionTabs({ auction, lots }: { auction: Auction; lots: Lot[] }) {
+export default function AuctionTabs({ auction, lots, photoSessions }: { auction: Auction; lots: Lot[]; photoSessions: PhotoSession[] }) {
   const router = useRouter()
   const [tab, setTab]              = useState<Tab>("settings")
   const [editingLotId, setEditing] = useState<string | null>(null)
@@ -59,6 +66,8 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
     { id: "settings",     label: "Auction Settings" },
     { id: "add-lot",      label: "Add Lot" },
     { id: "manage-lots",  label: `Manage Lots (${lots.length})` },
+    { id: "lot-photos",   label: "Lot Photos" },
+    { id: "photo-only",   label: "Photo Only Cataloguing" },
   ]
 
   function switchTab(t: Tab) { setTab(t); setEditing(null) }
@@ -81,10 +90,10 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-gray-700 mb-6">
+      <div className="flex border-b border-gray-700 mb-6 overflow-x-auto scrollbar-none -mx-6 px-6">
         {tabs.map(t => (
           <button key={t.id} onClick={() => switchTab(t.id)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
               tab === t.id
                 ? "border-[#2AB4A6] text-[#2AB4A6]"
                 : "border-transparent text-gray-500 hover:text-gray-300"
@@ -109,6 +118,17 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
           : <ManageLotsTab lots={lots} auctionId={auction.id} auction={auction}
               onEdit={setEditing}
               onDelete={() => router.refresh()} />
+      )}
+
+      {tab === "lot-photos" && (
+        <LotPhotosTab
+          auctionId={auction.id}
+          lots={lots.map(l => ({ id: l.id, lotNumber: l.lotNumber, title: l.title, imageUrls: l.imageUrls }))}
+        />
+      )}
+
+      {tab === "photo-only" && (
+        <PhotoOnlyTab auctionId={auction.id} initialSessions={photoSessions} />
       )}
     </div>
   )

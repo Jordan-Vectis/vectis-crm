@@ -224,6 +224,7 @@ model CatalogueAuction {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   lots        CatalogueLot[]
+  photoSessions CataloguePhotoSession[]
 }
 
 model CatalogueLot {
@@ -251,6 +252,21 @@ model CatalogueLot {
 
   auctionId    String
   auction      CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+}
+
+model CataloguePhotoSession {
+  id              String           @id @default(cuid())
+  auctionId       String
+  auction         CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  lotBarcode      String?
+  customerRef     String?
+  barcodePhotoKey String?
+  itemPhotoKeys   String[]         @default([])
+  notes           String?
+  status          String           @default("PENDING")
+  createdById     String
+  createdByName   String?
+  createdAt       DateTime         @default(now())
 }
 
 model AppCard {

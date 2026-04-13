@@ -29,6 +29,22 @@ export async function uploadToR2(
   return key
 }
 
+export async function uploadBufferToR2(
+  buffer: Buffer,
+  key: string,
+  contentType: string
+): Promise<string> {
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: process.env.CLOUDFLARE_R2_BUCKET!,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    })
+  )
+  return key
+}
+
 export async function getSignedImageUrl(key: string): Promise<string> {
   const command = new GetObjectCommand({
     Bucket: process.env.CLOUDFLARE_R2_BUCKET!,

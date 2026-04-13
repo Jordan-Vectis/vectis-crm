@@ -15,12 +15,16 @@ export default async function AuctionDetailPage({
 
   const { id } = await params
 
-  const auction = await prisma.catalogueAuction.findUnique({
-    where: { id },
-    include: {
-      lots: { orderBy: { lotNumber: "asc" } },
-    },
-  })
+  const [auction, photoSessions] = await Promise.all([
+    prisma.catalogueAuction.findUnique({
+      where: { id },
+      include: { lots: { orderBy: { lotNumber: "asc" } } },
+    }),
+    prisma.cataloguePhotoSession.findMany({
+      where: { auctionId: id },
+      orderBy: { createdAt: "desc" },
+    }),
+  ])
 
   if (!auction) notFound()
 
@@ -57,6 +61,16 @@ export default async function AuctionDetailPage({
         notes: l.notes,
         status: l.status,
         createdByName: l.createdByName,
+        imageUrls: l.imageUrls,
+      }))}
+      photoSessions={photoSessions.map(s => ({
+        id: s.id,
+        lotBarcode: s.lotBarcode,
+        customerRef: s.customerRef,
+        itemPhotoKeys: s.itemPhotoKeys,
+        status: s.status,
+        createdByName: s.createdByName,
+        createdAt: s.createdAt.toISOString(),
       }))}
     />
   )
