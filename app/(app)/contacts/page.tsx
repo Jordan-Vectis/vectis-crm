@@ -275,10 +275,10 @@ export default function ContactsPage() {
 
       {/* ── Detail Overlay ── */}
       {overlay && editForm && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(0,0,0,0.6)" }} onClick={closeOverlay}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={closeOverlay}>
           <div
-            className="absolute inset-x-0 bottom-0 bg-white rounded-t-2xl shadow-2xl flex flex-col"
-            style={{ maxHeight: "90vh" }}
+            className="bg-white rounded-2xl shadow-2xl flex flex-col w-full"
+            style={{ height: "92vh", maxWidth: "1100px" }}
             onClick={e => e.stopPropagation()}
           >
             {/* Overlay header */}
