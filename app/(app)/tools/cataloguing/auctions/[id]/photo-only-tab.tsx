@@ -14,8 +14,9 @@ interface Props {
 export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Props) {
   const [phase, setPhase]           = useState<Phase>("scan")
   const [lotBarcode, setLotBarcode] = useState("")
-  const [customerRef, setCustomerRef] = useState("")
-  const [scanTarget, setScanTarget] = useState<"lot" | "ref">("lot")
+  const [toteNumber, setToteNumber] = useState("")
+  const [totePinned, setTotePinned] = useState(false)
+  const [scanTarget, setScanTarget] = useState<"lot" | "tote">("lot")
   const [scanning, setScanning]     = useState(false)
   const [scanError, setScanError]   = useState<string | null>(null)
   const [itemPhotos, setItemPhotos] = useState<{ file: File; preview: string }[]>([])
@@ -44,7 +45,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
           if (result) {
             const text = result.getText()
             if (target === "lot") setLotBarcode(text)
-            else setCustomerRef(text)
+            else setToteNumber(text)
             controls.stop()
             controlsRef.current = null
             setScanning(false)
@@ -86,7 +87,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
 
     const fd = new FormData()
     fd.set("lotNumber", lotBarcode.trim())
-    if (customerRef.trim()) fd.set("customerRef", customerRef.trim())
+    if (toteNumber.trim()) fd.set("tote", toteNumber.trim())
     itemPhotos.forEach(p => fd.append("itemPhoto", p.file))
 
     start(async () => {
@@ -94,11 +95,11 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
         await createPhotoOnlyLot(auctionId, fd)
         setSavedCount(n => n + 1)
         onCreated()
-        // Reset for next lot
+        // Reset for next lot — keep tote if pinned
         itemPhotos.forEach(p => URL.revokeObjectURL(p.preview))
         setItemPhotos([])
         setLotBarcode("")
-        setCustomerRef("")
+        if (!totePinned) setToteNumber("")
         setPhase("scan")
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to save lot")
@@ -147,7 +148,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
                 </button>
               </div>
             </div>
-            <p className="text-xs text-gray-500 text-center mt-1 animate-pulse">Scanning for {scanTarget === "lot" ? "lot barcode" : "customer/receipt ref"}…</p>
+            <p className="text-xs text-gray-500 text-center mt-1 animate-pulse">Scanning for {scanTarget === "lot" ? "lot barcode" : "tote number"}…</p>
           </div>
 
           {/* Lot barcode */}
@@ -172,23 +173,35 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
             </div>
           )}
 
-          {/* Customer / Receipt ref (optional) */}
+          {/* Tote number (optional, pinnable) */}
           {!scanning && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-gray-400">Customer / Receipt Ref <span className="text-gray-600">(optional)</span></label>
-                <button onClick={() => startScan("ref")}
-                  className="flex items-center gap-1 text-xs text-[#2AB4A6] hover:text-[#24a090] transition-colors">
-                  📷 {customerRef ? "Re-scan" : "Scan"}
-                </button>
+                <label className="text-xs font-medium text-gray-400">Tote Number <span className="text-gray-600">(optional)</span></label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setTotePinned(p => !p)}
+                    className={`text-xs px-2 py-0.5 rounded border transition-colors ${totePinned ? "border-[#2AB4A6] text-[#2AB4A6]" : "border-gray-700 text-gray-500 hover:border-gray-500"}`}
+                  >
+                    {totePinned ? "📌 Pinned" : "Pin"}
+                  </button>
+                  <button onClick={() => startScan("tote")}
+                    className="flex items-center gap-1 text-xs text-[#2AB4A6] hover:text-[#24a090] transition-colors">
+                    📷 {toteNumber ? "Re-scan" : "Scan"}
+                  </button>
+                </div>
               </div>
               <input
-                value={customerRef}
-                onChange={e => setCustomerRef(e.target.value)}
-                placeholder="e.g. C000123"
+                value={toteNumber}
+                onChange={e => setToteNumber(e.target.value)}
+                placeholder="e.g. T-1234"
                 className="w-full rounded-lg border border-gray-700 bg-[#2C2C2E] px-3 py-3 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6] font-mono"
               />
-              {customerRef && <p className="text-xs text-[#2AB4A6] mt-1">✓ {customerRef}</p>}
+              {toteNumber && (
+                <p className="text-xs mt-1" style={{ color: "#2AB4A6" }}>
+                  ✓ {toteNumber}{totePinned && " · pinned for next lot"}
+                </p>
+              )}
             </div>
           )}
 
@@ -210,7 +223,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
           <div className="bg-[#1C1C1E] rounded-lg border border-gray-800 px-4 py-3 text-sm">
             <span className="text-gray-500">Lot: </span>
             <span className="text-gray-200 font-mono">{lotBarcode}</span>
-            {customerRef && <><span className="text-gray-600 mx-2">·</span><span className="text-gray-400 font-mono">{customerRef}</span></>}
+            {toteNumber && <><span className="text-gray-600 mx-2">·</span><span className="text-gray-500">Tote: </span><span className="text-gray-400 font-mono">{toteNumber}</span></>}
           </div>
 
           <input ref={photoRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleItemPhoto} />

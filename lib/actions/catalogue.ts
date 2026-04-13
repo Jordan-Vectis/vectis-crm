@@ -72,9 +72,9 @@ export async function createLot(auctionId: string, formData: FormData) {
 export async function createPhotoOnlyLot(auctionId: string, formData: FormData) {
   const session = await requireCataloguer()
 
-  const lotNumber   = (formData.get("lotNumber") as string)?.trim() || ""
-  const customerRef = (formData.get("customerRef") as string)?.trim() || null
-  const photoFiles  = formData.getAll("itemPhoto") as File[]
+  const lotNumber  = (formData.get("lotNumber") as string)?.trim() || ""
+  const toteNumber = (formData.get("tote") as string)?.trim() || null
+  const photoFiles = formData.getAll("itemPhoto") as File[]
 
   const imageUrls: string[] = []
   for (let i = 0; i < photoFiles.length; i++) {
@@ -89,7 +89,7 @@ export async function createPhotoOnlyLot(auctionId: string, formData: FormData) 
 
   const createdByName = session.user.name ?? session.user.email ?? "Unknown"
   await prisma.catalogueLot.create({
-    data: { auctionId, lotNumber, title: "", description: "", vendor: customerRef || null, status: "ENTERED", imageUrls, createdByName },
+    data: { auctionId, lotNumber, title: "", description: "", tote: toteNumber || null, status: "ENTERED", imageUrls, createdByName },
   })
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
@@ -161,6 +161,53 @@ export async function createPhotoSession(formData: FormData) {
     createdByName: record.createdByName,
     createdAt: record.createdAt.toISOString(),
   }
+}
+
+export async function fillLotsFromTotes(auctionId: string) {
+  await requireCataloguer()
+
+  const lots = await prisma.catalogueLot.findMany({
+    where: { auctionId, tote: { not: null } },
+    select: { id: true, tote: true, vendor: true, receipt: true },
+  })
+
+  if (lots.length === 0) return { updated: 0 }
+
+  const toteIds = [...new Set(lots.map(l => l.tote!).filter(Boolean))]
+
+  const toteMap = new Map<string, { vendor: string; receipt: string }>()
+  for (const toteId of toteIds) {
+    const container = await prisma.warehouseContainer.findUnique({
+      where: { id: toteId },
+      include: { receipt: true },
+    })
+    if (container) {
+      toteMap.set(toteId, {
+        vendor: container.receipt.contactId,
+        receipt: container.receiptId,
+      })
+    }
+  }
+
+  let updated = 0
+  for (const lot of lots) {
+    if (!lot.tote) continue
+    const info = toteMap.get(lot.tote)
+    if (!info) continue
+    if (!lot.vendor || !lot.receipt) {
+      await prisma.catalogueLot.update({
+        where: { id: lot.id },
+        data: {
+          vendor:  lot.vendor  || info.vendor,
+          receipt: lot.receipt || info.receipt,
+        },
+      })
+      updated++
+    }
+  }
+
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+  return { updated }
 }
 
 export async function uploadLotPhoto(lotId: string, auctionId: string, formData: FormData) {

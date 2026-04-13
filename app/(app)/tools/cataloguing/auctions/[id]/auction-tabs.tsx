@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes } from "@/lib/actions/catalogue"
 import LotWizardTab from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import * as XLSX from "xlsx"
@@ -245,8 +245,10 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   onEdit: (id: string) => void
   onDelete: () => void
 }) {
-  const [deleting, setDeleting] = useState<string | null>(null)
-  const [pending, start] = useTransition()
+  const [deleting, setDeleting]     = useState<string | null>(null)
+  const [pending, start]            = useTransition()
+  const [fillPending, startFill]    = useTransition()
+  const [fillMsg, setFillMsg]       = useState<string | null>(null)
 
   function exportExcel() {
     const rows = lots.map(l => ({
@@ -294,7 +296,25 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
 
   return (
     <div>
-      <div className="flex justify-end mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setFillMsg(null)
+              startFill(async () => {
+                const result = await fillLotsFromTotes(auctionId)
+                setFillMsg(result.updated > 0 ? `✓ Updated ${result.updated} lot${result.updated !== 1 ? "s" : ""}` : "No lots needed updating")
+                setTimeout(() => setFillMsg(null), 3000)
+                onDelete() // triggers router.refresh()
+              })
+            }}
+            disabled={fillPending}
+            className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-[#2AB4A6] hover:text-[#2AB4A6] transition-colors disabled:opacity-50"
+          >
+            {fillPending ? "Pulling…" : "⟳ Pull Vendor/Receipt from Totes"}
+          </button>
+          {fillMsg && <span className="text-xs text-[#2AB4A6]">{fillMsg}</span>}
+        </div>
         <button onClick={exportExcel}
           className="px-4 py-1.5 text-sm font-medium rounded-lg border border-[#2AB4A6] text-[#2AB4A6] hover:bg-[#2AB4A6] hover:text-black transition-colors">
           ⬇ Export to Excel
