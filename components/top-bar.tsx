@@ -6,9 +6,10 @@ import { signOut } from "next-auth/react"
 
 interface TopBarProps {
   userName: string
+  userRole?: string
 }
 
-export default function TopBar({ userName }: TopBarProps) {
+export default function TopBar({ userName, userRole }: TopBarProps) {
   const router = useRouter()
 
   return (
@@ -38,6 +39,11 @@ export default function TopBar({ userName }: TopBarProps) {
 
       <div className="flex items-center gap-4">
         <span className="text-gray-400 text-xs hidden sm:block">{userName}</span>
+        {userRole === "ADMIN" && (
+          <Link href="/admin/users" className="text-gray-400 hover:text-white text-sm transition-colors">
+            Admin
+          </Link>
+        )}
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
           className="text-gray-400 hover:text-white text-sm transition-colors"
