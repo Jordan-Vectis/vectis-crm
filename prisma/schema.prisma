@@ -89,6 +89,8 @@ model Contact {
   addressLine2 String?
   postcode     String?
   notes        String?
+  isSeller     Boolean  @default(false)
+  isBuyer      Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

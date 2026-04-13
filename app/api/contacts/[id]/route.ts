@@ -36,6 +36,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         addressLine2: body.addressLine2 ?? undefined,
         postcode: body.postcode ?? undefined,
         notes: body.notes ?? undefined,
+        isSeller: body.isSeller ?? undefined,
+        isBuyer: body.isBuyer ?? undefined,
       },
     })
     return NextResponse.json(contact)
