@@ -436,6 +436,20 @@ export default function LotWizardTab({
   const [saveStatus,  setSaveStatus]  = useState("")
   const [lotCount,    setLotCount]    = useState(0)
   const [validErr,    setValidErr]    = useState("")
+  const [toteInfo,    setToteInfo]    = useState<{ customer_id: string; customer_name: string; receipt_id: string } | null>(null)
+  const [toteLookupErr, setToteLookupErr] = useState("")
+
+  async function lookupTote(id: string) {
+    const val = id.trim()
+    if (!val) { setToteInfo(null); setToteLookupErr(""); return }
+    const res = await fetch(`/api/warehouse/containers/${encodeURIComponent(val)}`)
+    if (!res.ok) { setToteInfo(null); setToteLookupErr("Tote not found"); return }
+    const data = await res.json()
+    setToteInfo(data)
+    setToteLookupErr("")
+    if (!vendor) setVendor(data.customer_id)
+    if (!receipt) setReceipt(data.receipt_id)
+  }
 
   const subCats     = mainCat ? (CATEGORY_MAP[mainCat] ?? []) : []
   const mainCatList = Object.keys(CATEGORY_MAP).sort()
@@ -565,9 +579,21 @@ export default function LotWizardTab({
                 <PinBtn pinned={pinnedTote === tote && !!tote} onPin={() => setPinnedTote(v => v === tote ? "" : tote)} />
               </div>
               <div className="flex gap-2">
-                <input value={tote} onChange={e => setTote(e.target.value)} className={`flex-1 ${inpFocus}`} placeholder="e.g. T001" />
-                {tote && <button type="button" onClick={() => setTote("")} className="px-3 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
+                <input
+                  value={tote}
+                  onChange={e => { setTote(e.target.value); setToteInfo(null); setToteLookupErr("") }}
+                  onBlur={e => lookupTote(e.target.value)}
+                  className={`flex-1 ${inpFocus}`}
+                  placeholder="e.g. t000042"
+                />
+                {tote && <button type="button" onClick={() => { setTote(""); setToteInfo(null); setToteLookupErr("") }} className="px-3 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
               </div>
+              {toteInfo && (
+                <p className="text-xs text-[#2AB4A6] mt-1">
+                  {toteInfo.customer_name} <span className="text-gray-500">({toteInfo.customer_id})</span> · {toteInfo.receipt_id}
+                </p>
+              )}
+              {toteLookupErr && <p className="text-xs text-red-400 mt-1">{toteLookupErr}</p>}
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">

@@ -100,6 +100,9 @@ function ContainerRow({ container, receipt, customer, onUpdated }: { container: 
         <span className="font-mono font-bold text-sm">{container.id}</span>
         <div className="flex items-center gap-1">
           <span className="wh-badge wh-badge-blue capitalize">{container.type}</span>
+          {container.lot_count > 0 && (
+            <span className="wh-badge wh-badge-green">{container.lot_count} lot{container.lot_count !== 1 ? "s" : ""}</span>
+          )}
           <button className="wh-btn-secondary wh-btn-sm" onClick={() => setEditing(true)}>Edit</button>
           <PrintLabel container={container} receipt={receipt} customer={customer} />
         </div>
