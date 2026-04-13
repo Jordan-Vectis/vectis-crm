@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vectis CRM",
-  description: "Vectis Collections Team CRM",
+  title: "Vectis Hub",
+  description: "Vectis Hub — Internal Platform",
 };
 
 export default function RootLayout({

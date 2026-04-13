@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import Logo from "@/components/logo"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -36,9 +37,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Vectis</h1>
-          <p className="text-sm text-gray-500 mt-1">Internal Platform</p>
+        <div className="flex flex-col items-center mb-8 gap-3">
+          <Logo variant="icon" />
+          <div className="text-center">
+            <p className="text-gray-900 font-bold text-2xl tracking-tight">Vectis Hub</p>
+            <p className="text-gray-500 text-sm mt-0.5">Internal Platform</p>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">

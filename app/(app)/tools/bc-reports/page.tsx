@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import Logo from "@/components/logo"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   LabelList, ResponsiveContainer, Cell,
@@ -607,8 +608,8 @@ export default function BCReportsPage() {
       <aside className="w-44 bg-[#0b0d14] border-r border-gray-800 flex flex-col flex-shrink-0">
         {/* Logo */}
         <div className="px-4 py-5 border-b border-gray-800">
-          <p className="text-white font-bold text-base">Vectis</p>
-          <p className="text-gray-600 text-xs mt-0.5">BC Reports</p>
+          <Logo variant="compact" />
+          <p className="text-gray-600 text-xs mt-1">BC Reports</p>
         </div>
 
         {/* Reports nav */}

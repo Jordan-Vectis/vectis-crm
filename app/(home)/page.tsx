@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { hasAppAccess } from "@/lib/apps"
 import { APP_CARD_DEFS } from "@/lib/app-cards"
+import Logo from "@/components/logo"
 import UserMenu from "./user-menu"
 
 export default async function HomePage() {
@@ -48,8 +49,8 @@ export default async function HomePage() {
     <div className="relative min-h-screen bg-[#111318] flex flex-col items-center px-6 py-16">
       <UserMenu name={fullName} />
 
-      <div className="text-center mb-14">
-        <h1 className="text-4xl font-bold text-white tracking-tight mb-2">Vectis</h1>
+      <div className="flex flex-col items-center mb-14 gap-4">
+        <Logo variant="full" />
         <p className="text-gray-400 text-base">
           Welcome back, {name} — select an app to get started
         </p>
