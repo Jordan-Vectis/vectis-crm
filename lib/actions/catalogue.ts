@@ -74,6 +74,7 @@ export async function createPhotoOnlyLot(auctionId: string, formData: FormData) 
 
   const lotNumber  = (formData.get("lotNumber") as string)?.trim() || ""
   const toteNumber = (formData.get("tote") as string)?.trim() || null
+  const notes      = (formData.get("notes") as string)?.trim() || null
   const photoFiles = formData.getAll("itemPhoto") as File[]
 
   const imageUrls: string[] = []
@@ -89,7 +90,7 @@ export async function createPhotoOnlyLot(auctionId: string, formData: FormData) 
 
   const createdByName = session.user.name ?? session.user.email ?? "Unknown"
   await prisma.catalogueLot.create({
-    data: { auctionId, lotNumber, title: "", description: "", tote: toteNumber || null, status: "ENTERED", imageUrls, createdByName },
+    data: { auctionId, lotNumber, title: "", description: "", tote: toteNumber || null, notes, status: "ENTERED", imageUrls, createdByName },
   })
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }

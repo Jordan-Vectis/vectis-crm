@@ -20,6 +20,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
   const [scanning, setScanning]     = useState(false)
   const [scanError, setScanError]   = useState<string | null>(null)
   const [itemPhotos, setItemPhotos] = useState<{ file: File; preview: string }[]>([])
+  const [notes, setNotes]           = useState("")
   const [error, setError]           = useState<string | null>(null)
   const [pending, start]            = useTransition()
   const [savedCount, setSavedCount] = useState(0)
@@ -88,6 +89,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
     const fd = new FormData()
     fd.set("lotNumber", lotBarcode.trim())
     if (toteNumber.trim()) fd.set("tote", toteNumber.trim())
+    if (notes.trim()) fd.set("notes", notes.trim())
     itemPhotos.forEach(p => fd.append("itemPhoto", p.file))
 
     start(async () => {
@@ -99,6 +101,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
         itemPhotos.forEach(p => URL.revokeObjectURL(p.preview))
         setItemPhotos([])
         setLotBarcode("")
+        setNotes("")
         if (!totePinned) setToteNumber("")
         setPhase("scan")
       } catch (e) {
@@ -250,6 +253,17 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
           )}
 
           <p className="text-xs text-gray-600">{itemPhotos.length} photo{itemPhotos.length !== 1 ? "s" : ""} taken</p>
+
+          <div>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Notes <span className="text-gray-600">(optional)</span></label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Any notes about this lot…"
+              rows={2}
+              className="w-full rounded-lg border border-gray-700 bg-[#2C2C2E] px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6] resize-none"
+            />
+          </div>
 
           {error && <p className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
 
