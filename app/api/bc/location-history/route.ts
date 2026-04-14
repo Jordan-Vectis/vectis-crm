@@ -46,7 +46,8 @@ export async function GET(req: NextRequest) {
     if (!field1) return NextResponse.json({ error: "Could not determine primary key" }, { status: 404 })
 
     // Fetch all location change entries for this item
-    let filter = `Primary_Key_Field_1_Value eq '${field1}' and Field_Caption eq 'Article Location Code'`
+    const fieldCaption = mode === "tote" ? "Location" : "Article Location Code"
+    let filter = `Primary_Key_Field_1_Value eq '${field1}' and Field_Caption eq '${fieldCaption}'`
     if (field2) filter += ` and Primary_Key_Field_2_Value eq '${field2}'`
 
     const rows = await bcFetchAll(token, "ChangeLogEntries", filter, SELECT, 500)
