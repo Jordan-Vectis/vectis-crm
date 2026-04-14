@@ -330,18 +330,14 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       let fetched = 0
 
       for (const lot of lotsWithPhotos) {
-        const folderName = `${lot.lotNumber}${lot.title ? "_" + lot.title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 40) : ""}`
-        const folder = zip.folder(folderName)!
+        const folder = zip.folder(lot.lotNumber)!
 
         for (let i = 0; i < lot.imageUrls.length; i++) {
           const key = lot.imageUrls[i]
           try {
-            const signedRes = await fetch(`/api/catalogue/signed-url?key=${encodeURIComponent(key)}`)
-            if (!signedRes.ok) continue
-            const { url } = await signedRes.json()
-            const imgRes = await fetch(url)
-            if (!imgRes.ok) continue
-            const blob = await imgRes.blob()
+            const res = await fetch(`/api/catalogue/photo-proxy?key=${encodeURIComponent(key)}`)
+            if (!res.ok) continue
+            const blob = await res.blob()
             const ext  = key.split(".").pop() ?? "jpg"
             folder.file(`photo_${i + 1}.${ext}`, blob)
           } catch { /* skip failed images */ }
