@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { io as ioClient } from "socket.io-client"
 import Image from "next/image"
 import Link from "next/link"
+import { lotPhotoUrl } from "@/lib/photo-url"
 
 interface LotInfo {
   id: string
@@ -90,7 +91,8 @@ export default function LiveAuctionBanner({ auctionName, auctionCode, lots: init
 
   // Fallback to initial lot at currentLotIndex if socket not yet connected
   const fallbackLot = initialLots[0] ?? null
-  const displayImg = lot?.imageUrls?.[0] ?? fallbackLot?.imageUrls[0] ?? null
+  const rawImg = lot?.imageUrls?.[0] ?? fallbackLot?.imageUrls[0] ?? null
+  const displayImg = lotPhotoUrl(rawImg, true)
   const displayTitle = lot?.title ?? fallbackLot?.title ?? "Loading..."
   const displayLotNum = lot?.lotNumber ?? fallbackLot?.lotNumber ?? "—"
   const totalLots = auction?.totalLots ?? initialLots.length

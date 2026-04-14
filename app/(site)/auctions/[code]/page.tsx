@@ -3,6 +3,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { prisma } from "@/lib/prisma"
 import { format } from "date-fns"
+import { lotPhotoUrl } from "@/lib/photo-url"
 
 const TYPE_LABELS: Record<string, string> = {
   GENERAL: "General Auction", DIECAST: "Diecast", TRAINS: "Trains",
@@ -53,7 +54,7 @@ export default async function AuctionDetailPage({
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const lots = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
-  const heroImg = auction.lots.find(l => l.imageUrls.length > 0)?.imageUrls[0] ?? null
+  const heroImg = lotPhotoUrl(auction.lots.find(l => l.imageUrls.length > 0)?.imageUrls[0], true)
 
   return (
     <div>
@@ -181,7 +182,7 @@ function LotCard({ lot }: {
     imageUrls: string[]; status: string
   }
 }) {
-  const img = lot.imageUrls[0] ?? null
+  const img = lotPhotoUrl(lot.imageUrls[0], true)
   const sold = lot.status === "SOLD"
 
   return (

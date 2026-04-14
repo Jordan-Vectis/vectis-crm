@@ -3,6 +3,7 @@ import Image from "next/image"
 import { prisma } from "@/lib/prisma"
 import { format } from "date-fns"
 import LiveAuctionBanner from "./live-auction-banner"
+import { lotPhotoUrl } from "@/lib/photo-url"
 
 export const metadata = { title: "Auction Calendar — Vectis" }
 export const dynamic = "force-dynamic"

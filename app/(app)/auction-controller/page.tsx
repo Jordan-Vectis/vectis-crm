@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { io as ioClient, Socket } from "socket.io-client"
+import { lotPhotoUrl } from "@/lib/photo-url"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AuctionMeta {
@@ -253,7 +254,7 @@ export default function AuctionControllerPage() {
             <div className="w-24 h-24 shrink-0 rounded-lg bg-[#0d1117] border border-white/10 overflow-hidden flex items-center justify-center">
               {currentLot?.imageUrls?.[0] ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={currentLot.imageUrls[0]} alt="" className="w-full h-full object-cover" />
+                <img src={lotPhotoUrl(currentLot.imageUrls[0]) ?? ""} alt="" className="w-full h-full object-cover" />
               ) : (
                 <span className="text-slate-600 text-2xl font-black">{currentLot?.lotNumber ?? "—"}</span>
               )}
