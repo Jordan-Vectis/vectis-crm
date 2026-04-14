@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma"
 import DatabasesClient from "./databases-client"
 
 export default async function DatabasesPage() {
-  const [contacts, receipts, containers, lots] = await Promise.all([
+  const [contacts, receipts, containers, lots, auctions, locations] = await Promise.all([
     prisma.contact.findMany({
       orderBy: { name: "asc" },
       take: 3000,
@@ -21,9 +21,17 @@ export default async function DatabasesPage() {
       take: 3000,
     }),
     prisma.catalogueLot.findMany({
-      include: { auction: { select: { code: true, name: true } } },
+      include: { auction: { select: { id: true, code: true, name: true } } },
       orderBy: { createdAt: "desc" },
       take: 5000,
+    }),
+    prisma.catalogueAuction.findMany({
+      orderBy: { createdAt: "desc" },
+      select: { id: true, code: true, name: true },
+    }),
+    prisma.warehouseLocation.findMany({
+      orderBy: { code: "asc" },
+      select: { code: true },
     }),
   ])
 
@@ -48,13 +56,19 @@ export default async function DatabasesPage() {
       }))}
       lots={lots.map(l => ({
         id: l.id, lotNumber: l.lotNumber, title: l.title,
-        auctionCode: l.auction.code, auctionName: l.auction.name,
+        description: l.description ?? "",
+        auctionId: l.auctionId, auctionCode: l.auction.code, auctionName: l.auction.name,
         vendor: l.vendor ?? null, receipt: l.receipt ?? null,
         tote: l.tote ?? null, category: l.category ?? null,
         subCategory: l.subCategory ?? null, status: l.status,
+        condition: l.condition ?? null, notes: l.notes ?? null,
+        brand: l.brand ?? null,
         estimateLow: l.estimateLow ?? null, estimateHigh: l.estimateHigh ?? null,
+        reserve: l.reserve ?? null, hammerPrice: l.hammerPrice ?? null,
         imageCount: l.imageUrls.length,
       }))}
+      auctions={auctions}
+      locations={locations.map(l => l.code)}
     />
   )
 }
