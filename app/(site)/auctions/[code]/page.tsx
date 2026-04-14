@@ -33,8 +33,10 @@ export default async function AuctionDetailPage({
 
   const auction = await prisma.catalogueAuction.findFirst({
     where: { code: code.toUpperCase(), published: true },
-    include: { lots: { orderBy: { lotNumber: "asc" } } },
+    include: { lots: { orderBy: { lotNumber: "asc" } }, liveAuction: true },
   })
+
+  const isLive = !!auction?.liveAuction && ["ACTIVE", "PAUSED"].includes(auction.liveAuction.status)
 
   if (!auction) notFound()
 
@@ -73,7 +75,7 @@ export default async function AuctionDetailPage({
             <span className="text-white uppercase tracking-wider font-semibold">{auction.name}</span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-black text-white mb-1">{auction.name}</h1>
-          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-300">
+          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-300 mb-4">
             {auction.auctionDate && (
               <span>{format(new Date(auction.auctionDate), "EEEE do MMMM yyyy")}</span>
             )}
@@ -81,6 +83,15 @@ export default async function AuctionDetailPage({
             <span>{auction.lots.length} lots</span>
             {auction.finished && <span className="text-amber-400 font-semibold">Auction Ended</span>}
           </div>
+          {isLive && (
+            <Link
+              href={`/auctions/${auction.code}/live`}
+              className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white font-black text-sm px-6 py-3 uppercase tracking-widest transition-colors"
+            >
+              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              BID LIVE NOW
+            </Link>
+          )}
         </div>
       </div>
 

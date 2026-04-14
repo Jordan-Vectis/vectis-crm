@@ -61,6 +61,7 @@ export default async function AuctionsPage({
           auctionId={liveAuction.auction.id}
           auctionName={liveAuction.auction.name}
           auctionCode={liveAuction.auction.code}
+          auctionDate={liveAuction.auction.auctionDate}
           currentLotIndex={liveAuction.currentLotIndex}
           status={liveAuction.status}
           lots={liveAuction.auction.lots.map(l => ({
