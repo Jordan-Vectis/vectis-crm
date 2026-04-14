@@ -318,6 +318,24 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
     XLSX.writeFile(wb, `${auction.code}_${auction.name}_lots.xlsx`.replace(/\s+/g, "_"))
   }
 
+  function exportForAHK() {
+    // Group filtered lots by tote, count per tote, skip lots with no tote
+    const counts = new Map<string, number>()
+    for (const l of filtered) {
+      if (!l.tote?.trim()) continue
+      counts.set(l.tote.trim(), (counts.get(l.tote.trim()) ?? 0) + 1)
+    }
+    if (counts.size === 0) { alert("No lots with tote numbers in current filter."); return }
+    const lines = ["ToteNumber,LotCount", ...Array.from(counts.entries()).map(([t, c]) => `${t},${c}`)]
+    const blob = new Blob([lines.join("\r\n")], { type: "text/csv" })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement("a")
+    a.href     = url
+    a.download = `${auction.code}_bc_import.csv`.replace(/\s+/g, "_")
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function exportPhotos() {
     const lotsWithPhotos = filtered.filter(l => l.imageUrls.length > 0)
     if (lotsWithPhotos.length === 0) { setPhotoMsg("No photos to export"); setTimeout(() => setPhotoMsg(null), 3000); return }
@@ -411,6 +429,10 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
               <button onClick={clearFilters} className="ml-2 text-[#2AB4A6] hover:underline">clear</button>
             </span>
           )}
+          <button onClick={exportForAHK}
+            className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-purple-400 hover:text-purple-400 transition-colors">
+            ⬇ Export for BC Macro
+          </button>
           <button onClick={exportPhotos} disabled={photoExporting}
             className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-[#2AB4A6] hover:text-[#2AB4A6] transition-colors disabled:opacity-50">
             {photoExporting ? "⏳ Exporting…" : "📷 Export Photos (.zip)"}
