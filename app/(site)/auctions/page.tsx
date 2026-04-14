@@ -2,8 +2,10 @@ import Link from "next/link"
 import Image from "next/image"
 import { prisma } from "@/lib/prisma"
 import { format } from "date-fns"
+import LiveAuctionBanner from "./live-auction-banner"
 
 export const metadata = { title: "Auction Calendar — Vectis" }
+export const dynamic = "force-dynamic"
 
 const TYPE_LABELS: Record<string, string> = {
   GENERAL: "General Auction", DIECAST: "Diecast", TRAINS: "Trains",
@@ -17,6 +19,12 @@ export default async function AuctionsPage({
   searchParams: Promise<{ search?: string; filter?: string }>
 }) {
   const { search, filter } = await searchParams
+
+  // Check for active live auction
+  const liveAuction = await prisma.liveAuction.findFirst({
+    where: { status: { in: ["ACTIVE", "PAUSED"] } },
+    include: { auction: { include: { lots: { orderBy: { lotNumber: "asc" } } } } },
+  })
 
   const allPublished = await prisma.catalogueAuction.findMany({
     where: { published: true },
@@ -46,13 +54,34 @@ export default async function AuctionsPage({
 
   return (
     <div>
+      {/* ── Live Auction Takeover ── */}
+      {liveAuction && (
+        <LiveAuctionBanner
+          auctionId={liveAuction.auction.id}
+          auctionName={liveAuction.auction.name}
+          auctionCode={liveAuction.auction.code}
+          currentLotIndex={liveAuction.currentLotIndex}
+          status={liveAuction.status}
+          lots={liveAuction.auction.lots.map(l => ({
+            id: l.id,
+            lotNumber: l.lotNumber,
+            title: l.title,
+            imageUrls: l.imageUrls,
+            estimateLow: l.estimateLow,
+            estimateHigh: l.estimateHigh,
+          }))}
+        />
+      )}
+
       {/* ── Announcement bar ── */}
-      <div className="bg-[#e8edf5] border-b border-blue-200 text-center text-xs text-[#1e3058] font-medium py-2 px-4 tracking-wide">
-        Register now to bid in our upcoming specialist auctions — online &amp; telephone bidding available
-      </div>
+      {!liveAuction && (
+        <div className="bg-[#e8edf5] border-b border-blue-200 text-center text-xs text-[#1e3058] font-medium py-2 px-4 tracking-wide">
+          Register now to bid in our upcoming specialist auctions — online &amp; telephone bidding available
+        </div>
+      )}
 
       {/* ── Hero banner ── */}
-      {featured && (
+      {featured && !liveAuction && (
         <div className="relative bg-[#1e3058] overflow-hidden" style={{ height: "480px" }}>
           {/* Background image */}
           {featured.lots[0]?.imageUrls[0] ? (

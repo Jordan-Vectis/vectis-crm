@@ -240,6 +240,17 @@ model CatalogueAuction {
   updatedAt   DateTime       @updatedAt
   lots        CatalogueLot[]
   photoSessions CataloguePhotoSession[]
+  liveAuction LiveAuction?
+}
+
+model LiveAuction {
+  id              String           @id @default(cuid())
+  auctionId       String           @unique
+  auction         CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  status          String           @default("PENDING") // PENDING | ACTIVE | PAUSED | COMPLETE
+  currentLotIndex Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model CatalogueLot {

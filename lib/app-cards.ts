@@ -162,4 +162,16 @@ export const APP_CARD_DEFS: AppCardDef[] = [
     glow:               "hover:shadow-sky-900/40",
     allUsers:           true,
   },
+  {
+    key:                "AUCTION_CONTROLLER",
+    href:               "/auction-controller",
+    defaultLabel:       "Auction Controller",
+    defaultDescription: "Live auction clerking panel — run bids, hammer lots, manage auto-bids and control the live sale.",
+    icon:               "🔨",
+    border:             "border-red-500",
+    iconBg:             "text-red-400",
+    btnBg:              "bg-red-600 hover:bg-red-500",
+    glow:               "hover:shadow-red-900/40",
+    appKey:             "AUCTION_CONTROLLER",
+  },
 ]
