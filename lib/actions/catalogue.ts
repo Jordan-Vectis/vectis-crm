@@ -47,6 +47,14 @@ export async function deleteAuction(id: string) {
   revalidatePath("/tools/cataloguing/auctions")
 }
 
+export async function togglePublished(id: string, published: boolean) {
+  await requireCataloguer()
+  await prisma.catalogueAuction.update({ where: { id }, data: { published } })
+  revalidatePath("/tools/cataloguing/auctions")
+  revalidatePath(`/tools/cataloguing/auctions/${id}`)
+  revalidatePath("/auctions")
+}
+
 export async function createLot(auctionId: string, formData: FormData) {
   const session = await requireCataloguer()
   const data = extractLotData(formData)

@@ -37,6 +37,7 @@ export default async function AuctionDetailPage({
         locked: auction.locked,
         finished: auction.finished,
         complete: auction.complete,
+        published: auction.published,
       }}
       lots={auction.lots.map(l => ({
         id: l.id,

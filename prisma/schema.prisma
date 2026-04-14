@@ -92,8 +92,22 @@ model Contact {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  receipts    WarehouseReceipt[] @relation("ContactReceipts")
-  submissions Submission[]       @relation("ContactSubmissions")
+  receipts        WarehouseReceipt[] @relation("ContactReceipts")
+  submissions     Submission[]       @relation("ContactSubmissions")
+  customerAccount CustomerAccount?
+}
+
+model CustomerAccount {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  password     String
+  firstName    String
+  lastName     String
+  sessionToken String?  @unique
+  contactId    String?  @unique
+  contact      Contact? @relation(fields: [contactId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Submission {
@@ -217,6 +231,7 @@ model CatalogueAuction {
   locked      Boolean        @default(false)
   finished    Boolean        @default(false)
   complete    Boolean        @default(false)
+  published   Boolean        @default(false)
   notes       String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt

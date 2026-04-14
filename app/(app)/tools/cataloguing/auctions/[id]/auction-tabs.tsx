@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateAuction, updateLot, deleteLot, deleteAuction } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction, togglePublished } from "@/lib/actions/catalogue"
 import LotWizardTab from "./lot-wizard-tab"
 import * as XLSX from "xlsx"
 
@@ -13,7 +13,7 @@ type Tab = "settings" | "add-lot" | "manage-lots"
 interface Auction {
   id: string; code: string; name: string; auctionDate: Date | null
   auctionType: string; eventName: string | null; notes: string | null
-  locked: boolean; finished: boolean; complete: boolean
+  locked: boolean; finished: boolean; complete: boolean; published: boolean
 }
 
 interface Lot {
@@ -52,6 +52,8 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
   const router = useRouter()
   const [tab, setTab]              = useState<Tab>("settings")
   const [editingLotId, setEditing] = useState<string | null>(null)
+  const [published, setPublished]  = useState(auction.published)
+  const [pubPending, startPub]     = useTransition()
 
   const editingLot = lots.find(l => l.id === editingLotId) ?? null
 
@@ -62,6 +64,14 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
   ]
 
   function switchTab(t: Tab) { setTab(t); setEditing(null) }
+
+  function handleTogglePublish() {
+    const next = !published
+    startPub(async () => {
+      await togglePublished(auction.id, next)
+      setPublished(next)
+    })
+  }
 
   return (
     <div className="flex flex-col h-full p-6 gap-0">
@@ -78,6 +88,21 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         {auction.locked   && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/50 text-blue-300">Locked</span>}
         {auction.finished && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">Finished</span>}
         {auction.complete && <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/50 text-green-300">Complete</span>}
+        {published && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-300">● Live on Site</span>}
+
+        <div className="ml-auto">
+          <button
+            onClick={handleTogglePublish}
+            disabled={pubPending}
+            className={`text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+              published
+                ? "bg-red-900/30 border border-red-700 text-red-300 hover:bg-red-900/50"
+                : "bg-emerald-900/30 border border-emerald-700 text-emerald-300 hover:bg-emerald-900/50"
+            }`}
+          >
+            {pubPending ? "…" : published ? "Unpublish from Site" : "Publish to Site"}
+          </button>
+        </div>
       </div>
 
       {/* Tab bar */}
