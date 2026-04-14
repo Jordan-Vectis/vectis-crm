@@ -2,53 +2,99 @@
 
 import { useState } from "react"
 
-const PAGES = [
-  { label: "Auctions",  path: "/auctions" },
-  { label: "Login",     path: "/portal/login" },
-  { label: "Register",  path: "/portal/register" },
-  { label: "My Account",path: "/account" },
+const SITE_PAGES = [
+  { label: "Auctions",    path: "/auctions" },
+  { label: "Login",       path: "/portal/login" },
+  { label: "Register",    path: "/portal/register" },
+  { label: "My Account",  path: "/account" },
 ]
 
+type Tab = "website" | "controller"
+
 export default function WebsitePreviewPage() {
-  const [currentPath, setCurrentPath] = useState("/auctions")
+  const [activeTab, setActiveTab]       = useState<Tab>("website")
+  const [currentPath, setCurrentPath]   = useState("/auctions")
 
   const origin = typeof window !== "undefined" ? window.location.origin : ""
-  const src = `${origin}${currentPath}`
+  const iframeSrc = activeTab === "controller"
+    ? `${origin}/auction-controller`
+    : `${origin}${currentPath}`
 
   return (
     <div className="flex flex-col" style={{ height: "calc(100vh - 56px)" }}>
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2.5 bg-[#1C1C1E] border-b border-gray-700 shrink-0">
-        {/* Quick nav tabs */}
-        <div className="flex items-center gap-1">
-          {PAGES.map(p => (
-            <button
-              key={p.path}
-              onClick={() => setCurrentPath(p.path)}
-              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
-                currentPath === p.path
-                  ? "bg-[#2AB4A6] text-white"
-                  : "text-gray-400 hover:text-white hover:bg-gray-700"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+      {/* ── Top tab bar ─────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-0 px-0 bg-[#1C1C1E] border-b border-gray-700 shrink-0">
+
+        {/* Website tab */}
+        <button
+          onClick={() => setActiveTab("website")}
+          className={`flex items-center gap-2 px-5 py-3 text-xs font-bold tracking-wide border-b-2 transition-colors ${
+            activeTab === "website"
+              ? "border-[#2AB4A6] text-white bg-[#2C2C2E]"
+              : "border-transparent text-gray-400 hover:text-white hover:bg-gray-800"
+          }`}
+        >
+          🌐 Website
+        </button>
+
+        {/* Back End Controller tab */}
+        <button
+          onClick={() => setActiveTab("controller")}
+          className={`flex items-center gap-2 px-5 py-3 text-xs font-bold tracking-wide border-b-2 transition-colors ${
+            activeTab === "controller"
+              ? "border-red-500 text-white bg-[#2C2C2E]"
+              : "border-transparent text-gray-400 hover:text-white hover:bg-gray-800"
+          }`}
+        >
+          🔨 Back End Controller
+          {activeTab === "controller" && (
+            <span className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse inline-block" />
+              LIVE
+            </span>
+          )}
+        </button>
+
+        {/* Divider */}
+        <div className="w-px h-5 bg-gray-700 mx-2" />
+
+        {/* Sub-nav — only shown in website tab */}
+        {activeTab === "website" && (
+          <div className="flex items-center gap-1">
+            {SITE_PAGES.map(p => (
+              <button
+                key={p.path}
+                onClick={() => setCurrentPath(p.path)}
+                className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+                  currentPath === p.path
+                    ? "bg-[#2AB4A6] text-white"
+                    : "text-gray-400 hover:text-white hover:bg-gray-700"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
 
         {/* URL bar */}
-        <div className="flex-1 flex items-center gap-2 bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5">
-          <span className="text-gray-500 text-xs">🌐</span>
-          <span className="text-gray-300 text-xs font-mono truncate">{src}</span>
+        <div className="flex items-center gap-2 bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 mr-2 max-w-sm">
+          <span className="text-gray-500 text-xs">
+            {activeTab === "controller" ? "🔨" : "🌐"}
+          </span>
+          <span className="text-gray-300 text-xs font-mono truncate">{iframeSrc}</span>
         </div>
 
         {/* Open in new tab */}
         <a
-          href={currentPath}
+          href={activeTab === "controller" ? "/auction-controller" : currentPath}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors border border-gray-700 px-3 py-1.5 rounded hover:border-gray-500"
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors border border-gray-700 px-3 py-1.5 rounded hover:border-gray-500 mr-3"
         >
           Open in tab
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,12 +103,12 @@ export default function WebsitePreviewPage() {
         </a>
       </div>
 
-      {/* iframe */}
+      {/* ── iframe ──────────────────────────────────────────────────────── */}
       <iframe
-        key={src}
-        src={src}
+        key={iframeSrc}
+        src={iframeSrc}
         className="flex-1 w-full border-0 bg-white"
-        title="Website Preview"
+        title={activeTab === "controller" ? "Back End Controller" : "Website Preview"}
       />
     </div>
   )
