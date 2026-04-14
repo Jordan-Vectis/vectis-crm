@@ -654,6 +654,7 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
   const [subCat,   setSubCat]   = useState(lot?.subCategory ?? "")
   const [brand,    setBrand]    = useState(lot?.brand ?? "")
   const [brandSearch, setBrandSearch] = useState(lot?.brand ?? "")
+  const [brandFocused, setBrandFocused] = useState(false)
   const mainCatList = Object.keys(CATEGORY_MAP).sort()
   const subCatList  = mainCat ? (CATEGORY_MAP[mainCat] ?? []) : []
   const filteredBrands = useMemo(() =>
@@ -836,12 +837,14 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
               <input
                 value={brandSearch}
                 onChange={e => { setBrandSearch(e.target.value); setBrand(e.target.value) }}
+                onFocus={() => setBrandFocused(true)}
+                onBlur={() => setTimeout(() => setBrandFocused(false), 150)}
                 placeholder="Search brand…"
                 className={input}
                 autoComplete="off"
               />
               <input type="hidden" name="brand" value={brand} />
-              {filteredBrands.length > 0 && (
+              {brandFocused && filteredBrands.length > 0 && (
                 <ul className="absolute z-10 w-full mt-1 bg-[#1C1C1E] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
                   {filteredBrands.map(b => (
                     <li key={b}>
