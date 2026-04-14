@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useTransition, useRef, useEffect } from "react"
+import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes } from "@/lib/actions/catalogue"
 import LotWizardTab from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import * as XLSX from "xlsx"
+import JSZip from "jszip"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -239,6 +240,14 @@ function SettingsTab({ auction }: { auction: Auction }) {
 
 // ─── Manage lots tab ──────────────────────────────────────────────────────────
 
+const COL_INPUT  = "w-full rounded border border-gray-700 bg-[#0d0d0f] px-2 py-1 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:ring-1 focus:ring-[#2AB4A6]"
+const COL_SELECT = "w-full rounded border border-gray-700 bg-[#0d0d0f] px-1 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-[#2AB4A6]"
+
+function colMatch(value: string | null | undefined, filter: string) {
+  if (!filter.trim()) return true
+  return (value ?? "").toLowerCase().includes(filter.toLowerCase().trim())
+}
+
 function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   lots: Lot[]; auctionId: string
   auction: { code: string; name: string }
@@ -249,9 +258,41 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   const [pending, start]            = useTransition()
   const [fillPending, startFill]    = useTransition()
   const [fillMsg, setFillMsg]       = useState<string | null>(null)
+  const [photoExporting, setPhotoExporting] = useState(false)
+  const [photoMsg, setPhotoMsg]     = useState<string | null>(null)
+
+  // ── Per-column filters ──────────────────────────────────────────────────
+  const [fLotNo,    setFLotNo]    = useState("")
+  const [fTitle,    setFTitle]    = useState("")
+  const [fVendor,   setFVendor]   = useState("")
+  const [fReceipt,  setFReceipt]  = useState("")
+  const [fTote,     setFTote]     = useState("")
+  const [fCategory, setFCategory] = useState("")
+  const [fPhotos,   setFPhotos]   = useState("")   // "any" | "none" | ""
+  const [fStatus,   setFStatus]   = useState("")
+
+  const uniqueStatuses = useMemo(() => Array.from(new Set(lots.map(l => l.status))).sort(), [lots])
+
+  const filtered = useMemo(() => lots.filter(l =>
+    colMatch(l.lotNumber, fLotNo) &&
+    colMatch(l.title, fTitle) &&
+    colMatch(l.vendor, fVendor) &&
+    colMatch(l.receipt, fReceipt) &&
+    colMatch(l.tote, fTote) &&
+    colMatch(l.category, fCategory) &&
+    (fPhotos === "" || (fPhotos === "any" ? l.imageUrls.length > 0 : l.imageUrls.length === 0)) &&
+    (fStatus === "" || l.status === fStatus)
+  ), [lots, fLotNo, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus])
+
+  const filtersActive = [fLotNo, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus].some(f => f !== "")
+
+  function clearFilters() {
+    setFLotNo(""); setFTitle(""); setFVendor(""); setFReceipt("")
+    setFTote(""); setFCategory(""); setFPhotos(""); setFStatus("")
+  }
 
   function exportExcel() {
-    const rows = lots.map(l => ({
+    const rows = filtered.map(l => ({
       "Lot No.":      l.lotNumber,
       "Title":        l.title,
       "Description":  l.description,
@@ -268,12 +309,63 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       "Sub-Category": l.subCategory ?? "",
       "Brand":        l.brand ?? "",
       "Notes":        l.notes ?? "",
+      "Photos":       l.imageUrls.length,
       "Added By":     l.createdByName ?? "",
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Lots")
     XLSX.writeFile(wb, `${auction.code}_${auction.name}_lots.xlsx`.replace(/\s+/g, "_"))
+  }
+
+  async function exportPhotos() {
+    const lotsWithPhotos = filtered.filter(l => l.imageUrls.length > 0)
+    if (lotsWithPhotos.length === 0) { setPhotoMsg("No photos to export"); setTimeout(() => setPhotoMsg(null), 3000); return }
+
+    setPhotoExporting(true)
+    setPhotoMsg(`Fetching photos for ${lotsWithPhotos.length} lots…`)
+
+    try {
+      const zip = new JSZip()
+      let fetched = 0
+
+      for (const lot of lotsWithPhotos) {
+        const folderName = `${lot.lotNumber}${lot.title ? "_" + lot.title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 40) : ""}`
+        const folder = zip.folder(folderName)!
+
+        for (let i = 0; i < lot.imageUrls.length; i++) {
+          const key = lot.imageUrls[i]
+          try {
+            const signedRes = await fetch(`/api/catalogue/signed-url?key=${encodeURIComponent(key)}`)
+            if (!signedRes.ok) continue
+            const { url } = await signedRes.json()
+            const imgRes = await fetch(url)
+            if (!imgRes.ok) continue
+            const blob = await imgRes.blob()
+            const ext  = key.split(".").pop() ?? "jpg"
+            folder.file(`photo_${i + 1}.${ext}`, blob)
+          } catch { /* skip failed images */ }
+        }
+
+        fetched++
+        setPhotoMsg(`Downloading… ${fetched} / ${lotsWithPhotos.length} lots`)
+      }
+
+      setPhotoMsg("Building zip…")
+      const content = await zip.generateAsync({ type: "blob" })
+      const url = URL.createObjectURL(content)
+      const a   = document.createElement("a")
+      a.href     = url
+      a.download = `${auction.code}_photos.zip`.replace(/\s+/g, "_")
+      a.click()
+      URL.revokeObjectURL(url)
+      setPhotoMsg(`✓ Downloaded photos for ${fetched} lots`)
+    } catch (e) {
+      setPhotoMsg("Export failed")
+    } finally {
+      setPhotoExporting(false)
+      setTimeout(() => setPhotoMsg(null), 4000)
+    }
   }
 
   async function handleDelete(lot: Lot) {
@@ -296,8 +388,9 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
 
   return (
     <div>
+      {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => {
               setFillMsg(null)
@@ -305,7 +398,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                 const result = await fillLotsFromTotes(auctionId)
                 setFillMsg(result.updated > 0 ? `✓ Updated ${result.updated} lot${result.updated !== 1 ? "s" : ""}` : "No lots needed updating")
                 setTimeout(() => setFillMsg(null), 3000)
-                onDelete() // triggers router.refresh()
+                onDelete()
               })
             }}
             disabled={fillPending}
@@ -315,60 +408,103 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
           </button>
           {fillMsg && <span className="text-xs text-[#2AB4A6]">{fillMsg}</span>}
         </div>
-        <button onClick={exportExcel}
-          className="px-4 py-1.5 text-sm font-medium rounded-lg border border-[#2AB4A6] text-[#2AB4A6] hover:bg-[#2AB4A6] hover:text-black transition-colors">
-          ⬇ Export to Excel
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {filtersActive && (
+            <span className="text-xs text-gray-500">
+              {filtered.length} / {lots.length} lots
+              <button onClick={clearFilters} className="ml-2 text-[#2AB4A6] hover:underline">clear</button>
+            </span>
+          )}
+          <button onClick={exportPhotos} disabled={photoExporting}
+            className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-[#2AB4A6] hover:text-[#2AB4A6] transition-colors disabled:opacity-50">
+            {photoExporting ? "⏳ Exporting…" : "📷 Export Photos (.zip)"}
+          </button>
+          <button onClick={exportExcel}
+            className="px-4 py-1.5 text-sm font-medium rounded-lg border border-[#2AB4A6] text-[#2AB4A6] hover:bg-[#2AB4A6] hover:text-black transition-colors">
+            ⬇ Export to Excel
+          </button>
+        </div>
       </div>
-    <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl overflow-x-auto">
-      <table className="w-full text-sm min-w-[600px]">
-        <thead>
-          <tr className="border-b border-gray-700 bg-[#141416]">
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Lot No.</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Receipt</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Category</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Photos</th>
-            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-            <th className="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody>
-          {lots.map(lot => (
-            <tr key={lot.id} className="border-b border-gray-800 last:border-0 hover:bg-[#2C2C2E] transition-colors cursor-pointer" onClick={() => onEdit(lot.id)}>
-              <td className="px-4 py-3 font-mono font-semibold text-[#2AB4A6] whitespace-nowrap">{lot.lotNumber}</td>
-              <td className="px-4 py-3 text-gray-200 max-w-[160px] truncate">{lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}</td>
-              <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.vendor ?? "—"}</td>
-              <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.receipt ?? "—"}</td>
-              <td className="px-4 py-3 text-gray-400 text-xs">
-                {lot.category ? (
-                  <span>{lot.category}{lot.subCategory && <span className="text-gray-600"> › {lot.subCategory}</span>}</span>
-                ) : "—"}
-              </td>
-              <td className="px-4 py-3">
-                {lot.imageUrls.length > 0 ? (
-                  <span className="text-xs bg-[#2AB4A6]/20 text-[#2AB4A6] px-2 py-0.5 rounded-full font-medium">
-                    {lot.imageUrls.length}
-                  </span>
-                ) : <span className="text-gray-700 text-xs">—</span>}
-              </td>
-              <td className="px-4 py-3">
-                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[lot.status] ?? "bg-gray-700 text-gray-300"}`}>
-                  {lot.status}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
-                <button onClick={() => handleDelete(lot)} disabled={deleting === lot.id || pending}
-                  className="text-xs text-red-500 hover:text-red-400 transition-colors disabled:opacity-40">
-                  {deleting === lot.id ? "…" : "Delete"}
-                </button>
-              </td>
+      {photoMsg && <p className="text-xs text-[#2AB4A6] mb-2">{photoMsg}</p>}
+
+      {/* Table */}
+      <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl overflow-x-auto">
+        <table className="w-full text-sm min-w-[700px]">
+          <thead>
+            <tr className="border-b border-gray-700 bg-[#141416]">
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Lot No.</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Receipt</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Tote</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Category</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Photos</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-3" />
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+            {/* Filter row */}
+            <tr className="border-b border-gray-800 bg-[#111113]">
+              <td className="px-2 py-1.5"><input value={fLotNo}    onChange={e => setFLotNo(e.target.value)}    placeholder="Filter…" className={COL_INPUT} /></td>
+              <td className="px-2 py-1.5"><input value={fTitle}    onChange={e => setFTitle(e.target.value)}    placeholder="Filter…" className={COL_INPUT} /></td>
+              <td className="px-2 py-1.5"><input value={fVendor}   onChange={e => setFVendor(e.target.value)}   placeholder="Filter…" className={COL_INPUT} /></td>
+              <td className="px-2 py-1.5"><input value={fReceipt}  onChange={e => setFReceipt(e.target.value)}  placeholder="Filter…" className={COL_INPUT} /></td>
+              <td className="px-2 py-1.5"><input value={fTote}     onChange={e => setFTote(e.target.value)}     placeholder="Filter…" className={COL_INPUT} /></td>
+              <td className="px-2 py-1.5"><input value={fCategory} onChange={e => setFCategory(e.target.value)} placeholder="Filter…" className={COL_INPUT} /></td>
+              <td className="px-2 py-1.5">
+                <select value={fPhotos} onChange={e => setFPhotos(e.target.value)} className={COL_SELECT}>
+                  <option value="">All</option>
+                  <option value="any">Has photos</option>
+                  <option value="none">No photos</option>
+                </select>
+              </td>
+              <td className="px-2 py-1.5">
+                <select value={fStatus} onChange={e => setFStatus(e.target.value)} className={COL_SELECT}>
+                  <option value="">All</option>
+                  {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </td>
+              <td />
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(lot => (
+              <tr key={lot.id} className="border-b border-gray-800 last:border-0 hover:bg-[#2C2C2E] transition-colors cursor-pointer" onClick={() => onEdit(lot.id)}>
+                <td className="px-4 py-3 font-mono font-semibold text-[#2AB4A6] whitespace-nowrap">{lot.lotNumber}</td>
+                <td className="px-4 py-3 text-gray-200 max-w-[160px] truncate">{lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}</td>
+                <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.vendor ?? "—"}</td>
+                <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.receipt ?? "—"}</td>
+                <td className="px-4 py-3 text-gray-400 text-xs font-mono whitespace-nowrap">{lot.tote ?? "—"}</td>
+                <td className="px-4 py-3 text-gray-400 text-xs">
+                  {lot.category ? (
+                    <span>{lot.category}{lot.subCategory && <span className="text-gray-600"> › {lot.subCategory}</span>}</span>
+                  ) : "—"}
+                </td>
+                <td className="px-4 py-3">
+                  {lot.imageUrls.length > 0 ? (
+                    <span className="text-xs bg-[#2AB4A6]/20 text-[#2AB4A6] px-2 py-0.5 rounded-full font-medium">
+                      {lot.imageUrls.length}
+                    </span>
+                  ) : <span className="text-gray-700 text-xs">—</span>}
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[lot.status] ?? "bg-gray-700 text-gray-300"}`}>
+                    {lot.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => handleDelete(lot)} disabled={deleting === lot.id || pending}
+                    className="text-xs text-red-500 hover:text-red-400 transition-colors disabled:opacity-40">
+                    {deleting === lot.id ? "…" : "Delete"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-600 text-sm">No lots match your filters</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
