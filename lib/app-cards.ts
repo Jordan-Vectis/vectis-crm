@@ -152,7 +152,7 @@ export const APP_CARD_DEFS: AppCardDef[] = [
   },
   {
     key:                "WEBSITE",
-    href:               "/auctions",
+    href:               "/website",
     defaultLabel:       "Website",
     defaultDescription: "View and manage the public auction website — browse live lots, published auctions and customer pages.",
     icon:               "🌐",
