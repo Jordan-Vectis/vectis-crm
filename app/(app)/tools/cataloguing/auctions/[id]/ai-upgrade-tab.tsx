@@ -380,7 +380,7 @@ function ProgressCard({
   title, subtitle, pct, log, logRef, onCancel, liveResults,
 }: {
   title: string; subtitle: string; pct: number
-  log: string[]; logRef: React.RefObject<HTMLDivElement>
+  log: string[]; logRef: React.RefObject<HTMLDivElement | null>
   onCancel: () => void
   liveResults?: { status: string; lotNumber: string }[]
 }) {
