@@ -344,19 +344,21 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   }
 
   function exportForAHK() {
-    // Group filtered lots by tote, count per tote, skip lots with no tote
-    const counts = new Map<string, number>()
+    // Group filtered lots by tote, collect barcodes per tote, skip lots with no tote
+    const toteMap = new Map<string, string[]>()
     for (const l of filtered) {
       if (!l.tote?.trim()) continue
-      counts.set(l.tote.trim(), (counts.get(l.tote.trim()) ?? 0) + 1)
+      const tote = l.tote.trim()
+      if (!toteMap.has(tote)) toteMap.set(tote, [])
+      toteMap.get(tote)!.push(l.lotNumber.trim())
     }
-    if (counts.size === 0) { alert("No lots with tote numbers in current filter."); return }
-    const lines = ["ToteNumber,LotCount", ...Array.from(counts.entries()).map(([t, c]) => `${t},${c}`)]
+    if (toteMap.size === 0) { alert("No lots with tote numbers in current filter."); return }
+    const lines = ["ToteNumber,LotCount,Barcodes", ...Array.from(toteMap.entries()).map(([t, barcodes]) => `${t},${barcodes.length},${barcodes.join("|")}`)]
     const blob = new Blob([lines.join("\r\n")], { type: "text/csv" })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement("a")
     a.href     = url
-    a.download = `${auction.code}_bc_import.csv`.replace(/\s+/g, "_")
+    a.download = "bc_import.csv"
     a.click()
     URL.revokeObjectURL(url)
   }
