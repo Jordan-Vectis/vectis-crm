@@ -151,10 +151,10 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         {tab === "manage-lots" && (
           editingLotId
             ? <LotEditView lot={editingLot} auctionId={auction.id}
-                onDone={() => { setEditing(null); router.refresh() }} />
+                onDone={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)} />
             : <ManageLotsTab lots={lots} auctionId={auction.id} auction={auction}
                 onEdit={setEditing}
-                onDelete={() => router.refresh()} />
+                onDelete={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)} />
         )}
 
         {tab === "photo-only" && (
