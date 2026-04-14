@@ -124,7 +124,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-gray-700 mb-6 overflow-x-auto scrollbar-none -mx-6 px-6">
+      <div className="sticky top-0 z-10 bg-[#141416] flex border-b border-gray-700 mb-6 overflow-x-auto scrollbar-none -mx-6 px-6">
         {tabs.map(t => (
           <button key={t.id} onClick={() => switchTab(t.id)}
             className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
