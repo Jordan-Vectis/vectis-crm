@@ -7,12 +7,13 @@ import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import ImportTab from "./import-tab"
 import PhotoUploadTab from "./photo-upload-tab"
+import AiUpgradeTab from "./ai-upgrade-tab"
 import * as XLSX from "xlsx"
 import JSZip from "jszip"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "import" | "upload-photos"
+type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "import" | "upload-photos" | "ai-upgrade"
 
 interface Auction {
   id: string; code: string; name: string; auctionDate: Date | null
@@ -77,6 +78,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
     { id: "photo-only",   label: "Photo Only Cataloguing" },
     { id: "import",        label: "Import Lots" },
     { id: "upload-photos", label: "Upload Photos" },
+    { id: "ai-upgrade",   label: "✨ AI Upgrade" },
     { id: "settings",     label: "Auction Settings" },
   ]
 
@@ -120,13 +122,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
             className="text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors bg-[#C8A96E]/10 border border-[#C8A96E]/40 text-[#C8A96E] hover:bg-[#C8A96E]/20">
             📋 Description Copier
           </button>
-          <button onClick={() => {
-            localStorage.setItem("batch_preload", JSON.stringify({
-              auctionCode: auction.code,
-              lotCount: lots.length,
-            }))
-            window.open("/tools/auction-ai?tab=batch", "_blank")
-          }}
+          <button onClick={() => switchTab("ai-upgrade")}
             className="text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors bg-purple-900/20 border border-purple-700/40 text-purple-300 hover:bg-purple-900/40">
             ✨ Upgrade descriptions with AI
           </button>
@@ -186,6 +182,14 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
 
         {tab === "upload-photos" && (
           <PhotoUploadTab auctionId={auction.id} lots={lots} onUploaded={() => router.refresh()} />
+        )}
+
+        {tab === "ai-upgrade" && (
+          <AiUpgradeTab
+            auctionId={auction.id}
+            lots={lots}
+            onDone={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)}
+          />
         )}
       </div>
     </div>

@@ -48,6 +48,22 @@ export async function deleteAuction(id: string) {
   revalidatePath("/tools/cataloguing/auctions")
 }
 
+export async function applyAiDescriptions(
+  auctionId: string,
+  updates: { id: string; description: string; estimateLow: number | null; estimateHigh: number | null }[]
+) {
+  await requireCataloguer()
+  await Promise.all(
+    updates.map(u =>
+      prisma.catalogueLot.update({
+        where: { id: u.id },
+        data: { description: u.description, estimateLow: u.estimateLow, estimateHigh: u.estimateHigh },
+      })
+    )
+  )
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+}
+
 export async function togglePublished(id: string, published: boolean) {
   await requireCataloguer()
   await prisma.catalogueAuction.update({ where: { id }, data: { published } })

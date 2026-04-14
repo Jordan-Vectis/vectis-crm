@@ -69,9 +69,14 @@ export async function POST(req: NextRequest) {
         })
       )
 
+      const existingDescription = formData.get(`lot_${lot}_context`) as string | null
+      const userPrompt = existingDescription
+        ? `Existing description: ${existingDescription}\n\nImprove and enhance this description based on the photos. Keep the same output format.`
+        : "Please describe this auction lot."
+
       const text = await generateWithRetry([
         ...imageParts,
-        { text: "Please describe this auction lot." },
+        { text: userPrompt },
       ])
 
       // Split description and estimate
