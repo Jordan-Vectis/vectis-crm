@@ -567,9 +567,11 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
           <tbody>
             {filtered.map(lot => (
               <tr key={lot.id} className={`border-b border-gray-800 last:border-0 hover:bg-[#2C2C2E] transition-colors cursor-pointer ${selected.has(lot.id) ? "bg-[#2AB4A6]/5" : ""}`} onClick={() => onEdit(lot.id)}>
-                <td className="px-4 py-3 w-8" onClick={e => { e.stopPropagation(); toggleSelect(lot.id) }}>
-                  <input type="checkbox" checked={selected.has(lot.id)} onChange={() => toggleSelect(lot.id)}
-                    className="w-4 h-4 rounded border-gray-600 accent-[#2AB4A6]" />
+                <td className="w-8" onClick={e => e.stopPropagation()}>
+                  <label className="flex items-center justify-center px-4 py-3 cursor-pointer h-full">
+                    <input type="checkbox" checked={selected.has(lot.id)} onChange={() => toggleSelect(lot.id)}
+                      className="w-4 h-4 rounded border-gray-600 accent-[#2AB4A6]" />
+                  </label>
                 </td>
                 <td className="px-4 py-3 font-mono font-semibold text-[#2AB4A6] whitespace-nowrap">{lot.lotNumber}</td>
                 <td className="px-4 py-3 text-gray-200 max-w-[160px] truncate">{lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}</td>
