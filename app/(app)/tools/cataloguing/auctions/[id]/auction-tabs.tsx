@@ -6,12 +6,13 @@ import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, del
 import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import ImportTab from "./import-tab"
+import PhotoUploadTab from "./photo-upload-tab"
 import * as XLSX from "xlsx"
 import JSZip from "jszip"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "import"
+type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "import" | "upload-photos"
 
 interface Auction {
   id: string; code: string; name: string; auctionDate: Date | null
@@ -65,7 +66,8 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
     { id: "manage-lots",  label: `Manage Lots (${lots.length})` },
     { id: "add-lot",      label: "Add Lot" },
     { id: "photo-only",   label: "Photo Only Cataloguing" },
-    { id: "import",       label: "Import Lots" },
+    { id: "import",        label: "Import Lots" },
+    { id: "upload-photos", label: "Upload Photos" },
     { id: "settings",     label: "Auction Settings" },
   ]
 
@@ -161,6 +163,10 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
 
         {tab === "import" && (
           <ImportTab auctionId={auction.id} auctionCode={auction.code} onImported={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)} />
+        )}
+
+        {tab === "upload-photos" && (
+          <PhotoUploadTab auctionId={auction.id} lots={lots} onUploaded={() => router.refresh()} />
         )}
       </div>
     </div>
