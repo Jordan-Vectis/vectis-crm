@@ -82,28 +82,34 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
     setPhase("photos")
   }
 
-  function handleSave() {
-    if (itemPhotos.length === 0) { setError("Please take at least one photo."); return }
-    setError(null)
-
+  function buildFormData() {
     const fd = new FormData()
     fd.set("lotNumber", lotBarcode.trim())
     if (toteNumber.trim()) fd.set("tote", toteNumber.trim())
     if (notes.trim()) fd.set("notes", notes.trim())
     itemPhotos.forEach(p => fd.append("itemPhoto", p.file))
+    return fd
+  }
 
+  function resetLot(scanNext = false) {
+    itemPhotos.forEach(p => URL.revokeObjectURL(p.preview))
+    setItemPhotos([])
+    setLotBarcode("")
+    setNotes("")
+    if (!totePinned) setToteNumber("")
+    setPhase("scan")
+    if (scanNext) setTimeout(() => startScan("lot"), 50)
+  }
+
+  function handleSave(scanNext = false) {
+    if (itemPhotos.length === 0) { setError("Please take at least one photo."); return }
+    setError(null)
     start(async () => {
       try {
-        await createPhotoOnlyLot(auctionId, fd)
+        await createPhotoOnlyLot(auctionId, buildFormData())
         setSavedCount(n => n + 1)
         onCreated()
-        // Reset for next lot — keep tote if pinned
-        itemPhotos.forEach(p => URL.revokeObjectURL(p.preview))
-        setItemPhotos([])
-        setLotBarcode("")
-        setNotes("")
-        if (!totePinned) setToteNumber("")
-        setPhase("scan")
+        resetLot(scanNext)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to save lot")
       }
@@ -269,12 +275,16 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
 
           <div className="flex gap-3">
             <button onClick={() => { setError(null); setPhase("scan") }}
-              className="flex-1 py-3 rounded-lg border border-gray-700 text-gray-400 text-sm font-medium hover:border-gray-500 transition-colors">
+              className="py-3 px-4 rounded-lg border border-gray-700 text-gray-400 text-sm font-medium hover:border-gray-500 transition-colors">
               ← Back
             </button>
-            <button onClick={handleSave} disabled={pending}
+            <button onClick={() => handleSave(false)} disabled={pending}
               className="flex-1 py-3 bg-[#2AB4A6] hover:bg-[#24a090] disabled:opacity-50 text-black font-semibold rounded-lg text-sm transition-colors">
-              {pending ? "Saving…" : "Save Lot ✓"}
+              {pending ? "Saving…" : "Save ✓"}
+            </button>
+            <button onClick={() => handleSave(true)} disabled={pending}
+              className="flex-1 py-3 bg-[#1e8a7e] hover:bg-[#186f65] disabled:opacity-50 text-white font-semibold rounded-lg text-sm transition-colors">
+              {pending ? "Saving…" : "Save & Next →"}
             </button>
           </div>
         </div>
