@@ -42,6 +42,7 @@ model User {
   id             String      @id @default(cuid())
   name           String
   email          String      @unique
+  username       String?     @unique
   password       String
   role           Role        @default(COLLECTIONS)
   allowedApps    String[]    @default([])
@@ -89,6 +90,8 @@ model Contact {
   addressLine2 String?
   postcode     String?
   notes        String?
+  isSeller     Boolean  @default(false)
+  isBuyer      Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -236,6 +239,7 @@ model CatalogueAuction {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   lots        CatalogueLot[]
+  photoSessions CataloguePhotoSession[]
 }
 
 model CatalogueLot {
@@ -263,6 +267,21 @@ model CatalogueLot {
 
   auctionId    String
   auction      CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+}
+
+model CataloguePhotoSession {
+  id              String           @id @default(cuid())
+  auctionId       String
+  auction         CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  lotBarcode      String?
+  customerRef     String?
+  barcodePhotoKey String?
+  itemPhotoKeys   String[]         @default([])
+  notes           String?
+  status          String           @default("PENDING")
+  createdById     String
+  createdByName   String?
+  createdAt       DateTime         @default(now())
 }
 
 model AppCard {

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import Logo from "@/components/logo"
 
 export default function SetupPage() {
   const router = useRouter()
@@ -43,7 +44,8 @@ export default function SetupPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Vectis CRM</h1>
+          <Logo variant="icon" />
+          <p className="text-gray-900 font-bold text-2xl tracking-tight mt-3">Vectis Hub</p>
           <p className="text-sm text-gray-500 mt-1">First-time setup — create admin account</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">

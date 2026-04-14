@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import Logo from "@/components/logo"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   LabelList, ResponsiveContainer, Cell,
@@ -30,7 +31,7 @@ type WhData = {
   meta:         { total: number; openTotes: number; categoryCount: number; largestCategory: string }
 }
 
-type Report = "cataloguing" | "packing" | "warehouse" | "explorer"
+type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "location"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -570,6 +571,181 @@ function ExportBtn({ onClick }: { onClick: () => void }) {
   )
 }
 
+// ─── Location History tab ─────────────────────────────────────────────────────
+
+const SALESPERSON_NAMES_LOC: Record<string, string> = {
+  AM: "Ashley McIntyre", AR: "Andrea Rowntree", AR2: "Andrew Reed", AROB: "Amelia Robson",
+  AW: "Andrew Wilson", BC: "Bob Coulson", BG: "Bryan Goodall", BJ: "Becky Jones",
+  BK: "Ben Kennington", CH: "Chris Hemingway", CW: "Chris Whan", DB: "Daniel Brakenbury",
+  DC: "Debbie Cockerill", DL: "Daniel Lorraine", DP: "Dispatch", ED: "Edward Duffy",
+  EG: "Ewan Gray", EW: "Eve Walker", GH: "Gill Harley", HW: "Harry Wheatley",
+  ID: "Ian Dilley", IM: "Ian Main", JC: "Jack Collings", JG: "Jonathon Gouder",
+  JK: "Jake Kenyon", JM: "Jo McDonald", JO: "Jordan Orange", JR: "Julian Royse",
+  JS: "Jake Smithson", JW: "Julie Walker", KR: "Kay Rankin", KS: "Keiran Southgate",
+  KT: "Kathy Taylor", LH: "Lesley Hill", LS: "Lisa Sutherland", MB: "Matt Bailey",
+  MC: "Matthew Cotton", MD: "Mike Delaney", MF: "Mike Fishwick", MT: "Michelle Trotter",
+  MV: "Melanie Vasey", ND: "Nick Dykes", NO: "Naomi O'Conner", OB: "Olivia Burley",
+  PB: "Paul Beverley", PC: "Phil Cochrane", PD: "Peter Davis", PM: "Peter Morris",
+  SC: "Simon Clarke", SCANNER: "Scanner", SF: "Steven Furlong", SM: "Sanaz Moghaddam",
+  SR: "Stuart Redding", SS: "Simon Smith", TR: "Tim Routh", VA: "Vectis Accounts",
+  VS: "Vanessa Stanton", WA: "Admin Warehouse", WR: "Wendy Robins",
+}
+
+type LocationEntry = { from: string; to: string; changedBy: string; changedAt: string }
+
+function formatDateTime(iso: string) {
+  if (!iso) return "—"
+  try {
+    return new Date(iso).toLocaleString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    })
+  } catch { return iso }
+}
+
+function LocationHistoryTab() {
+  const [input, setInput]   = useState("")
+  const [mode, setMode]     = useState<"tote" | "barcode">("tote")
+  const [loading, setLoading] = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+  const [result, setResult] = useState<{ field1: string; field2: string | null; entries: LocationEntry[] } | null>(null)
+
+  async function lookup() {
+    const q = input.trim()
+    if (!q) return
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await fetch(`/api/bc/location-history?q=${encodeURIComponent(q)}&mode=${mode}`)
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? "Lookup failed"); return }
+      setResult(data)
+    } catch {
+      setError("Network error")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter") lookup()
+  }
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-white mb-1">Location History</h2>
+      <p className="text-gray-500 text-sm mb-5">Look up every location a tote or lot has ever been moved to via BC change logs.</p>
+
+      {/* Input */}
+      <div className="bg-[#0d0f1a] border border-gray-700 rounded-xl p-5 max-w-lg space-y-4">
+
+        {/* Mode toggle */}
+        <div className="flex gap-2">
+          {(["tote", "barcode"] as const).map(m => (
+            <button key={m} onClick={() => { setMode(m); setResult(null); setError(null) }}
+              className={`px-4 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                mode === m
+                  ? "border-blue-500 bg-blue-500/20 text-blue-300"
+                  : "border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300"
+              }`}>
+              {m === "tote" ? "🗂 Tote number" : "🔖 Barcode"}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="flex gap-2">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder={mode === "tote" ? "e.g. T000123" : "e.g. VEC-001234"}
+            autoFocus
+            className="flex-1 bg-[#07070f] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+          />
+          <button
+            onClick={lookup}
+            disabled={loading || !input.trim()}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors"
+          >
+            {loading ? "Searching…" : "Look up"}
+          </button>
+        </div>
+
+        {mode === "barcode" && (
+          <p className="text-xs text-gray-600">
+            Barcode lookup does two BC queries: first finds the item key from the barcode, then fetches all location changes for that item.
+          </p>
+        )}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mt-4 max-w-lg bg-red-950 border border-red-700 rounded-xl p-4">
+          <p className="text-red-400 text-sm">{error}</p>
+        </div>
+      )}
+
+      {/* Results */}
+      {result && (
+        <div className="mt-5 max-w-2xl space-y-4">
+          <div className="flex items-center gap-4">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">BC Item Key</p>
+              <p className="text-white font-mono text-sm">
+                {result.field1}{result.field2 ? ` · ${result.field2}` : ""}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Movements found</p>
+              <p className="text-white font-semibold">{result.entries.length}</p>
+            </div>
+          </div>
+
+          {result.entries.length === 0 ? (
+            <div className="bg-[#0d0f1a] border border-gray-700 rounded-xl p-6 text-center">
+              <p className="text-gray-500 text-sm">No location changes found in the BC change log.</p>
+              <p className="text-gray-600 text-xs mt-1">The item may not have been moved, or the change log wasn't active when it was.</p>
+            </div>
+          ) : (
+            <div className="bg-[#0d0f1a] border border-gray-700 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-800 bg-[#07070f]">
+                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Date / Time</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">From</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">To</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Changed by</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.entries.map((e, i) => (
+                    <tr key={i} className={`border-b border-gray-800/50 ${i % 2 === 0 ? "" : "bg-[#0a0c17]"}`}>
+                      <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">{formatDateTime(e.changedAt)}</td>
+                      <td className="px-4 py-2.5">
+                        {e.from
+                          ? <span className="font-mono text-gray-400">{e.from}</span>
+                          : <span className="text-gray-700 text-xs">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="font-mono font-semibold text-blue-300">{e.to || "—"}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-400 text-xs">
+                        {(SALESPERSON_NAMES_LOC[e.changedBy] ?? e.changedBy) || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Sidebar nav items ────────────────────────────────────────────────────────
 
 const reports: { id: Report; label: string; color: string; dot: string }[] = [
@@ -577,6 +753,7 @@ const reports: { id: Report; label: string; color: string; dot: string }[] = [
   { id: "packing",     label: "Packing",       color: "text-orange-400", dot: "bg-orange-500" },
   { id: "warehouse",   label: "Warehouse",     color: "text-green-400",  dot: "bg-green-500"  },
   { id: "explorer",    label: "Data Explorer", color: "text-purple-400", dot: "bg-purple-500" },
+  { id: "location",    label: "Loc. History",  color: "text-blue-400",   dot: "bg-blue-500"   },
 ]
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -607,8 +784,8 @@ export default function BCReportsPage() {
       <aside className="w-44 bg-[#0b0d14] border-r border-gray-800 flex flex-col flex-shrink-0">
         {/* Logo */}
         <div className="px-4 py-5 border-b border-gray-800">
-          <p className="text-white font-bold text-base">Vectis</p>
-          <p className="text-gray-600 text-xs mt-0.5">BC Reports</p>
+          <Logo variant="compact" />
+          <p className="text-gray-600 text-xs mt-1">BC Reports</p>
         </div>
 
         {/* Reports nav */}
@@ -680,6 +857,7 @@ export default function BCReportsPage() {
             {activeReport === "packing"     && <PackingTab />}
             {activeReport === "warehouse"   && <WarehouseTab />}
             {activeReport === "explorer"    && <DataExplorerTab />}
+            {activeReport === "location"    && <LocationHistoryTab />}
           </div>
         )}
       </main>

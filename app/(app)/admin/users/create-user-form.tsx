@@ -7,9 +7,16 @@ interface Props {
   departments: { id: string; name: string }[]
 }
 
+function toUsername(name: string) {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length < 2) return parts[0] ?? ""
+  return `${parts[0]}.${parts[parts.length - 1]}`
+}
+
 export default function CreateUserForm({ departments }: Props) {
   const [isPending, startTransition] = useTransition()
   const [role, setRole] = useState("COLLECTIONS")
+  const [username, setUsername] = useState("")
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -18,6 +25,7 @@ export default function CreateUserForm({ departments }: Props) {
       await createUser(formData)
       ;(e.target as HTMLFormElement).reset()
       setRole("COLLECTIONS")
+      setUsername("")
     })
   }
 
@@ -28,6 +36,17 @@ export default function CreateUserForm({ departments }: Props) {
         <input
           name="name"
           required
+          onChange={(e) => setUsername(toUsername(e.target.value))}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Username</label>
+        <input
+          name="username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="First.Last"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>

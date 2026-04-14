@@ -9,11 +9,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const container = await prisma.warehouseContainer.findUnique({
       where: { id },
       include: {
-        movements: {
-          orderBy: { movedAt: "desc" },
-          take: 1,
-          include: { location: true },
-        },
+        movements: { orderBy: { movedAt: "desc" }, take: 1, include: { location: true } },
+        receipt: { include: { contact: true } },
       },
     })
     if (!container) return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -22,6 +19,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       type: container.type,
       description: container.description,
       receipt_id: container.receiptId,
+      customer_id: container.receipt.contact.id,
+      customer_name: container.receipt.contact.name,
       current_location: container.movements[0]?.location.code ?? null,
     })
   } catch (e: any) {

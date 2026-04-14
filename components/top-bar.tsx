@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
+import EnvSelector from "@/components/env-selector"
+import Logo from "@/components/logo"
 
 interface TopBarProps {
   userName: string
@@ -28,11 +30,8 @@ export default function TopBar({ userName }: TopBarProps) {
         >
           →
         </button>
-        <Link
-          href="/"
-          className="text-gray-400 hover:text-white text-sm font-medium transition-colors ml-1"
-        >
-          Home
+        <Link href="/" className="ml-1 hover:opacity-80 transition-opacity">
+          <Logo variant="compact" />
         </Link>
         <Link
           href="/contacts"
@@ -43,6 +42,7 @@ export default function TopBar({ userName }: TopBarProps) {
       </div>
 
       <div className="flex items-center gap-4">
+        <EnvSelector />
         <span className="text-gray-400 text-xs hidden sm:block">{userName}</span>
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}

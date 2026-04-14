@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 
 const SALUTATIONS = ["", "Mr", "Mrs", "Ms", "Miss", "Dr", "Prof"]
-const EMPTY_FORM = { salutation: "", name: "", email: "", phone: "", addressLine1: "", addressLine2: "", postcode: "", notes: "" }
+const EMPTY_FORM = { salutation: "", name: "", email: "", phone: "", addressLine1: "", addressLine2: "", postcode: "", notes: "", isSeller: false, isBuyer: false }
 const PAGE_SIZE = 50
 
 export default function ContactsPage() {
@@ -65,7 +65,7 @@ export default function ContactsPage() {
   // Open detail overlay
   async function openOverlay(c: any) {
     setOverlay(c)
-    setEditForm({ salutation: c.salutation || "", name: c.name, email: c.email || "", phone: c.phone || "", addressLine1: c.addressLine1 || "", addressLine2: c.addressLine2 || "", postcode: c.postcode || "", notes: c.notes || "" })
+    setEditForm({ salutation: c.salutation || "", name: c.name, email: c.email || "", phone: c.phone || "", addressLine1: c.addressLine1 || "", addressLine2: c.addressLine2 || "", postcode: c.postcode || "", notes: c.notes || "", isSeller: c.isSeller || false, isBuyer: c.isBuyer || false })
     setOverlayTab("details")
     setSaveMsg("")
     setDetailLoading(true)
@@ -186,12 +186,12 @@ export default function ContactsPage() {
                 <td className="px-4 py-3 text-gray-500 text-sm">{c.postcode || "—"}</td>
                 <td className="px-4 py-3 text-gray-500 text-sm">{c.addressLine1 || "—"}</td>
                 <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
-                  {c._count?.receipts > 0
+                  {c.isSeller
                     ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-600 text-xs font-bold">✓</span>
                     : <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-300 text-xs">—</span>}
                 </td>
                 <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
-                  {c._count?.submissions > 0
+                  {c.isBuyer
                     ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-xs font-bold">✓</span>
                     : <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-300 text-xs">—</span>}
                 </td>
@@ -275,10 +275,10 @@ export default function ContactsPage() {
 
       {/* ── Detail Overlay ── */}
       {overlay && editForm && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(0,0,0,0.6)" }} onClick={closeOverlay}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={closeOverlay}>
           <div
-            className="absolute inset-x-0 bottom-0 bg-white rounded-t-2xl shadow-2xl flex flex-col"
-            style={{ maxHeight: "90vh" }}
+            className="bg-white rounded-2xl shadow-2xl flex flex-col w-full"
+            style={{ height: "92vh", maxWidth: "1100px" }}
             onClick={e => e.stopPropagation()}
           >
             {/* Overlay header */}
@@ -352,6 +352,16 @@ export default function ContactsPage() {
                     <div className="col-span-2">
                       <label className="block text-xs font-medium text-gray-500 mb-1">Notes</label>
                       <textarea className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" rows={3} value={editForm.notes} onChange={e => setEditForm({ ...editForm, notes: e.target.value })} />
+                    </div>
+                    <div className="col-span-2 flex gap-6 pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" className="w-4 h-4 rounded accent-green-600" checked={editForm.isSeller} onChange={e => setEditForm({ ...editForm, isSeller: e.target.checked })} />
+                        <span className="text-sm font-medium text-gray-700">Seller</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" className="w-4 h-4 rounded accent-blue-600" checked={editForm.isBuyer} onChange={e => setEditForm({ ...editForm, isBuyer: e.target.checked })} />
+                        <span className="text-sm font-medium text-gray-700">Buyer</span>
+                      </label>
                     </div>
                   </div>
                   {saveMsg && <p className="text-sm text-green-600">{saveMsg}</p>}

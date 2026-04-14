@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { updateUser } from "@/lib/actions/admin"
+import { changePassword } from "@/lib/actions/admin"
 
 export default function ChangePasswordButton({ userId, userName }: { userId: string; userName: string }) {
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   function handleSubmit(e: React.FormEvent) {
@@ -25,21 +26,30 @@ export default function ChangePasswordButton({ userId, userName }: { userId: str
     formData.set("name", userName)
     formData.set("password", password)
     startTransition(async () => {
-      await updateUser(userId, formData)
-      setOpen(false)
-      setPassword("")
-      setConfirm("")
+      try {
+        await changePassword(userId, password)
+        setOpen(false)
+        setPassword("")
+        setConfirm("")
+        setSuccess(true)
+        setTimeout(() => setSuccess(false), 3000)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong.")
+      }
     })
   }
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="text-blue-400 hover:text-blue-600 text-sm"
-      >
-        Change password
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => { setOpen(true); setSuccess(false) }}
+          className="text-blue-400 hover:text-blue-600 text-sm"
+        >
+          Change password
+        </button>
+        {success && <span className="text-xs text-green-600">Password updated.</span>}
+      </div>
     )
   }
 

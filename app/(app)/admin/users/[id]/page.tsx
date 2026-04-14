@@ -37,6 +37,8 @@ export default async function EditUserPage({
       <EditUserForm
         userId={user.id}
         name={user.name}
+        email={user.email}
+        username={user.username ?? null}
         role={user.role}
         departmentId={user.departmentId}
         allowedApps={user.allowedApps}

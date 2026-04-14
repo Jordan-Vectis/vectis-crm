@@ -19,6 +19,7 @@ export async function createUser(formData: FormData) {
 
   const name = formData.get("name") as string
   const email = formData.get("email") as string
+  const username = (formData.get("username") as string | null) || null
   const password = formData.get("password") as string
   const role = formData.get("role") as Role
   const departmentId = formData.get("departmentId") as string | null
@@ -29,6 +30,7 @@ export async function createUser(formData: FormData) {
     data: {
       name,
       email,
+      username: username || null,
       password: hashed,
       role,
       departmentId: departmentId || null,
@@ -42,13 +44,17 @@ export async function updateUser(userId: string, formData: FormData) {
   await requireAdmin()
 
   const name = formData.get("name") as string
+  const email = formData.get("email") as string | null
+  const username = formData.get("username") as string | null
   const role = formData.get("role") as Role
   const departmentId = formData.get("departmentId") as string | null
   const newPassword = formData.get("password") as string | null
 
   const data: Record<string, unknown> = {
     name,
-    role,
+    ...(role ? { role } : {}),
+    ...(email ? { email } : {}),
+    username: username || null,
     departmentId: departmentId || null,
   }
 
@@ -59,6 +65,12 @@ export async function updateUser(userId: string, formData: FormData) {
   await prisma.user.update({ where: { id: userId }, data })
 
   revalidatePath("/admin/users")
+}
+
+export async function changePassword(userId: string, newPassword: string) {
+  await requireAdmin()
+  const hashed = await bcrypt.hash(newPassword, 12)
+  await prisma.user.update({ where: { id: userId }, data: { password: hashed } })
 }
 
 export async function deleteUser(userId: string) {

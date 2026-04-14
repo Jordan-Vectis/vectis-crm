@@ -17,9 +17,7 @@ export default async function AuctionDetailPage({
 
   const auction = await prisma.catalogueAuction.findUnique({
     where: { id },
-    include: {
-      lots: { orderBy: { lotNumber: "asc" } },
-    },
+    include: { lots: { orderBy: { lotNumber: "asc" } } },
   })
 
   if (!auction) notFound()
@@ -58,6 +56,7 @@ export default async function AuctionDetailPage({
         notes: l.notes,
         status: l.status,
         createdByName: l.createdByName,
+        imageUrls: l.imageUrls,
       }))}
     />
   )

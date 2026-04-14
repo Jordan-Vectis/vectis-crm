@@ -9,6 +9,8 @@ import type { AppKey, WarehouseRole } from "@/lib/apps"
 interface Props {
   userId: string
   name: string
+  email: string
+  username: string | null
   role: string
   departmentId: string | null
   allowedApps: string[]
@@ -17,7 +19,7 @@ interface Props {
   isSelf: boolean
 }
 
-export default function EditUserForm({ userId, name, role, departmentId, allowedApps, appPermissions, departments, isSelf }: Props) {
+export default function EditUserForm({ userId, name, email, username, role, departmentId, allowedApps, appPermissions, departments, isSelf }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [selectedApps, setSelectedApps] = useState<string[]>(allowedApps)
@@ -88,6 +90,17 @@ export default function EditUserForm({ userId, name, role, departmentId, allowed
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Full name</label>
             <input name="name" defaultValue={name} required
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input name="username" defaultValue={username ?? ""} placeholder="First.Last"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <p className="text-xs text-gray-400 mt-1">Used to log in instead of email</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input name="email" type="email" defaultValue={email} required
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>

@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useRef } from "react"
 import { createLot } from "@/lib/actions/catalogue"
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const CATEGORY_MAP: Record<string, string[]> = {
+export const CATEGORY_MAP: Record<string, string[]> = {
   "BEARS":           ["ARTIST", "MAKING_SUPPLIES", "MIXED_LOTS", "MODERN", "OTHER_ITEMS", "VINTAGE"],
   "COLLECTABLES":    ["ADVERTISING", "BADGES", "CASINO", "DECORATIVE", "HISTORICAL", "METALWARE",
                       "MILITARIA", "NUMISMATIC", "OTHER", "PHOTOS", "RELIGION", "SCIENTIFIC",
@@ -42,7 +42,7 @@ const CATEGORY_MAP: Record<string, string[]> = {
                       "ROCKING_HORSES", "TINPLATE"],
 }
 
-const BRANDS_LIST: string[] = [
+export const BRANDS_LIST: string[] = [
   "Accurascale","Admiral Palou","Citadel & Games Workshop","Distler Figuren","Gilbert Erector",
   "Hinchliffe Models","Johann Haffner","Noris","NZG","Otto Models","Phillip Segal Toys",
   "Product Enterprise","Revell Model Racing","Sungroup","Swatch","The Royal Mint",
@@ -323,7 +323,7 @@ const CAT_ACCENT     = "#2AB4A6"
 const CONDITIONS     = ["Mint", "Near Mint", "Excellent", "Good Plus", "Good", "Fair", "Poor"]
 const PARCEL_OPTIONS = ["Small", "Medium", "Large", "Contact", "Collection Only"]
 const QUICK_RANGES   = [[20,40],[40,60],[60,80],[80,100],[100,140],[140,180],[180,220],[220,260],[260,300]]
-const STEP_LABELS    = ["Vendor & Tote", "Barcode", "Key Points", "Categories", "Estimate", "Condition", "Parcel Size"]
+const STEP_LABELS    = ["Vendor & Tote", "Barcode", "Key Points", "Categories", "Estimate", "Condition", "Parcel Size", "Photos"]
 
 // ─── Autocomplete ─────────────────────────────────────────────────────────────
 
@@ -426,6 +426,8 @@ export default function LotWizardTab({
   const [cond1,       setCond1]       = useState("")
   const [cond2,       setCond2]       = useState("")
   const [parcel,      setParcel]      = useState("")
+  const [photoFiles,  setPhotoFiles]  = useState<{ file: File; preview: string }[]>([])
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   // Pinned values — restored after each lot save
   const [pinnedVendor,  setPinnedVendor]  = useState("")
@@ -436,6 +438,30 @@ export default function LotWizardTab({
   const [saveStatus,  setSaveStatus]  = useState("")
   const [lotCount,    setLotCount]    = useState(0)
   const [validErr,    setValidErr]    = useState("")
+  const [toteInfo,      setToteInfo]      = useState<{ customer_id: string; customer_name: string; receipt_id: string } | null>(null)
+  const [toteResults,   setToteResults]   = useState<any[]>([])
+  const [toteOpen,      setToteOpen]      = useState(false)
+  const [toteIgnored,   setToteIgnored]   = useState(false)
+
+  async function searchTotes(q: string) {
+    setToteInfo(null)
+    setToteIgnored(false)
+    if (!q.trim()) { setToteResults([]); setToteOpen(false); return }
+    const res = await fetch(`/api/warehouse/containers?search=${encodeURIComponent(q)}`)
+    if (!res.ok) return
+    const data = await res.json()
+    setToteResults(data)
+    setToteOpen(data.length > 0)
+  }
+
+  function selectTote(item: any) {
+    setTote(item.id)
+    setToteInfo(item)
+    setToteResults([])
+    setToteOpen(false)
+    if (!vendor) setVendor(item.customer_id)
+    if (!receipt) setReceipt(item.receipt_id)
+  }
 
   const subCats     = mainCat ? (CATEGORY_MAP[mainCat] ?? []) : []
   const mainCatList = Object.keys(CATEGORY_MAP).sort()
@@ -459,7 +485,7 @@ export default function LotWizardTab({
     const err = validateStep(step)
     if (err) { setValidErr(err); return }
     setValidErr("")
-    if (step < 7) setStep(step + 1)
+    if (step < 8) setStep(step + 1)
   }
 
   function goBack() { setValidErr(""); if (step > 1) setStep(step - 1) }
@@ -497,6 +523,7 @@ export default function LotWizardTab({
     fd.append("brand",        brand)
     fd.append("notes",        parcel)
     fd.append("status",       "ENTERED")
+    photoFiles.forEach(p => fd.append("photo", p.file))
 
     start(async () => {
       await createLot(auctionId, fd)
@@ -511,6 +538,8 @@ export default function LotWizardTab({
       setBarcode(""); setKeyPoints("")
       setMainCat(pinnedMain); setSubCat(pinnedSub); setBrand("")
       setEstLow(""); setEstHigh(""); setCond1(""); setCond2(""); setParcel("")
+      photoFiles.forEach(p => URL.revokeObjectURL(p.preview))
+      setPhotoFiles([])
       setStep(1)
       onCreated()
     })
@@ -564,10 +593,43 @@ export default function LotWizardTab({
                 <label className="text-xs text-gray-500 uppercase tracking-wider">Tote Number <span className="text-red-500">*</span></label>
                 <PinBtn pinned={pinnedTote === tote && !!tote} onPin={() => setPinnedTote(v => v === tote ? "" : tote)} />
               </div>
-              <div className="flex gap-2">
-                <input value={tote} onChange={e => setTote(e.target.value)} className={`flex-1 ${inpFocus}`} placeholder="e.g. T001" />
-                {tote && <button type="button" onClick={() => setTote("")} className="px-3 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
+              <div className="relative">
+                <div className="flex gap-2">
+                  <input
+                    value={tote}
+                    onChange={e => { setTote(e.target.value); searchTotes(e.target.value) }}
+                    onFocus={e => { if (e.target.value) searchTotes(e.target.value) }}
+                    onBlur={() => setTimeout(() => setToteOpen(false), 150)}
+                    className={`flex-1 ${inpFocus}`}
+                    placeholder="Search tote ID or description…"
+                    autoComplete="off"
+                  />
+                  {tote && <button type="button" onClick={() => { setTote(""); setToteInfo(null); setToteResults([]); setToteOpen(false); setToteIgnored(false) }} className="px-3 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
+                </div>
+                {toteOpen && toteResults.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-[#1C1C1E] border border-gray-700 rounded shadow-xl max-h-52 overflow-y-auto">
+                    {toteResults.map(item => (
+                      <button key={item.id} type="button" onMouseDown={() => selectTote(item)}
+                        className="w-full text-left px-3 py-2 hover:bg-[#2C2C2E] transition-colors border-b border-gray-800 last:border-0">
+                        <span className="font-mono text-sm text-[#2AB4A6]">{item.id}</span>
+                        <span className="text-gray-400 text-xs ml-2">{item.description}</span>
+                        <span className="text-gray-500 text-xs ml-2">· {item.customer_name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+              {toteInfo && (
+                <p className="text-xs text-[#2AB4A6] mt-1">
+                  {toteInfo.customer_name} <span className="text-gray-500">({toteInfo.customer_id})</span> · {toteInfo.receipt_id}
+                </p>
+              )}
+              {tote && !toteInfo && !toteIgnored && toteResults.length === 0 && (
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-xs text-yellow-400">Tote not found in warehouse</p>
+                  <button type="button" onClick={() => setToteIgnored(true)} className="text-xs text-gray-400 underline hover:text-white">Use anyway</button>
+                </div>
+              )}
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -718,6 +780,47 @@ export default function LotWizardTab({
               <p><span className="text-gray-600">Condition:</span> {[cond1, cond2].filter(Boolean).join(" to ") || "—"}</p>
               <p><span className="text-gray-600">Parcel:</span> {parcel || "—"}</p>
             </div>
+          </div>
+        )}
+
+        {step === 8 && (
+          <div className="max-w-lg space-y-4">
+            <p className="text-xs text-gray-500">Add photos to this lot. You can skip this and add them later.</p>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={e => {
+                const files = Array.from(e.target.files ?? [])
+                setPhotoFiles(prev => [...prev, ...files.map(f => ({ file: f, preview: URL.createObjectURL(f) }))])
+                e.target.value = ""
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="w-full py-4 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex flex-col items-center gap-1"
+            >
+              <span className="text-2xl">📷</span>
+              <span className="text-sm font-medium">Take photo</span>
+            </button>
+            {photoFiles.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {photoFiles.map((p, i) => (
+                  <div key={i} className="relative aspect-square">
+                    <img src={p.preview} alt={`Photo ${i + 1}`} className="w-full h-full object-cover rounded-lg border border-gray-700" />
+                    <button type="button"
+                      onClick={() => setPhotoFiles(prev => { URL.revokeObjectURL(prev[i].preview); return prev.filter((_, j) => j !== i) })}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full text-white text-xs flex items-center justify-center">
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-gray-600">{photoFiles.length} photo{photoFiles.length !== 1 ? "s" : ""} added</p>
             {saveStatus && <p className="text-green-400 text-sm font-medium">{saveStatus}</p>}
           </div>
         )}
@@ -729,8 +832,8 @@ export default function LotWizardTab({
           className="px-5 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-300 text-sm rounded transition-colors disabled:opacity-30 hover:border-gray-500">
           ← Back
         </button>
-        <span className="text-xs text-gray-600">{step} / 7</span>
-        {step < 7 ? (
+        <span className="text-xs text-gray-600">{step} / 8</span>
+        {step < 8 ? (
           <button onClick={goNext}
             className="px-5 py-2 text-sm font-semibold rounded transition-colors"
             style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
@@ -740,7 +843,7 @@ export default function LotWizardTab({
           <button onClick={saveLot} disabled={pending}
             className="px-5 py-2 text-sm font-semibold rounded transition-colors disabled:opacity-50"
             style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
-            {pending ? "Saving…" : "Save Lot ✓"}
+            {pending ? "Saving…" : photoFiles.length > 0 ? "Save Lot ✓" : "Skip & Save ✓"}
           </button>
         )}
       </div>

@@ -12,6 +12,7 @@ export type AppCardDef = {
   glow: string
   appKey?: AppKey // undefined = admin-only card
   allUsers?: boolean // true = visible to all logged-in users regardless of role/apps
+  comingSoon?: boolean
 }
 
 export const APP_CARD_DEFS: AppCardDef[] = [
@@ -98,6 +99,44 @@ export const APP_CARD_DEFS: AppCardDef[] = [
     btnBg:              "bg-slate-600 hover:bg-slate-500",
     glow:               "hover:shadow-slate-900/40",
     // no appKey — admin-only
+  },
+  {
+    key:                "DATABASES",
+    href:               "/databases",
+    defaultLabel:       "Databases",
+    defaultDescription: "Search and manage all customers, receipts and totes in one unified place.",
+    icon:               "🗄️",
+    border:             "border-violet-500",
+    iconBg:             "text-violet-400",
+    btnBg:              "bg-violet-600 hover:bg-violet-500",
+    glow:               "hover:shadow-violet-900/40",
+    allUsers:           true,
+  },
+  {
+    key:                "ACCOUNTS",
+    href:               "#",
+    defaultLabel:       "Accounts",
+    defaultDescription: "Financial accounts, invoicing and vendor payments.",
+    icon:               "💰",
+    border:             "border-emerald-500",
+    iconBg:             "text-emerald-400",
+    btnBg:              "bg-emerald-600 hover:bg-emerald-500",
+    glow:               "hover:shadow-emerald-900/40",
+    allUsers:           true,
+    comingSoon:         true,
+  },
+  {
+    key:                "PACKING_DISPATCH",
+    href:               "#",
+    defaultLabel:       "Packing / Dispatch",
+    defaultDescription: "Manage packing lists and dispatch for outgoing lots.",
+    icon:               "📦",
+    border:             "border-orange-500",
+    iconBg:             "text-orange-400",
+    btnBg:              "bg-orange-600 hover:bg-orange-500",
+    glow:               "hover:shadow-orange-900/40",
+    allUsers:           true,
+    comingSoon:         true,
   },
   {
     key:                "SALEROOM_TRAINER",
