@@ -256,6 +256,46 @@ export async function deleteLotPhoto(lotId: string, auctionId: string, key: stri
   return updated
 }
 
+export async function importLots(auctionId: string, rows: {
+  lotNumber: string; title: string; description: string
+  estimateLow: string; estimateHigh: string; reserve: string
+  condition: string; status: string; vendor: string
+  tote: string; receipt: string; category: string
+  subCategory: string; brand: string; notes: string
+}[]) {
+  const session = await requireCataloguer()
+  const createdByName = session.user.name ?? session.user.email ?? "Unknown"
+
+  for (const r of rows) {
+    await prisma.catalogueLot.create({
+      data: {
+        auctionId,
+        createdByName,
+        lotNumber:    r.lotNumber,
+        title:        r.title || "",
+        description:  r.description || "",
+        estimateLow:  r.estimateLow  ? parseInt(r.estimateLow)  : null,
+        estimateHigh: r.estimateHigh ? parseInt(r.estimateHigh) : null,
+        reserve:      r.reserve      ? parseInt(r.reserve)      : null,
+        hammerPrice:  null,
+        condition:    r.condition    || null,
+        status:       r.status       || "ENTERED",
+        vendor:       r.vendor       || null,
+        tote:         r.tote         || null,
+        receipt:      r.receipt      || null,
+        category:     r.category     || null,
+        subCategory:  r.subCategory  || null,
+        brand:        r.brand        || null,
+        notes:        r.notes        || null,
+        imageUrls:    [],
+      },
+    })
+  }
+
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+  return rows.length
+}
+
 function extractLotData(formData: FormData) {
   return {
     lotNumber:   (formData.get("lotNumber") as string) || "",

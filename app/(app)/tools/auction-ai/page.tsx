@@ -1326,6 +1326,12 @@ export default function AuctionAIPage() {
   const [modelList, setModelList] = useState<string[]>([DEFAULT_MODEL])
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const t = params.get("tab") as Tab | null
+    if (t && TABS.some(x => x.id === t)) setTab(t)
+  }, [])
+
+  useEffect(() => {
     fetch("/api/auction-ai/models")
       .then(r => r.json())
       .then(j => { if (j.models?.length) setModelList(j.models) })

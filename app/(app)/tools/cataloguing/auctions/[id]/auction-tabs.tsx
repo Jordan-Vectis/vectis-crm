@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation"
 import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished } from "@/lib/actions/catalogue"
 import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
+import ImportTab from "./import-tab"
 import * as XLSX from "xlsx"
 import JSZip from "jszip"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only"
+type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "import"
 
 interface Auction {
   id: string; code: string; name: string; auctionDate: Date | null
@@ -64,6 +65,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
     { id: "manage-lots",  label: `Manage Lots (${lots.length})` },
     { id: "add-lot",      label: "Add Lot" },
     { id: "photo-only",   label: "Photo Only Cataloguing" },
+    { id: "import",       label: "Import Lots" },
     { id: "settings",     label: "Auction Settings" },
   ]
 
@@ -94,7 +96,11 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         {auction.complete && <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/50 text-green-300">Complete</span>}
         {published && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-300">● Live on Site</span>}
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => window.open("/tools/auction-ai?tab=copier", "_blank")}
+            className="text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors bg-[#C8A96E]/10 border border-[#C8A96E]/40 text-[#C8A96E] hover:bg-[#C8A96E]/20">
+            📋 Description Copier
+          </button>
           <button
             onClick={handleTogglePublish}
             disabled={pubPending}
@@ -142,6 +148,10 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
 
       {tab === "photo-only" && (
         <PhotoOnlyTab auctionId={auction.id} auctionCode={auction.code} onCreated={() => router.refresh()} />
+      )}
+
+      {tab === "import" && (
+        <ImportTab auctionId={auction.id} auctionCode={auction.code} onImported={() => { router.refresh(); switchTab("manage-lots") }} />
       )}
     </div>
   )
