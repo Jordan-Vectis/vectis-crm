@@ -38,25 +38,50 @@ export default function ImportTab({ auctionId, auctionCode, onImported }: Props)
         const wb      = XLSX.read(ev.target!.result, { type: "binary" })
         const ws      = wb.Sheets[wb.SheetNames[0]]
         const raw     = XLSX.utils.sheet_to_json<Record<string, string | number>>(ws)
-        const parsed  = raw.map(r => ({
-          lotNumber:    String(r["Lot No."]      ?? "").trim(),
-          title:        String(r["Title"]        ?? "").trim(),
-          description:  String(r["Description"]  ?? "").trim(),
-          estimateLow:  String(r["Estimate Low"]  ?? "").trim(),
-          estimateHigh: String(r["Estimate High"] ?? "").trim(),
-          reserve:      String(r["Reserve"]       ?? "").trim(),
-          condition:    String(r["Condition"]     ?? "").trim(),
-          status:       String(r["Status"]        ?? "").trim(),
-          vendor:       String(r["Vendor"]        ?? "").trim(),
-          tote:         String(r["Tote"]          ?? "").trim(),
-          receipt:      String(r["Receipt"]       ?? "").trim(),
-          category:     String(r["Category"]      ?? "").trim(),
-          subCategory:  String(r["Sub-Category"]  ?? "").trim(),
-          brand:        String(r["Brand"]         ?? "").trim(),
-          notes:        String(r["Notes"]         ?? "").trim(),
-        })).filter(r => r.lotNumber)
+        // Detect format by checking first row headers
+        const firstRow = raw[0] as Record<string, string | number>
+        const isCatalogueFormat = "Internal Barcode" in firstRow
 
-        if (parsed.length === 0) { setError("No valid rows found — make sure the file has a 'Lot No.' column."); return }
+        const parsed = raw.map(r => {
+          if (isCatalogueFormat) {
+            return {
+              lotNumber:    String(r["Internal Barcode"] ?? "").trim(),
+              title:        "",
+              description:  String(r["Key Points"]       ?? "").trim(),
+              estimateLow:  String(r["Estimate Low"]     ?? "").trim(),
+              estimateHigh: String(r["Estimate High"]    ?? "").trim(),
+              reserve:      "",
+              condition:    String(r["Condition"]        ?? "").trim(),
+              status:       "ENTERED",
+              vendor:       String(r["Vendor"]           ?? "").trim(),
+              tote:         String(r["Tote"]             ?? "").trim(),
+              receipt:      String(r["Receipt No"]       ?? "").trim(),
+              category:     String(r["Main Category"]    ?? "").trim(),
+              subCategory:  String(r["Sub Category"]     ?? "").trim(),
+              brand:        String(r["Brand"]            ?? "").trim(),
+              notes:        String(r["Parcel Size"]      ?? "").trim(),
+            }
+          }
+          return {
+            lotNumber:    String(r["Lot No."]      ?? "").trim(),
+            title:        String(r["Title"]        ?? "").trim(),
+            description:  String(r["Description"]  ?? "").trim(),
+            estimateLow:  String(r["Estimate Low"]  ?? "").trim(),
+            estimateHigh: String(r["Estimate High"] ?? "").trim(),
+            reserve:      String(r["Reserve"]       ?? "").trim(),
+            condition:    String(r["Condition"]     ?? "").trim(),
+            status:       String(r["Status"]        ?? "").trim(),
+            vendor:       String(r["Vendor"]        ?? "").trim(),
+            tote:         String(r["Tote"]          ?? "").trim(),
+            receipt:      String(r["Receipt"]       ?? "").trim(),
+            category:     String(r["Category"]      ?? "").trim(),
+            subCategory:  String(r["Sub-Category"]  ?? "").trim(),
+            brand:        String(r["Brand"]         ?? "").trim(),
+            notes:        String(r["Notes"]         ?? "").trim(),
+          }
+        }).filter(r => r.lotNumber)
+
+        if (parsed.length === 0) { setError("No valid rows found — make sure the file has a 'Lot No.' or 'Internal Barcode' column."); return }
         setRows(parsed)
       } catch {
         setError("Could not read file — make sure it's a valid Excel file.")
