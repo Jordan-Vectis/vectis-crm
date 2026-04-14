@@ -97,7 +97,15 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         {published && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-300">● Live on Site</span>}
 
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => window.open("/tools/auction-ai?tab=copier", "_blank")}
+          <button onClick={() => {
+            const data = lots.filter(l => l.description).map(l => ({
+              Folder:      l.lotNumber,
+              Description: l.description,
+              Estimate:    l.estimateLow && l.estimateHigh ? `Estimate: £${l.estimateLow}–£${l.estimateHigh}` : "",
+            }))
+            localStorage.setItem("copier_preload", JSON.stringify(data))
+            window.open("/tools/auction-ai?tab=copier", "_blank")
+          }}
             className="text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors bg-[#C8A96E]/10 border border-[#C8A96E]/40 text-[#C8A96E] hover:bg-[#C8A96E]/20">
             📋 Description Copier
           </button>

@@ -1067,6 +1067,22 @@ function CopierTab() {
   const [jumpQuery, setJumpQuery] = useState("")
   const [jumpOpen, setJumpOpen]   = useState(false)
 
+  useEffect(() => {
+    const preload = localStorage.getItem("copier_preload")
+    if (preload) {
+      try {
+        const data = JSON.parse(preload)
+        setRows(data.map((r: any) => ({
+          folder:      String(r.Folder ?? ""),
+          description: String(r.Description ?? ""),
+          estimate:    String(r.Estimate ?? ""),
+        })).filter((r: any) => r.description))
+        setIdx(0)
+        localStorage.removeItem("copier_preload")
+      } catch {}
+    }
+  }, [])
+
   function loadFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
