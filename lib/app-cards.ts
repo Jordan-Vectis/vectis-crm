@@ -150,4 +150,16 @@ export const APP_CARD_DEFS: AppCardDef[] = [
     glow:               "hover:shadow-purple-900/40",
     appKey:             "SALEROOM_TRAINER",
   },
+  {
+    key:                "WEBSITE",
+    href:               "/auctions",
+    defaultLabel:       "Website",
+    defaultDescription: "View and manage the public auction website — browse live lots, published auctions and customer pages.",
+    icon:               "🌐",
+    border:             "border-sky-500",
+    iconBg:             "text-sky-400",
+    btnBg:              "bg-sky-600 hover:bg-sky-500",
+    glow:               "hover:shadow-sky-900/40",
+    allUsers:           true,
+  },
 ]
