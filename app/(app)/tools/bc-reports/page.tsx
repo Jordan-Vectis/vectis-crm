@@ -731,7 +731,7 @@ function LocationHistoryTab() {
                         <span className="font-mono font-semibold text-blue-300">{e.to || "—"}</span>
                       </td>
                       <td className="px-4 py-2.5 text-gray-400 text-xs">
-                        {SALESPERSON_NAMES_LOC[e.changedBy] ?? e.changedBy || "—"}
+                        {(SALESPERSON_NAMES_LOC[e.changedBy] ?? e.changedBy) || "—"}
                       </td>
                     </tr>
                   ))}
