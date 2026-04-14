@@ -27,7 +27,7 @@ export default function CataloguingShell({ children }: { children: React.ReactNo
       )}
 
       {/* Main content */}
-      <div className="flex-1 overflow-auto bg-[#141416]">
+      <div className="flex-1 overflow-hidden bg-[#141416]">
         {/* Mobile top bar */}
         <div className="md:hidden sticky top-0 z-30 flex items-center gap-3 bg-[#1C1C1E] border-b border-gray-800 px-4 py-3">
           <button

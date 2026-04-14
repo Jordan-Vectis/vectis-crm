@@ -80,10 +80,10 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
   }
 
   return (
-    <div className="flex flex-col h-full p-6 gap-0">
+    <div className="flex flex-col h-full min-h-0 p-6 gap-0">
 
       {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex items-center gap-3 mb-5 flex-shrink-0">
         <button onClick={() => router.push("/tools/cataloguing/auctions")}
           className="text-sm text-[#2AB4A6] hover:text-[#24a090] transition-colors">
           ← Auctions
@@ -124,7 +124,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
       </div>
 
       {/* Tab bar */}
-      <div className="sticky top-0 z-10 bg-[#141416] flex border-b border-gray-700 mb-6 overflow-x-auto scrollbar-none -mx-6 px-6">
+      <div className="flex-shrink-0 flex border-b border-gray-700 mb-6 overflow-x-auto scrollbar-none -mx-6 px-6">
         {tabs.map(t => (
           <button key={t.id} onClick={() => switchTab(t.id)}
             className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
@@ -137,30 +137,32 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         ))}
       </div>
 
-      {/* Tab panels — LotWizardTab stays mounted to preserve pins/state */}
-      {tab === "settings" && <SettingsTab auction={auction} />}
+      {/* Tab panels — scrollable content area */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {tab === "settings" && <SettingsTab auction={auction} />}
 
-      <div className={tab === "add-lot" ? "" : "hidden"}>
-        <LotWizardTab auctionId={auction.id} auction={auction}
-          onCreated={() => router.refresh()} />
+        <div className={tab === "add-lot" ? "" : "hidden"}>
+          <LotWizardTab auctionId={auction.id} auction={auction}
+            onCreated={() => router.refresh()} />
+        </div>
+
+        {tab === "manage-lots" && (
+          editingLotId
+            ? <LotEditView lot={editingLot} auctionId={auction.id}
+                onDone={() => { setEditing(null); router.refresh() }} />
+            : <ManageLotsTab lots={lots} auctionId={auction.id} auction={auction}
+                onEdit={setEditing}
+                onDelete={() => router.refresh()} />
+        )}
+
+        {tab === "photo-only" && (
+          <PhotoOnlyTab auctionId={auction.id} auctionCode={auction.code} onCreated={() => router.refresh()} />
+        )}
+
+        {tab === "import" && (
+          <ImportTab auctionId={auction.id} auctionCode={auction.code} onImported={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)} />
+        )}
       </div>
-
-      {tab === "manage-lots" && (
-        editingLotId
-          ? <LotEditView lot={editingLot} auctionId={auction.id}
-              onDone={() => { setEditing(null); router.refresh() }} />
-          : <ManageLotsTab lots={lots} auctionId={auction.id} auction={auction}
-              onEdit={setEditing}
-              onDelete={() => router.refresh()} />
-      )}
-
-      {tab === "photo-only" && (
-        <PhotoOnlyTab auctionId={auction.id} auctionCode={auction.code} onCreated={() => router.refresh()} />
-      )}
-
-      {tab === "import" && (
-        <ImportTab auctionId={auction.id} auctionCode={auction.code} onImported={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)} />
-      )}
     </div>
   )
 }
