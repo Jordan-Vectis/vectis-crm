@@ -300,6 +300,8 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   onDelete: () => void
 }) {
   const [deleting, setDeleting]     = useState<string | null>(null)
+  const [selected, setSelected]     = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const [pending, start]            = useTransition()
   const [fillPending, startFill]    = useTransition()
   const [fillMsg, setFillMsg]       = useState<string | null>(null)
@@ -439,6 +441,26 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
     })
   }
 
+  async function handleBulkDelete() {
+    if (selected.size === 0) return
+    if (!confirm(`Delete ${selected.size} selected lot${selected.size !== 1 ? "s" : ""}? This cannot be undone.`)) return
+    setBulkDeleting(true)
+    start(async () => {
+      for (const id of selected) await deleteLot(id, auctionId)
+      setSelected(new Set())
+      setBulkDeleting(false)
+      onDelete()
+    })
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+
+  function toggleSelectAll() {
+    setSelected(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(l => l.id)))
+  }
+
   if (lots.length === 0) {
     return (
       <div className="text-center py-16 text-gray-600">
@@ -470,6 +492,12 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
           {fillMsg && <span className="text-xs text-[#2AB4A6]">{fillMsg}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {selected.size > 0 && (
+            <button onClick={handleBulkDelete} disabled={bulkDeleting}
+              className="px-4 py-1.5 text-sm font-medium rounded-lg border border-red-700 text-red-400 hover:bg-red-900/30 transition-colors disabled:opacity-50">
+              {bulkDeleting ? "Deleting…" : `🗑 Delete ${selected.size} selected`}
+            </button>
+          )}
           {filtersActive && (
             <span className="text-xs text-gray-500">
               {filtered.length} / {lots.length} lots
@@ -497,6 +525,10 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
         <table className="w-full text-sm min-w-[700px]">
           <thead>
             <tr className="border-b border-gray-700 bg-[#141416]">
+              <th className="px-4 py-3 w-8">
+                <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length}
+                  onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-600 accent-[#2AB4A6]" />
+              </th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Lot No.</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
@@ -509,6 +541,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
             </tr>
             {/* Filter row */}
             <tr className="border-b border-gray-800 bg-[#111113]">
+              <td className="px-4 py-1.5" />
               <td className="px-2 py-1.5"><input value={fLotNo}    onChange={e => setFLotNo(e.target.value)}    placeholder="Filter…" className={COL_INPUT} /></td>
               <td className="px-2 py-1.5"><input value={fTitle}    onChange={e => setFTitle(e.target.value)}    placeholder="Filter…" className={COL_INPUT} /></td>
               <td className="px-2 py-1.5"><input value={fVendor}   onChange={e => setFVendor(e.target.value)}   placeholder="Filter…" className={COL_INPUT} /></td>
@@ -533,7 +566,11 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
           </thead>
           <tbody>
             {filtered.map(lot => (
-              <tr key={lot.id} className="border-b border-gray-800 last:border-0 hover:bg-[#2C2C2E] transition-colors cursor-pointer" onClick={() => onEdit(lot.id)}>
+              <tr key={lot.id} className={`border-b border-gray-800 last:border-0 hover:bg-[#2C2C2E] transition-colors cursor-pointer ${selected.has(lot.id) ? "bg-[#2AB4A6]/5" : ""}`} onClick={() => onEdit(lot.id)}>
+                <td className="px-4 py-3 w-8" onClick={e => { e.stopPropagation(); toggleSelect(lot.id) }}>
+                  <input type="checkbox" checked={selected.has(lot.id)} onChange={() => toggleSelect(lot.id)}
+                    className="w-4 h-4 rounded border-gray-600 accent-[#2AB4A6]" />
+                </td>
                 <td className="px-4 py-3 font-mono font-semibold text-[#2AB4A6] whitespace-nowrap">{lot.lotNumber}</td>
                 <td className="px-4 py-3 text-gray-200 max-w-[160px] truncate">{lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.vendor ?? "—"}</td>
