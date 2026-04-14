@@ -159,7 +159,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
       )}
 
       {tab === "import" && (
-        <ImportTab auctionId={auction.id} auctionCode={auction.code} onImported={() => { switchTab("manage-lots"); router.refresh() }} />
+        <ImportTab auctionId={auction.id} auctionCode={auction.code} onImported={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)} />
       )}
     </div>
   )
