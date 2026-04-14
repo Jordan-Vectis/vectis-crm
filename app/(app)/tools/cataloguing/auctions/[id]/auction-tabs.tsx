@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished } from "@/lib/actions/catalogue"
 import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
@@ -54,13 +54,22 @@ const lbl   = "block text-xs font-medium text-gray-400 mb-1"
 // ─── Main tabbed component ────────────────────────────────────────────────────
 
 export default function AuctionTabs({ auction, lots }: { auction: Auction; lots: Lot[] }) {
-  const router = useRouter()
-  const [tab, setTab]              = useState<Tab>("manage-lots")
-  const [editingLotId, setEditing] = useState<string | null>(null)
-  const [published, setPublished]  = useState(auction.published)
-  const [pubPending, startPub]     = useTransition()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const [tab, setTab]             = useState<Tab>("manage-lots")
+  const [published, setPublished] = useState(auction.published)
+  const [pubPending, startPub]    = useTransition()
 
-  const editingLot = lots.find(l => l.id === editingLotId) ?? null
+  const editingLotId = searchParams.get("lot")
+  const editingLot   = lots.find(l => l.id === editingLotId) ?? null
+
+  function openLot(id: string) {
+    router.push(`/tools/cataloguing/auctions/${auction.id}?lot=${id}`)
+  }
+
+  function closeLot() {
+    router.push(`/tools/cataloguing/auctions/${auction.id}`)
+  }
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "manage-lots",  label: `Manage Lots (${lots.length})` },
@@ -71,7 +80,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
     { id: "settings",     label: "Auction Settings" },
   ]
 
-  function switchTab(t: Tab) { setTab(t); setEditing(null) }
+  function switchTab(t: Tab) { setTab(t) }
 
   function handleTogglePublish() {
     const next = !published
@@ -151,9 +160,9 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         {tab === "manage-lots" && (
           editingLotId
             ? <LotEditView lot={editingLot} auctionId={auction.id}
-                onDone={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)} />
+                onDone={closeLot} />
             : <ManageLotsTab lots={lots} auctionId={auction.id} auction={auction}
-                onEdit={setEditing}
+                onEdit={openLot}
                 onDelete={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)} />
         )}
 
