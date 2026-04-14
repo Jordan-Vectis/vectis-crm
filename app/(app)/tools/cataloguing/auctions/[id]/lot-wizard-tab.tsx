@@ -5,7 +5,7 @@ import { createLot } from "@/lib/actions/catalogue"
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const CATEGORY_MAP: Record<string, string[]> = {
+export const CATEGORY_MAP: Record<string, string[]> = {
   "BEARS":           ["ARTIST", "MAKING_SUPPLIES", "MIXED_LOTS", "MODERN", "OTHER_ITEMS", "VINTAGE"],
   "COLLECTABLES":    ["ADVERTISING", "BADGES", "CASINO", "DECORATIVE", "HISTORICAL", "METALWARE",
                       "MILITARIA", "NUMISMATIC", "OTHER", "PHOTOS", "RELIGION", "SCIENTIFIC",
@@ -42,7 +42,7 @@ const CATEGORY_MAP: Record<string, string[]> = {
                       "ROCKING_HORSES", "TINPLATE"],
 }
 
-const BRANDS_LIST: string[] = [
+export const BRANDS_LIST: string[] = [
   "Accurascale","Admiral Palou","Citadel & Games Workshop","Distler Figuren","Gilbert Erector",
   "Hinchliffe Models","Johann Haffner","Noris","NZG","Otto Models","Phillip Segal Toys",
   "Product Enterprise","Revell Model Racing","Sungroup","Swatch","The Royal Mint",

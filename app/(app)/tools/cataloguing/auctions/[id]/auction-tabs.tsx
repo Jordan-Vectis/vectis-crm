@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes } from "@/lib/actions/catalogue"
-import LotWizardTab from "./lot-wizard-tab"
+import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import * as XLSX from "xlsx"
 import JSZip from "jszip"
@@ -507,6 +507,8 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
 
 // ─── Lot edit view (inside manage-lots tab) ───────────────────────────────────
 
+const PARCEL_OPTIONS = ["Small", "Medium", "Large", "Contact", "Collection Only"]
+
 function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: string; onDone: () => void }) {
   const [pending, start]             = useTransition()
   const [imageKeys, setImageKeys]    = useState<string[]>(lot?.imageUrls ?? [])
@@ -514,6 +516,29 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
   const [loadingPhotos, setLoadingPhotos] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
+
+  // Parse stored condition "Good to Excellent" → cond1="Good", cond2="Excellent"
+  const condParts = (lot?.condition ?? "").split(" to ")
+  const [cond1, setCond1] = useState(condParts[0] ?? "")
+  const [cond2, setCond2] = useState(condParts[1] ?? "")
+  const condValue = [cond1, cond2].filter(Boolean).sort((a, b) => CONDITIONS.indexOf(a) - CONDITIONS.indexOf(b)).join(" to ")
+
+  // Parcel size is stored in notes
+  const [parcel, setParcel] = useState(lot?.notes ?? "")
+
+  // Category / sub-category / brand
+  const [mainCat,  setMainCat]  = useState(lot?.category ?? "")
+  const [subCat,   setSubCat]   = useState(lot?.subCategory ?? "")
+  const [brand,    setBrand]    = useState(lot?.brand ?? "")
+  const [brandSearch, setBrandSearch] = useState(lot?.brand ?? "")
+  const mainCatList = Object.keys(CATEGORY_MAP).sort()
+  const subCatList  = mainCat ? (CATEGORY_MAP[mainCat] ?? []) : []
+  const filteredBrands = useMemo(() =>
+    brandSearch.trim().length < 2
+      ? []
+      : BRANDS_LIST.filter(b => b.toLowerCase().includes(brandSearch.toLowerCase())).slice(0, 10),
+    [brandSearch]
+  )
 
   useEffect(() => {
     if (!lot || imageKeys.length === 0) return
@@ -591,10 +616,25 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
             </div>
             <div>
               <label className={lbl}>Condition</label>
-              <select name="condition" defaultValue={lot.condition ?? ""} className={input}>
-                <option value="">— Select —</option>
-                {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <div className="flex flex-wrap gap-1.5 mb-1">
+                {CONDITIONS.map(c => (
+                  <button key={c} type="button" onClick={() => setCond1(v => v === c ? "" : c)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${cond1 === c ? "border-[#2AB4A6] bg-[#2AB4A6]/20 text-[#2AB4A6]" : "border-gray-700 text-gray-400 hover:border-gray-500"}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <label className={`${lbl} mt-2`}>Condition To <span className="text-gray-600">(optional)</span></label>
+              <div className="flex flex-wrap gap-1.5">
+                {CONDITIONS.map(c => (
+                  <button key={c} type="button" onClick={() => setCond2(v => v === c ? "" : c)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${cond2 === c ? "border-[#2AB4A6] bg-[#2AB4A6]/20 text-[#2AB4A6]" : "border-gray-700 text-gray-400 hover:border-gray-500"}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              {condValue && <p className="text-xs text-[#2AB4A6] mt-1">{condValue}</p>}
+              <input type="hidden" name="condition" value={condValue} />
             </div>
             <div>
               <label className={lbl}>Status</label>
@@ -603,9 +643,16 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
               </select>
             </div>
             <div>
-              <label className={lbl}>Notes</label>
-              <textarea name="notes" rows={2} defaultValue={lot.notes ?? ""}
-                className={`${input} resize-none`} />
+              <label className={lbl}>Parcel Size</label>
+              <div className="flex flex-wrap gap-1.5">
+                {PARCEL_OPTIONS.map(opt => (
+                  <button key={opt} type="button" onClick={() => setParcel(v => v === opt ? "" : opt)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${parcel === opt ? "border-[#2AB4A6] bg-[#2AB4A6]/20 text-[#2AB4A6]" : "border-gray-700 text-gray-400 hover:border-gray-500"}`}>
+                    {opt}
+                  </button>
+                ))}
+              </div>
+              <input type="hidden" name="notes" value={parcel} />
             </div>
           </div>
 
@@ -647,15 +694,42 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
             </div>
             <div>
               <label className={lbl}>Category</label>
-              <input name="category" defaultValue={lot.category ?? ""} className={input} />
+              <select value={mainCat} onChange={e => { setMainCat(e.target.value); setSubCat("") }} className={input}>
+                <option value="">— Select —</option>
+                {mainCatList.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <input type="hidden" name="category" value={mainCat} />
             </div>
             <div>
               <label className={lbl}>Sub-Category</label>
-              <input name="subCategory" defaultValue={lot.subCategory ?? ""} className={input} />
+              <select value={subCat} onChange={e => setSubCat(e.target.value)} className={input} disabled={!mainCat}>
+                <option value="">— Select —</option>
+                {subCatList.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <input type="hidden" name="subCategory" value={subCat} />
             </div>
-            <div>
+            <div className="relative">
               <label className={lbl}>Brand</label>
-              <input name="brand" defaultValue={lot.brand ?? ""} className={input} />
+              <input
+                value={brandSearch}
+                onChange={e => { setBrandSearch(e.target.value); setBrand(e.target.value) }}
+                placeholder="Search brand…"
+                className={input}
+                autoComplete="off"
+              />
+              <input type="hidden" name="brand" value={brand} />
+              {filteredBrands.length > 0 && (
+                <ul className="absolute z-10 w-full mt-1 bg-[#1C1C1E] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                  {filteredBrands.map(b => (
+                    <li key={b}>
+                      <button type="button" onClick={() => { setBrand(b); setBrandSearch(b) }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#2C2C2E] transition-colors">
+                        {b}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>
