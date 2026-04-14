@@ -598,6 +598,15 @@ function BatchTab({ model }: { model: string }) {
   useEffect(() => {
     fetch("/api/auction-ai/presets").then(r => r.json()).then(setOverrides).catch(() => {})
     fetch("/api/auction-ai/runs").then(r => r.json()).then(setRunList).catch(() => {})
+    // Pre-load auction code from cataloguing page "Upgrade with AI" button
+    const raw = localStorage.getItem("batch_preload")
+    if (raw) {
+      try {
+        const data = JSON.parse(raw)
+        if (data.auctionCode) setAuctionCode(data.auctionCode)
+      } catch {}
+      localStorage.removeItem("batch_preload")
+    }
   }, [])
 
   // When auction code changes, look up existing saved lots for that run

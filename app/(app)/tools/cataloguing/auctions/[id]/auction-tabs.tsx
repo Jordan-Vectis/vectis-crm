@@ -120,6 +120,16 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
             className="text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors bg-[#C8A96E]/10 border border-[#C8A96E]/40 text-[#C8A96E] hover:bg-[#C8A96E]/20">
             📋 Description Copier
           </button>
+          <button onClick={() => {
+            localStorage.setItem("batch_preload", JSON.stringify({
+              auctionCode: auction.code,
+              lotCount: lots.length,
+            }))
+            window.open("/tools/auction-ai?tab=batch", "_blank")
+          }}
+            className="text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors bg-purple-900/20 border border-purple-700/40 text-purple-300 hover:bg-purple-900/40">
+            ✨ Upgrade descriptions with AI
+          </button>
           <button
             onClick={handleTogglePublish}
             disabled={pubPending}
