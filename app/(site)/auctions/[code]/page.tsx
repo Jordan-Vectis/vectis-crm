@@ -151,7 +151,7 @@ export default async function AuctionDetailPage({
         ) : (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-0 border-l border-t border-gray-200">
-              {lots.map(lot => <LotCard key={lot.id} lot={lot} />)}
+              {lots.map(lot => <LotCard key={lot.id} lot={lot} auctionCode={auction.code} />)}
             </div>
 
             {/* Pagination */}
@@ -185,16 +185,23 @@ export default async function AuctionDetailPage({
   )
 }
 
-function LotCard({ lot }: {
+// Strip auction code prefix from lot number (e.g. "F051315" → "315")
+function displayLotNum(lotNumber: string, auctionCode: string): string {
+  return lotNumber.replace(new RegExp(`^${auctionCode}`, "i"), "").replace(/^0+/, "") || lotNumber
+}
+
+function LotCard({ lot, auctionCode }: {
   lot: {
     id: string; lotNumber: string; title: string
     estimateLow: number | null; estimateHigh: number | null
     hammerPrice: number | null; condition: string | null
     imageUrls: string[]; status: string
   }
+  auctionCode: string
 }) {
   const img = lotPhotoUrl(lot.imageUrls[0], true)
   const sold = lot.status === "SOLD"
+  const lotNum = displayLotNum(lot.lotNumber, auctionCode)
 
   return (
     <div className="group border-r border-b border-gray-200 bg-white hover:bg-gray-50 transition-colors flex flex-col cursor-pointer">
@@ -207,6 +214,7 @@ function LotCard({ lot }: {
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-300"
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+            unoptimized
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-200">
@@ -217,7 +225,7 @@ function LotCard({ lot }: {
         )}
         {/* Lot number badge */}
         <div className="absolute top-0 left-0 bg-[#1e3058] text-white text-[10px] font-bold px-2 py-0.5 tracking-wider">
-          LOT {lot.lotNumber}
+          LOT {lotNum}
         </div>
         {sold && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
