@@ -14,13 +14,23 @@ export function getIncrement(amount: number): number {
 }
 
 /**
- * Opening bid = half of the estimate low, rounded down to the nearest valid increment.
- * e.g. estimate £20–£40 → opening bid £10
+ * Minimum opening bid = 60% of estimate low, rounded UP to the nearest valid increment.
+ * e.g. estimate £160–£260 → 60% = £96 → rounded up to nearest £10 = £100
+ * e.g. estimate £20–£40   → 60% = £12 → rounded up to nearest £5  = £15
  */
 export function getOpeningBid(estimateLow: number): number {
-  const half = estimateLow / 2
-  const inc = getIncrement(0) // £5 at the lowest level
-  return Math.max(inc, Math.floor(half / inc) * inc)
+  const threshold = estimateLow * 0.6
+  const inc = getIncrement(threshold)
+  return Math.max(inc, Math.ceil(threshold / inc) * inc)
+}
+
+/**
+ * Returns the minimum valid bid for a lot.
+ * If no estimate, minimum is £5.
+ */
+export function getMinBid(estimateLow: number | null): number {
+  if (!estimateLow || estimateLow <= 0) return 5
+  return getOpeningBid(estimateLow)
 }
 
 /**

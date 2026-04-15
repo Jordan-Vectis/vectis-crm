@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { getCustomerSession } from "@/lib/customer-auth"
+import { getMinBid } from "@/lib/bid-increments"
 
 export type PlaceBidResult =
   | { success: true; updated: boolean; maxBid: number }
@@ -25,6 +26,12 @@ export async function placeCommissionBid(
   if (!lot) return { error: "Lot not found." }
   if (!lot.auction.published) return { error: "This auction is not available." }
   if (lot.auction.finished || lot.auction.complete) return { error: "This auction has ended." }
+
+  // Enforce minimum bid (60% of low estimate, rounded up to nearest increment)
+  const minBid = getMinBid(lot.estimateLow)
+  if (maxBid < minBid) {
+    return { error: `Minimum bid for this lot is £${minBid.toLocaleString("en-GB")}.` }
+  }
 
   // Check bidder is registered
   const reg = await prisma.bidderRegistration.findFirst({

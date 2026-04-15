@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { placeCommissionBid } from "@/lib/actions/commission-bid"
 import RegisterToBidModal from "../../../register-to-bid-modal"
-import { getIncrement, getOpeningBid, nextBid, INCREMENT_TABLE } from "@/lib/bid-increments"
+import { getIncrement, getMinBid, nextBid, INCREMENT_TABLE } from "@/lib/bid-increments"
 
 interface Props {
   lotId: string
@@ -34,14 +34,16 @@ export default function LotBidPanel({
   const [showRegisterModal, setShowRegisterModal] = useState(false)
   const [showTable, setShowTable] = useState(false)
 
-  // Opening bid = half of estimate low, or existing bid
-  const defaultBid = existingMaxBid
-    ?? (estimateLow ? getOpeningBid(estimateLow) : 5)
+  const minBid = getMinBid(estimateLow)
+
+  // Default = existing bid, or the minimum opening bid
+  const defaultBid = existingMaxBid ?? minBid
 
   const [bidAmount, setBidAmount] = useState<number>(defaultBid)
   const [result, setResult] = useState<{ success?: boolean; updated?: boolean; error?: string } | null>(null)
 
   const currentIncrement = getIncrement(bidAmount)
+  const belowMin = bidAmount < minBid
 
   function stepUp() {
     setBidAmount(prev => nextBid(prev))
@@ -50,9 +52,8 @@ export default function LotBidPanel({
 
   function stepDown() {
     setBidAmount(prev => {
-      if (prev <= 5) return 5
-      const inc = getIncrement(prev - getIncrement(prev - 1))
-      return Math.max(5, prev - inc)
+      const inc = getIncrement(prev - 1)
+      return Math.max(minBid, prev - inc)
     })
     setResult(null)
   }
@@ -125,12 +126,12 @@ export default function LotBidPanel({
             Maximum Bid
           </label>
 
-          <div className="flex items-stretch border border-gray-300 focus-within:border-[#1e3058] transition-colors">
+          <div className={`flex items-stretch border transition-colors ${belowMin ? "border-red-400 focus-within:border-red-500" : "border-gray-300 focus-within:border-[#1e3058]"}`}>
             {/* Decrement */}
             <button
               type="button"
               onClick={stepDown}
-              disabled={bidAmount <= 5}
+              disabled={bidAmount <= minBid}
               className="px-4 py-3 text-lg font-black text-gray-500 hover:text-[#1e3058] hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed border-r border-gray-300 transition-colors select-none"
             >
               −
@@ -141,7 +142,7 @@ export default function LotBidPanel({
               <span className="text-gray-400 font-bold text-lg">£</span>
               <input
                 type="number"
-                min={5}
+                min={minBid}
                 step={currentIncrement}
                 value={bidAmount}
                 onChange={e => {
@@ -162,9 +163,20 @@ export default function LotBidPanel({
             </button>
           </div>
 
-          <p className="text-[10px] text-gray-400 mt-1.5 text-center">
-            Increment at this level: <span className="font-bold text-gray-600">£{currentIncrement}</span>
-          </p>
+          <div className="flex items-center justify-between mt-1.5">
+            <p className="text-[10px] text-gray-400">
+              Min. bid: <span className="font-bold text-gray-600">£{minBid.toLocaleString("en-GB")}</span>
+            </p>
+            <p className="text-[10px] text-gray-400">
+              Increment: <span className="font-bold text-gray-600">£{currentIncrement}</span>
+            </p>
+          </div>
+
+          {belowMin && (
+            <p className="text-[11px] text-red-600 font-semibold mt-1.5 bg-red-50 border border-red-200 px-3 py-1.5">
+              Minimum bid for this lot is £{minBid.toLocaleString("en-GB")}
+            </p>
+          )}
         </div>
 
         {/* Result message */}
@@ -183,7 +195,7 @@ export default function LotBidPanel({
         <button
           type="button"
           onClick={handleBidClick}
-          disabled={isPending || bidAmount < 5}
+          disabled={isPending || belowMin}
           className="w-full bg-[#1e3058] hover:bg-[#162544] disabled:opacity-50 text-white font-black uppercase tracking-widest text-sm py-3 transition-colors mb-3"
         >
           {isPending
