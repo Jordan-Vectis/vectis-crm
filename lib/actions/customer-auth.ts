@@ -66,7 +66,7 @@ export async function registerCustomer(
     LIMIT 1
   `
   const lastNum   = lastContact.length > 0 ? parseInt(lastContact[0].id.slice(1), 10) : 0
-  const contactId = `C${String(lastNum + 1).padStart(3, "0")}`
+  const contactId = `C${String(lastNum + 1).padStart(6, "0")}`
 
   await prisma.$transaction(async (tx) => {
     await tx.contact.create({
