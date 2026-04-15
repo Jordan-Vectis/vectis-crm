@@ -208,7 +208,7 @@ export default async function AuctionsPage({
                           fill
                           className="object-cover hover:scale-105 transition-transform duration-300"
                           sizes="240px"
-                          unoptimized
+                         
                         />
                       ) : (
                         <div className="absolute inset-0 bg-[#1e3058]/5 flex items-center justify-center">

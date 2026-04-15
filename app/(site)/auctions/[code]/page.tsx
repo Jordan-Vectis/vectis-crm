@@ -214,7 +214,7 @@ function LotCard({ lot, auctionCode }: {
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-300"
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-            unoptimized
+           
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-200">

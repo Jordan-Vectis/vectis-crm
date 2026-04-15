@@ -112,7 +112,7 @@ export default function LiveAuctionBanner({
               fill
               className="object-cover"
               priority
-              unoptimized
+             
             />
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-[#1e3058] to-[#2a4a7f]" />
@@ -173,7 +173,7 @@ export default function LiveAuctionBanner({
           <div className="relative bg-black mx-5 mt-4 rounded overflow-hidden" style={{ aspectRatio: "16/9" }}>
             <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
               {displayImg ? (
-                <Image src={displayImg} alt="" fill className="object-cover opacity-60" unoptimized />
+                <Image src={displayImg} alt="" fill className="object-cover opacity-60" />
               ) : null}
               <div className="relative z-10 text-center">
                 <div className="w-14 h-14 rounded-full bg-white/20 border-2 border-white flex items-center justify-center mx-auto mb-2 cursor-pointer hover:bg-white/30 transition-colors">
@@ -195,7 +195,7 @@ export default function LiveAuctionBanner({
             {/* Lot thumbnail */}
             {displayImg && (
               <div className="relative w-16 h-16 shrink-0 border border-gray-200 overflow-hidden rounded">
-                <Image src={displayImg} alt="" fill className="object-cover" unoptimized />
+                <Image src={displayImg} alt="" fill className="object-cover" />
               </div>
             )}
             <div className="flex-1 min-w-0">

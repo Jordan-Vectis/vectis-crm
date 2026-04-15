@@ -172,7 +172,7 @@ export default function LiveBiddingRoom({
                 alt={displayTitle}
                 fill
                 className="object-contain p-4"
-                unoptimized
+               
                 priority
               />
             ) : (
@@ -199,7 +199,7 @@ export default function LiveBiddingRoom({
                       i === imageIndex ? "border-[#1e3058]" : "border-gray-200 hover:border-gray-400"
                     }`}
                   >
-                    <Image src={img} alt="" fill className="object-cover" unoptimized />
+                    <Image src={img} alt="" fill className="object-cover" />
                   </button>
                 ))}
               </div>
@@ -375,7 +375,7 @@ export default function LiveBiddingRoom({
               >
                 <div className="relative bg-gray-100" style={{ aspectRatio: "4/3" }}>
                   {thumb ? (
-                    <Image src={thumb} alt="" fill className="object-cover" unoptimized />
+                    <Image src={thumb} alt="" fill className="object-cover" />
                   ) : (
                     <div className="absolute inset-0 bg-gray-100" />
                   )}
