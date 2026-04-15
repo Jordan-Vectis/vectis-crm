@@ -54,15 +54,15 @@ export default function AuctionCalendarSidebar({ auctionDates, auctionTypes, sel
       <div className="bg-white border border-gray-200 rounded mb-4">
         {/* Month nav */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-100">
-          <button onClick={prevMonth} className="text-gray-400 hover:text-[#1e3058] transition-colors p-1">
+          <button onClick={prevMonth} className="text-gray-400 hover:text-[#32348A] transition-colors p-1">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span className="text-[#1e3058] font-bold text-sm uppercase tracking-wide">
+          <span className="text-[#32348A] font-bold text-sm uppercase tracking-wide">
             {MONTHS[month]} {year}
           </span>
-          <button onClick={nextMonth} className="text-gray-400 hover:text-[#1e3058] transition-colors p-1">
+          <button onClick={nextMonth} className="text-gray-400 hover:text-[#32348A] transition-colors p-1">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
@@ -87,9 +87,9 @@ export default function AuctionCalendarSidebar({ auctionDates, auctionTypes, sel
                 key={d}
                 className={`relative flex items-center justify-center rounded-full w-7 h-7 mx-auto text-xs font-medium cursor-default transition-colors ${
                   auction
-                    ? "bg-[#1e3058] text-white font-bold cursor-pointer"
+                    ? "bg-[#32348A] text-white font-bold cursor-pointer"
                     : today
-                    ? "bg-[#2AB4A6]/20 text-[#1e3058] font-bold"
+                    ? "bg-[#2AB4A6]/20 text-[#32348A] font-bold"
                     : "text-gray-600"
                 }`}
               >
@@ -107,16 +107,16 @@ export default function AuctionCalendarSidebar({ auctionDates, auctionTypes, sel
       {auctionTypes.length > 0 && (
         <div className="bg-white border border-gray-200 rounded">
           <div className="px-3 py-2.5 border-b border-gray-100">
-            <span className="text-[#1e3058] font-bold text-xs uppercase tracking-wide">Categories</span>
+            <span className="text-[#32348A] font-bold text-xs uppercase tracking-wide">Categories</span>
           </div>
           <div className="py-1">
             <Link
               href="/auctions"
               className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                !selectedType ? "text-[#1e3058] font-bold" : "text-gray-600 hover:text-[#1e3058]"
+                !selectedType ? "text-[#32348A] font-bold" : "text-gray-600 hover:text-[#32348A]"
               }`}
             >
-              <span className={`w-3 h-3 rounded-full border-2 border-[#1e3058] ${!selectedType ? "bg-[#1e3058]" : ""}`} />
+              <span className={`w-3 h-3 rounded-full border-2 border-[#32348A] ${!selectedType ? "bg-[#32348A]" : ""}`} />
               All Auctions
             </Link>
             {auctionTypes.map(t => (
@@ -124,10 +124,10 @@ export default function AuctionCalendarSidebar({ auctionDates, auctionTypes, sel
                 key={t}
                 href={`/auctions?type=${encodeURIComponent(t)}`}
                 className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                  selectedType === t ? "text-[#1e3058] font-bold" : "text-gray-600 hover:text-[#1e3058]"
+                  selectedType === t ? "text-[#32348A] font-bold" : "text-gray-600 hover:text-[#32348A]"
                 }`}
               >
-                <span className={`w-3 h-3 rounded-full border-2 border-[#1e3058] ${selectedType === t ? "bg-[#1e3058]" : ""}`} />
+                <span className={`w-3 h-3 rounded-full border-2 border-[#32348A] ${selectedType === t ? "bg-[#32348A]" : ""}`} />
                 {t}
               </Link>
             ))}

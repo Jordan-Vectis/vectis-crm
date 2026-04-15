@@ -94,13 +94,13 @@ export default async function LotDetailPage({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-xs text-gray-400 font-semibold uppercase tracking-wider">
-            <Link href="/auctions" className="hover:text-[#1e3058] transition-colors">Auctions</Link>
+            <Link href="/auctions" className="hover:text-[#32348A] transition-colors">Auctions</Link>
             <span>/</span>
-            <Link href={`/auctions/${auction.code}`} className="hover:text-[#1e3058] transition-colors truncate max-w-[180px]">
+            <Link href={`/auctions/${auction.code}`} className="hover:text-[#32348A] transition-colors truncate max-w-[180px]">
               {auction.name}
             </Link>
             <span>/</span>
-            <span className="text-[#1e3058]">Lot {lotNum}</span>
+            <span className="text-[#32348A]">Lot {lotNum}</span>
           </nav>
 
           {/* Lot navigation arrows */}
@@ -108,7 +108,7 @@ export default async function LotDetailPage({
             {prevLot ? (
               <Link
                 href={`/auctions/${auction.code}/lot/${prevLot.id}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-xs font-bold text-gray-600 hover:border-[#1e3058] hover:text-[#1e3058] transition-colors uppercase tracking-wider"
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-xs font-bold text-gray-600 hover:border-[#32348A] hover:text-[#32348A] transition-colors uppercase tracking-wider"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
@@ -131,7 +131,7 @@ export default async function LotDetailPage({
             {nextLot ? (
               <Link
                 href={`/auctions/${auction.code}/lot/${nextLot.id}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-xs font-bold text-gray-600 hover:border-[#1e3058] hover:text-[#1e3058] transition-colors uppercase tracking-wider"
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-xs font-bold text-gray-600 hover:border-[#32348A] hover:text-[#32348A] transition-colors uppercase tracking-wider"
               >
                 Next
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -176,7 +176,7 @@ export default async function LotDetailPage({
               )}
 
               {/* Lot number badge */}
-              <div className="absolute top-3 left-3 bg-[#1e3058] text-white text-xs font-black px-3 py-1 tracking-wider uppercase">
+              <div className="absolute top-3 left-3 bg-[#32348A] text-white text-xs font-black px-3 py-1 tracking-wider uppercase">
                 LOT {lotNum}
               </div>
 
@@ -234,7 +234,7 @@ export default async function LotDetailPage({
             </div>
 
             {/* Title */}
-            <h1 className="text-2xl sm:text-3xl font-black text-[#1e3058] leading-tight mb-4">
+            <h1 className="text-2xl sm:text-3xl font-black text-[#32348A] leading-tight mb-4">
               {lot.title}
             </h1>
 
@@ -242,7 +242,7 @@ export default async function LotDetailPage({
             <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-6 border-t border-b border-gray-200 py-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Lot Number</p>
-                <p className="text-sm font-bold text-[#1e3058]">{lot.lotNumber}</p>
+                <p className="text-sm font-bold text-[#32348A]">{lot.lotNumber}</p>
               </div>
               {lot.condition && (
                 <div>
@@ -270,11 +270,11 @@ export default async function LotDetailPage({
                 {sold ? "Hammer Price" : "Estimate"}
               </p>
               {sold && lot.hammerPrice ? (
-                <p className="text-3xl font-black text-[#1e3058]">
+                <p className="text-3xl font-black text-[#32348A]">
                   £{lot.hammerPrice.toLocaleString("en-GB")}
                 </p>
               ) : lot.estimateLow || lot.estimateHigh ? (
-                <p className="text-3xl font-black text-[#1e3058]">
+                <p className="text-3xl font-black text-[#32348A]">
                   {lot.estimateLow && lot.estimateHigh
                     ? `£${lot.estimateLow.toLocaleString("en-GB")} – £${lot.estimateHigh.toLocaleString("en-GB")}`
                     : lot.estimateLow
@@ -322,7 +322,7 @@ export default async function LotDetailPage({
             <div className="mt-8 pt-6 border-t border-gray-200">
               <Link
                 href={`/auctions/${auction.code}`}
-                className="inline-flex items-center gap-2 text-sm font-bold text-[#1e3058] hover:underline uppercase tracking-wider"
+                className="inline-flex items-center gap-2 text-sm font-bold text-[#32348A] hover:underline uppercase tracking-wider"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
@@ -340,7 +340,7 @@ export default async function LotDetailPage({
           {prevLot ? (
             <Link
               href={`/auctions/${auction.code}/lot/${prevLot.id}`}
-              className="flex items-center gap-2 text-sm font-bold text-[#1e3058] hover:underline uppercase tracking-wider"
+              className="flex items-center gap-2 text-sm font-bold text-[#32348A] hover:underline uppercase tracking-wider"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
@@ -354,7 +354,7 @@ export default async function LotDetailPage({
 
           <Link
             href={`/auctions/${auction.code}`}
-            className="text-xs font-semibold text-gray-400 hover:text-[#1e3058] transition-colors uppercase tracking-widest"
+            className="text-xs font-semibold text-gray-400 hover:text-[#32348A] transition-colors uppercase tracking-widest"
           >
             All Lots
           </Link>
@@ -362,7 +362,7 @@ export default async function LotDetailPage({
           {nextLot ? (
             <Link
               href={`/auctions/${auction.code}/lot/${nextLot.id}`}
-              className="flex items-center gap-2 text-sm font-bold text-[#1e3058] hover:underline uppercase tracking-wider"
+              className="flex items-center gap-2 text-sm font-bold text-[#32348A] hover:underline uppercase tracking-wider"
             >
               <span className="text-gray-400 font-normal normal-case tracking-normal">
                 {displayLotNum(nextLot.lotNumber, auction.code)} —

@@ -55,8 +55,8 @@ export default function BidsClient({ groups }: Props) {
   if (groups.length === 0) {
     return (
       <div className="bg-white border border-gray-200 p-8 text-center mb-6">
-        <div className="w-16 h-16 bg-[#1e3058]/5 flex items-center justify-center mx-auto mb-4">
-          <svg className="w-8 h-8 text-[#1e3058]/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-16 h-16 bg-[#32348A]/5 flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-[#32348A]/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         </div>
@@ -66,7 +66,7 @@ export default function BidsClient({ groups }: Props) {
         </p>
         <Link
           href="/auctions"
-          className="inline-block bg-[#1e3058] hover:bg-[#162544] text-white text-xs font-black uppercase tracking-widest px-6 py-3 transition-colors"
+          className="inline-block bg-[#32348A] hover:bg-[#28296e] text-white text-xs font-black uppercase tracking-widest px-6 py-3 transition-colors"
         >
           Browse Auctions
         </Link>
@@ -99,7 +99,7 @@ export default function BidsClient({ groups }: Props) {
                 </svg>
 
                 <div className="min-w-0">
-                  <p className="font-black text-[#1e3058] text-sm leading-tight truncate">{group.auctionName}</p>
+                  <p className="font-black text-[#32348A] text-sm leading-tight truncate">{group.auctionName}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {group.auctionDate
                       ? format(new Date(group.auctionDate), "d MMMM yyyy")
@@ -128,7 +128,7 @@ export default function BidsClient({ groups }: Props) {
                 )}
                 <div className="text-right hidden sm:block">
                   <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Total Bid</p>
-                  <p className="text-sm font-black text-[#1e3058]">£{totalBid.toLocaleString("en-GB")}</p>
+                  <p className="text-sm font-black text-[#32348A]">£{totalBid.toLocaleString("en-GB")}</p>
                 </div>
               </div>
             </button>
@@ -167,7 +167,7 @@ export default function BidsClient({ groups }: Props) {
                       {/* Lot info */}
                       <div className="flex-1 px-4 py-3 flex flex-col justify-center min-w-0">
                         <Link href={`/auctions/${group.auctionCode}/lot/${bid.lotId}`} className="hover:underline">
-                          <p className="text-sm font-bold text-[#1e3058] truncate">{bid.lotTitle}</p>
+                          <p className="text-sm font-bold text-[#32348A] truncate">{bid.lotTitle}</p>
                         </Link>
                         <p className="text-xs text-gray-400 mt-0.5">
                           Lot {lotNum}
@@ -186,7 +186,7 @@ export default function BidsClient({ groups }: Props) {
                       {/* Max bid */}
                       <div className="shrink-0 px-4 py-3 flex flex-col items-end justify-center border-l border-gray-100 min-w-[90px]">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Max bid</p>
-                        <p className="text-base font-black text-[#1e3058]">£{bid.maxBid.toLocaleString("en-GB")}</p>
+                        <p className="text-base font-black text-[#32348A]">£{bid.maxBid.toLocaleString("en-GB")}</p>
                       </div>
 
                       {/* Status */}

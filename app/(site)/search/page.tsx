@@ -133,13 +133,13 @@ export default async function SearchPage({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-black text-[#1e3058] uppercase tracking-tight">
+              <h1 className="text-2xl font-black text-[#32348A] uppercase tracking-tight">
                 Search Results
               </h1>
               <p className="text-sm text-gray-500 mt-1">
                 <span className="font-semibold text-gray-700">{totalResults.toLocaleString()}</span>{" "}
                 {totalResults === 1 ? "lot" : "lots"} found for{" "}
-                <span className="font-semibold text-[#1e3058]">&ldquo;{query}&rdquo;</span>
+                <span className="font-semibold text-[#32348A]">&ldquo;{query}&rdquo;</span>
                 {filterVal !== "all" && (
                   <> in <span className="font-semibold">{filterVal === "upcoming" ? "upcoming" : "past"} auctions</span></>
                 )}
@@ -154,8 +154,8 @@ export default async function SearchPage({
                   href={`/search?q=${encodeURIComponent(query)}&filter=${f}`}
                   className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${
                     filterVal === f
-                      ? "bg-[#1e3058] text-white border-[#1e3058]"
-                      : "bg-white text-gray-500 border-gray-300 hover:border-[#1e3058] hover:text-[#1e3058]"
+                      ? "bg-[#32348A] text-white border-[#32348A]"
+                      : "bg-white text-gray-500 border-gray-300 hover:border-[#32348A] hover:text-[#32348A]"
                   }`}
                 >
                   {f === "all" ? "All" : f === "upcoming" ? "Upcoming" : "Past Results"}
@@ -177,7 +177,7 @@ export default async function SearchPage({
             </div>
             <p className="text-gray-500 font-semibold text-lg mb-2">No lots found</p>
             <p className="text-gray-400 text-sm">Try a different search term or change the filter.</p>
-            <Link href="/auctions" className="mt-6 inline-block bg-[#1e3058] text-white text-xs font-black uppercase tracking-widest px-6 py-3 hover:bg-[#162544] transition-colors">
+            <Link href="/auctions" className="mt-6 inline-block bg-[#32348A] text-white text-xs font-black uppercase tracking-widest px-6 py-3 hover:bg-[#28296e] transition-colors">
               Browse All Auctions
             </Link>
           </div>
@@ -193,7 +193,7 @@ export default async function SearchPage({
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 mt-10 flex-wrap">
                 {currentPage > 1 && (
-                  <Link href={buildUrl(currentPage - 1)} className="px-3 py-2 text-sm font-semibold border border-gray-300 bg-white text-[#1e3058] hover:border-[#1e3058] transition-colors">
+                  <Link href={buildUrl(currentPage - 1)} className="px-3 py-2 text-sm font-semibold border border-gray-300 bg-white text-[#32348A] hover:border-[#32348A] transition-colors">
                     ← Prev
                   </Link>
                 )}
@@ -205,15 +205,15 @@ export default async function SearchPage({
                       href={buildUrl(p)}
                       className={`min-w-[2.5rem] text-center px-3 py-2 text-sm font-semibold border transition-colors ${
                         p === currentPage
-                          ? "bg-[#1e3058] text-white border-[#1e3058]"
-                          : "bg-white text-[#1e3058] border-gray-300 hover:border-[#1e3058]"
+                          ? "bg-[#32348A] text-white border-[#32348A]"
+                          : "bg-white text-[#32348A] border-gray-300 hover:border-[#32348A]"
                       }`}
                     >
                       {p}
                     </Link>
                   ))}
                 {currentPage < totalPages && (
-                  <Link href={buildUrl(currentPage + 1)} className="px-3 py-2 text-sm font-semibold border border-gray-300 bg-white text-[#1e3058] hover:border-[#1e3058] transition-colors">
+                  <Link href={buildUrl(currentPage + 1)} className="px-3 py-2 text-sm font-semibold border border-gray-300 bg-white text-[#32348A] hover:border-[#32348A] transition-colors">
                     Next →
                   </Link>
                 )}
@@ -273,7 +273,7 @@ function SearchLotCard({ lot }: {
             </svg>
           </div>
         )}
-        <div className="absolute top-0 left-0 bg-[#1e3058] text-white text-[10px] font-bold px-2 py-0.5 tracking-wider">
+        <div className="absolute top-0 left-0 bg-[#32348A] text-white text-[10px] font-bold px-2 py-0.5 tracking-wider">
           LOT {displayNum}
         </div>
         {sold && (
@@ -289,7 +289,7 @@ function SearchLotCard({ lot }: {
 
       {/* Details */}
       <div className="p-2.5 flex flex-col flex-1">
-        <p className="text-xs font-medium text-gray-800 leading-snug line-clamp-2 mb-1.5 group-hover:text-[#1e3058]">
+        <p className="text-xs font-medium text-gray-800 leading-snug line-clamp-2 mb-1.5 group-hover:text-[#32348A]">
           {lot.title}
         </p>
         {lot.condition && (
@@ -299,7 +299,7 @@ function SearchLotCard({ lot }: {
           {sold && lot.hammerPrice ? (
             <div>
               <p className="text-[10px] text-gray-400">Sold</p>
-              <p className="text-sm font-black text-[#1e3058]">£{lot.hammerPrice.toLocaleString("en-GB")}</p>
+              <p className="text-sm font-black text-[#32348A]">£{lot.hammerPrice.toLocaleString("en-GB")}</p>
             </div>
           ) : (lot.estimateLow || lot.estimateHigh) ? (
             <div>

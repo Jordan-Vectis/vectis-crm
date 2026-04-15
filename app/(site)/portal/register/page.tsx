@@ -21,7 +21,7 @@ function Field({
         required={required}
         autoComplete={autoComplete}
         placeholder={placeholder}
-        className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e3058] transition-colors"
+        className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-[#32348A] transition-colors"
       />
       {hint && <p className="text-[10px] text-gray-400 mt-1 tracking-wide">{hint}</p>}
     </div>
@@ -37,7 +37,7 @@ export default function CustomerRegisterPage() {
       <div className="w-full max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-black text-[#1e3058] tracking-tight mb-1">REGISTER</h1>
+          <h1 className="text-3xl font-black text-[#32348A] tracking-tight mb-1">REGISTER</h1>
           <p className="text-sm text-gray-500 uppercase tracking-wider font-semibold">Create your Vectis account to bid &amp; track sales</p>
         </div>
 
@@ -51,7 +51,7 @@ export default function CustomerRegisterPage() {
 
           {/* ── Personal details ── */}
           <div className="bg-white border border-gray-200 p-6 shadow-sm">
-            <h2 className="text-sm font-black uppercase tracking-wider text-[#1e3058] mb-4">Personal Details</h2>
+            <h2 className="text-sm font-black uppercase tracking-wider text-[#32348A] mb-4">Personal Details</h2>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="First Name" name="firstName" required autoComplete="given-name" />
@@ -65,7 +65,7 @@ export default function CustomerRegisterPage() {
 
           {/* ── Shipping address ── */}
           <div className="bg-white border border-gray-200 p-6 shadow-sm">
-            <h2 className="text-sm font-black uppercase tracking-wider text-[#1e3058] mb-4">Shipping Address</h2>
+            <h2 className="text-sm font-black uppercase tracking-wider text-[#32348A] mb-4">Shipping Address</h2>
             <div className="space-y-4">
               <Field label="Address Line 1" name="shippingLine1" autoComplete="shipping address-line1" placeholder="Optional" />
               <Field label="Address Line 2" name="shippingLine2" autoComplete="shipping address-line2" placeholder="Optional" />
@@ -81,7 +81,7 @@ export default function CustomerRegisterPage() {
                   name="billingSameAsShipping"
                   checked={billingSame}
                   onChange={e => setBillingSame(e.target.checked)}
-                  className="w-4 h-4 accent-[#1e3058]"
+                  className="w-4 h-4 accent-[#32348A]"
                 />
                 <span className="text-sm font-medium text-gray-700">Billing address same as shipping</span>
               </label>
@@ -91,7 +91,7 @@ export default function CustomerRegisterPage() {
           {/* ── Billing address ── */}
           {!billingSame && (
             <div className="bg-white border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-sm font-black uppercase tracking-wider text-[#1e3058] mb-4">Billing Address</h2>
+              <h2 className="text-sm font-black uppercase tracking-wider text-[#32348A] mb-4">Billing Address</h2>
               <div className="space-y-4">
                 <Field label="Address Line 1" name="billingLine1" autoComplete="billing address-line1" />
                 <Field label="Address Line 2" name="billingLine2" autoComplete="billing address-line2" placeholder="Optional" />
@@ -107,7 +107,7 @@ export default function CustomerRegisterPage() {
           <button
             type="submit"
             disabled={pending}
-            className="w-full bg-[#1e3058] hover:bg-[#162544] disabled:opacity-50 text-white font-bold py-3 text-xs tracking-widest uppercase transition-colors"
+            className="w-full bg-[#32348A] hover:bg-[#28296e] disabled:opacity-50 text-white font-bold py-3 text-xs tracking-widest uppercase transition-colors"
           >
             {pending ? "Creating account…" : "Create Account"}
           </button>
@@ -117,7 +117,7 @@ export default function CustomerRegisterPage() {
           <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Already have an account?</p>
           <Link
             href="/portal/login"
-            className="inline-block border border-[#1e3058] text-[#1e3058] font-bold text-xs px-6 py-2.5 tracking-widest uppercase hover:bg-[#1e3058] hover:text-white transition-colors"
+            className="inline-block border border-[#32348A] text-[#32348A] font-bold text-xs px-6 py-2.5 tracking-widest uppercase hover:bg-[#32348A] hover:text-white transition-colors"
           >
             Sign In
           </Link>

@@ -33,14 +33,14 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       <main className="flex-1">{children}</main>
 
       {/* Footer */}
-      <footer className="bg-[#111d30] text-white mt-16">
+      <footer className="bg-[#1e1f5e] text-white mt-16">
         {/* Red top accent */}
-        <div className="h-1 bg-[#C8102E]" />
+        <div className="h-1 bg-[#DB0606]" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-10">
             <div>
-              <h4 className="text-[10px] font-black tracking-[0.25em] uppercase mb-4 text-[#C8102E]">Auction Calendar</h4>
+              <h4 className="text-[10px] font-black tracking-[0.25em] uppercase mb-4 text-[#DB0606]">Auction Calendar</h4>
               <ul className="space-y-2 text-xs text-gray-400">
                 <li><a href="/auctions" className="hover:text-white transition-colors">Upcoming Auctions</a></li>
                 <li><a href="/auctions?tab=past" className="hover:text-white transition-colors">Past Auctions</a></li>
@@ -48,7 +48,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               </ul>
             </div>
             <div>
-              <h4 className="text-[10px] font-black tracking-[0.25em] uppercase mb-4 text-[#C8102E]">Bidding</h4>
+              <h4 className="text-[10px] font-black tracking-[0.25em] uppercase mb-4 text-[#DB0606]">Bidding</h4>
               <ul className="space-y-2 text-xs text-gray-400">
                 <li><a href="/portal/register" className="hover:text-white transition-colors">Register to Bid</a></li>
                 <li><a href="/portal/login" className="hover:text-white transition-colors">Online Bidding</a></li>
@@ -56,7 +56,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               </ul>
             </div>
             <div>
-              <h4 className="text-[10px] font-black tracking-[0.25em] uppercase mb-4 text-[#C8102E]">Selling</h4>
+              <h4 className="text-[10px] font-black tracking-[0.25em] uppercase mb-4 text-[#DB0606]">Selling</h4>
               <ul className="space-y-2 text-xs text-gray-400">
                 <li><a href="/submit" className="hover:text-white transition-colors">Sell With Us</a></li>
                 <li><a href="/submit" className="hover:text-white transition-colors">Free Valuation</a></li>
@@ -64,7 +64,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               </ul>
             </div>
             <div>
-              <h4 className="text-[10px] font-black tracking-[0.25em] uppercase mb-4 text-[#C8102E]">My Account</h4>
+              <h4 className="text-[10px] font-black tracking-[0.25em] uppercase mb-4 text-[#DB0606]">My Account</h4>
               <ul className="space-y-2 text-xs text-gray-400">
                 <li><a href="/account" className="hover:text-white transition-colors">My Details</a></li>
                 <li><a href="/account/bids" className="hover:text-white transition-colors">My Bids</a></li>

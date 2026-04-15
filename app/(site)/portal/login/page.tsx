@@ -12,7 +12,7 @@ export default function CustomerLoginPage() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-black text-[#1e3058] tracking-tight mb-1">MY ACCOUNT</h1>
+          <h1 className="text-3xl font-black text-[#32348A] tracking-tight mb-1">MY ACCOUNT</h1>
           <p className="text-sm text-gray-500 uppercase tracking-wider font-semibold">Sign in to your Vectis account</p>
         </div>
 
@@ -33,7 +33,7 @@ export default function CustomerLoginPage() {
                 type="email"
                 required
                 autoComplete="email"
-                className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e3058] transition-colors"
+                className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-[#32348A] transition-colors"
               />
             </div>
 
@@ -46,14 +46,14 @@ export default function CustomerLoginPage() {
                 type="password"
                 required
                 autoComplete="current-password"
-                className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e3058] transition-colors"
+                className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-[#32348A] transition-colors"
               />
             </div>
 
             <button
               type="submit"
               disabled={pending}
-              className="w-full bg-[#1e3058] hover:bg-[#162544] disabled:opacity-50 text-white font-bold py-3 text-xs tracking-widest uppercase transition-colors mt-2"
+              className="w-full bg-[#32348A] hover:bg-[#28296e] disabled:opacity-50 text-white font-bold py-3 text-xs tracking-widest uppercase transition-colors mt-2"
             >
               {pending ? "Signing in…" : "Sign In"}
             </button>
@@ -63,7 +63,7 @@ export default function CustomerLoginPage() {
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">New to Vectis?</p>
             <Link
               href="/portal/register"
-              className="inline-block border border-[#1e3058] text-[#1e3058] font-bold text-xs px-6 py-2.5 tracking-widest uppercase hover:bg-[#1e3058] hover:text-white transition-colors"
+              className="inline-block border border-[#32348A] text-[#32348A] font-bold text-xs px-6 py-2.5 tracking-widest uppercase hover:bg-[#32348A] hover:text-white transition-colors"
             >
               Create an Account
             </Link>

@@ -39,7 +39,7 @@ export default async function SiteNav() {
   return (
     <header>
       {/* ── Top bar: thin red accent ── */}
-      <div className="h-1 bg-[#C8102E]" />
+      <div className="h-1 bg-[#DB0606]" />
 
       {/* ── Middle tier: search / logo / account ── */}
       <div className="bg-white border-b border-gray-200">
@@ -50,7 +50,7 @@ export default async function SiteNav() {
             <div className="relative shrink-0">
               <select
                 name="filter"
-                className="h-full appearance-none border border-r-0 border-gray-300 bg-gray-50 text-[#1e3058] text-[10px] font-black uppercase tracking-wider pl-3 pr-7 focus:outline-none focus:border-[#1e3058] cursor-pointer"
+                className="h-full appearance-none border border-r-0 border-gray-300 bg-gray-50 text-[#32348A] text-[10px] font-black uppercase tracking-wider pl-3 pr-7 focus:outline-none focus:border-[#32348A] cursor-pointer"
               >
                 <option value="all">All</option>
                 <option value="upcoming">Upcoming</option>
@@ -60,7 +60,7 @@ export default async function SiteNav() {
                 <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
               </svg>
             </div>
-            <div className="relative flex-1 flex items-center border border-gray-300 bg-white px-3 focus-within:border-[#1e3058] transition-all">
+            <div className="relative flex-1 flex items-center border border-gray-300 bg-white px-3 focus-within:border-[#32348A] transition-all">
               <svg className="w-3.5 h-3.5 text-gray-400 shrink-0 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
               </svg>
@@ -72,7 +72,7 @@ export default async function SiteNav() {
             </div>
             <button
               type="submit"
-              className="shrink-0 bg-[#1e3058] hover:bg-[#162544] text-white text-[10px] font-black uppercase tracking-widest px-4 transition-colors border border-[#1e3058]"
+              className="shrink-0 bg-[#32348A] hover:bg-[#28296e] text-white text-[10px] font-black uppercase tracking-widest px-4 transition-colors border border-[#32348A]"
             >
               GO
             </button>
@@ -95,11 +95,11 @@ export default async function SiteNav() {
             {session ? (
               <>
                 <form action={logoutCustomer}>
-                  <button type="submit" className="border border-[#1e3058] text-[#1e3058] text-xs font-bold px-4 py-2 tracking-wider hover:bg-[#1e3058] hover:text-white transition-colors">
+                  <button type="submit" className="border border-[#32348A] text-[#32348A] text-xs font-bold px-4 py-2 tracking-wider hover:bg-[#32348A] hover:text-white transition-colors">
                     LOG OUT
                   </button>
                 </form>
-                <Link href="/account" className="bg-[#1e3058] text-white text-xs font-bold px-4 py-2 tracking-wider hover:bg-[#162544] transition-colors flex items-center gap-2">
+                <Link href="/account" className="bg-[#32348A] text-white text-xs font-bold px-4 py-2 tracking-wider hover:bg-[#28296e] transition-colors flex items-center gap-2">
                   MY ACCOUNT
                   <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
@@ -108,10 +108,10 @@ export default async function SiteNav() {
               </>
             ) : (
               <>
-                <Link href="/portal/login" className="border border-[#1e3058] text-[#1e3058] text-xs font-bold px-4 py-2 tracking-wider hover:bg-[#1e3058] hover:text-white transition-colors">
+                <Link href="/portal/login" className="border border-[#32348A] text-[#32348A] text-xs font-bold px-4 py-2 tracking-wider hover:bg-[#32348A] hover:text-white transition-colors">
                   LOG IN
                 </Link>
-                <Link href="/portal/register" className="bg-[#1e3058] text-white text-xs font-bold px-4 py-2 tracking-wider hover:bg-[#162544] transition-colors flex items-center gap-2">
+                <Link href="/portal/register" className="bg-[#32348A] text-white text-xs font-bold px-4 py-2 tracking-wider hover:bg-[#28296e] transition-colors flex items-center gap-2">
                   MY ACCOUNT
                   <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
@@ -124,7 +124,7 @@ export default async function SiteNav() {
       </div>
 
       {/* ── Bottom tier: nav links ── */}
-      <nav className="bg-[#1e3058] relative z-50">
+      <nav className="bg-[#32348A] relative z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <ul className="flex items-center gap-0 text-xs font-semibold tracking-wider text-white">
 
@@ -212,7 +212,7 @@ function DropdownLink({ href, label, bold }: { href: string; label: string; bold
   return (
     <Link
       href={href}
-      className={`block px-4 py-1.5 text-[11px] tracking-wider text-gray-700 hover:bg-[#1e3058] hover:text-white transition-colors whitespace-nowrap ${bold ? "font-black text-[#1e3058]" : "font-semibold"}`}
+      className={`block px-4 py-1.5 text-[11px] tracking-wider text-gray-700 hover:bg-[#32348A] hover:text-white transition-colors whitespace-nowrap ${bold ? "font-black text-[#32348A]" : "font-semibold"}`}
     >
       {label}
     </Link>

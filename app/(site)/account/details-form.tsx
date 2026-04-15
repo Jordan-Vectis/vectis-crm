@@ -23,7 +23,7 @@ function Field({
         defaultValue={defaultValue ?? ""}
         autoComplete={autoComplete}
         placeholder={placeholder}
-        className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e3058] transition-colors rounded"
+        className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-[#32348A] transition-colors rounded"
       />
     </div>
   )
@@ -113,7 +113,7 @@ export default function DetailsForm({ account }: { account: CustomerSession }) {
             name="billingSameAsShipping"
             checked={billingSame}
             onChange={e => setBillingSame(e.target.checked)}
-            className="w-4 h-4 accent-[#1e3058]"
+            className="w-4 h-4 accent-[#32348A]"
           />
           <span className="text-sm font-medium text-gray-700">Billing address same as shipping</span>
         </label>
@@ -144,7 +144,7 @@ export default function DetailsForm({ account }: { account: CustomerSession }) {
       <button
         type="submit"
         disabled={pending}
-        className="bg-[#1e3058] hover:bg-[#162544] disabled:opacity-50 text-white font-bold px-8 py-3 text-xs tracking-widest uppercase transition-colors"
+        className="bg-[#32348A] hover:bg-[#28296e] disabled:opacity-50 text-white font-bold px-8 py-3 text-xs tracking-widest uppercase transition-colors"
       >
         {pending ? "Saving…" : "Save Changes"}
       </button>

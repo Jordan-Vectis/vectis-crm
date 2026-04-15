@@ -126,7 +126,7 @@ export default async function MyBidsPage() {
           Your maximum bid is kept confidential. During the live auction, bids are placed on your behalf up to your
           maximum. A buyer&apos;s premium of <strong>22% + VAT</strong> applies to all winning bids. To update or
           cancel a bid before the sale date, please{" "}
-          <Link href="/auctions" className="text-[#1e3058] underline">contact us</Link>.
+          <Link href="/auctions" className="text-[#32348A] underline">contact us</Link>.
         </p>
       </div>
     </div>

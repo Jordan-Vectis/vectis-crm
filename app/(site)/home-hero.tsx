@@ -19,21 +19,21 @@ const SLIDES: Slide[] = [
     subtitle: "Tens of thousands of lots sold every year to collectors worldwide. Join our next auction.",
     cta: "VIEW UPCOMING AUCTIONS",
     ctaHref: "/auctions",
-    bg: "from-[#0a1628] via-[#1e3058] to-[#1e3058]",
+    bg: "from-[#1a1b3a] via-[#32348A] to-[#32348A]",
   },
   {
     title: "Sell Your Collection",
     subtitle: "Free valuations from our specialist team. No fees, no fuss — just the best price for your collection.",
     cta: "GET A FREE VALUATION",
     ctaHref: "/submit",
-    bg: "from-[#0a1628] via-[#162044] to-[#1e3058]",
+    bg: "from-[#1a1b3a] via-[#162044] to-[#32348A]",
   },
   {
     title: "Bid Live & Online",
     subtitle: "Register once and bid in real-time from anywhere in the world across 100+ auctions a year.",
     cta: "REGISTER TO BID",
     ctaHref: "/portal/register",
-    bg: "from-[#0a1628] via-[#1a1040] to-[#1e3058]",
+    bg: "from-[#1a1b3a] via-[#1a1040] to-[#32348A]",
   },
 ]
 
@@ -151,8 +151,8 @@ export default function HomeHero({ initialLive }: Props) {
             <div className="relative h-full flex flex-col justify-center px-12 max-w-2xl">
               {/* Mini logo watermark */}
               <div className="flex items-center gap-2 mb-6">
-                <div className="h-px w-8 bg-[#C8102E]" />
-                <p className="text-[#C8102E] text-[10px] font-black tracking-[0.35em] uppercase">
+                <div className="h-px w-8 bg-[#DB0606]" />
+                <p className="text-[#DB0606] text-[10px] font-black tracking-[0.35em] uppercase">
                   Vectis Auctions · Est. 1995
                 </p>
               </div>
@@ -165,7 +165,7 @@ export default function HomeHero({ initialLive }: Props) {
               <div className="flex gap-3">
                 <Link
                   href={s.ctaHref}
-                  className="bg-[#C8102E] hover:bg-[#a50d26] text-white text-xs font-black uppercase tracking-widest px-7 py-3.5 transition-colors"
+                  className="bg-[#DB0606] hover:bg-[#b00505] text-white text-xs font-black uppercase tracking-widest px-7 py-3.5 transition-colors"
                 >
                   {s.cta}
                 </Link>
@@ -187,7 +187,7 @@ export default function HomeHero({ initialLive }: Props) {
               <button
                 key={i}
                 onClick={() => setSlide(i)}
-                className={`h-1 rounded-none transition-all ${i === slide ? "bg-[#C8102E] w-8" : "bg-white/30 w-4 hover:bg-white/60"}`}
+                className={`h-1 rounded-none transition-all ${i === slide ? "bg-[#DB0606] w-8" : "bg-white/30 w-4 hover:bg-white/60"}`}
               />
             ))}
           </div>
@@ -204,7 +204,7 @@ export default function HomeHero({ initialLive }: Props) {
 
       {/* ── Live auction panel (slides in from right) ── */}
       <div
-        className="absolute top-0 right-0 h-full bg-[#0d1520] transition-all duration-700 ease-in-out overflow-hidden"
+        className="absolute top-0 right-0 h-full bg-[#12134a] transition-all duration-700 ease-in-out overflow-hidden"
         style={{ width: isLive ? "42%" : "0%" }}
       >
         {isLive && live && currentLot && (
@@ -237,7 +237,7 @@ export default function HomeHero({ initialLive }: Props) {
             </div>
 
             {/* Lot info */}
-            <div className="shrink-0 px-5 py-4 bg-[#111c2e] border-t border-white/10">
+            <div className="shrink-0 px-5 py-4 bg-[#12134a] border-t border-white/10">
               <p className="text-[#2AB4A6] text-[10px] font-black uppercase tracking-widest mb-1">
                 LOT {currentLot.lotNumber.replace(new RegExp(`^${live.auctionCode}`, "i"), "").replace(/^0+/, "") || currentLot.lotNumber}
               </p>

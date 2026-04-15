@@ -77,11 +77,11 @@ export default async function AuctionDetailPage({
   return (
     <div>
       {/* ── Auction hero ── */}
-      <div className="relative bg-[#1e3058] overflow-hidden" style={{ height: "280px" }}>
+      <div className="relative bg-[#32348A] overflow-hidden" style={{ height: "280px" }}>
         {heroImg ? (
           <Image src={heroImg} alt={auction.name} fill className="object-cover opacity-30" priority />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-[#1e3058] to-[#2a4a7f]" />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#32348A] to-[#4446a8]" />
         )}
         <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
         <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col justify-end pb-8">
@@ -152,13 +152,13 @@ export default async function AuctionDetailPage({
 
             <button
               type="submit"
-              className="bg-[#1e3058] text-white text-sm font-semibold px-5 py-2 hover:bg-[#162544] transition-colors uppercase tracking-wider"
+              className="bg-[#32348A] text-white text-sm font-semibold px-5 py-2 hover:bg-[#28296e] transition-colors uppercase tracking-wider"
             >
               Filter
             </button>
 
             {(search || category) && (
-              <Link href={`/auctions/${auction.code}`} className="text-sm text-gray-400 hover:text-[#1e3058] underline">
+              <Link href={`/auctions/${auction.code}`} className="text-sm text-gray-400 hover:text-[#32348A] underline">
                 Clear
               </Link>
             )}
@@ -252,7 +252,7 @@ function LotCard({ lot, auctionCode }: {
           </div>
         )}
         {/* Lot number badge */}
-        <div className="absolute top-0 left-0 bg-[#1e3058] text-white text-[10px] font-bold px-2 py-0.5 tracking-wider">
+        <div className="absolute top-0 left-0 bg-[#32348A] text-white text-[10px] font-bold px-2 py-0.5 tracking-wider">
           LOT {lotNum}
         </div>
         {sold && (
@@ -264,7 +264,7 @@ function LotCard({ lot, auctionCode }: {
 
       {/* Details */}
       <div className="p-2.5 flex flex-col flex-1">
-        <p className="text-xs font-medium text-gray-800 leading-snug line-clamp-2 mb-1.5 group-hover:text-[#1e3058]">
+        <p className="text-xs font-medium text-gray-800 leading-snug line-clamp-2 mb-1.5 group-hover:text-[#32348A]">
           {lot.title}
         </p>
         {lot.condition && (
@@ -274,7 +274,7 @@ function LotCard({ lot, auctionCode }: {
           {sold && lot.hammerPrice ? (
             <div>
               <p className="text-[10px] text-gray-400">Sold</p>
-              <p className="text-sm font-black text-[#1e3058]">£{lot.hammerPrice.toLocaleString("en-GB")}</p>
+              <p className="text-sm font-black text-[#32348A]">£{lot.hammerPrice.toLocaleString("en-GB")}</p>
             </div>
           ) : (lot.estimateLow || lot.estimateHigh) ? (
             <div>
@@ -311,8 +311,8 @@ function PaginationLink({
       href={`/auctions/${code}?${params.toString()}`}
       className={`min-w-[2.5rem] text-center px-3 py-2 text-sm font-semibold border transition-colors ${
         active
-          ? "bg-[#1e3058] text-white border-[#1e3058]"
-          : "bg-white text-[#1e3058] border-gray-300 hover:border-[#1e3058]"
+          ? "bg-[#32348A] text-white border-[#32348A]"
+          : "bg-white text-[#32348A] border-gray-300 hover:border-[#32348A]"
       }`}
     >
       {label}

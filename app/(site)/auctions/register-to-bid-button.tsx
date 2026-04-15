@@ -39,7 +39,7 @@ export default function RegisterToBidButton({ auctionId, auctionName, isLoggedIn
     <>
       <button
         onClick={handleClick}
-        className="border border-gray-300 text-gray-500 hover:border-[#1e3058] hover:text-[#1e3058] text-xs font-bold uppercase tracking-widest px-4 py-2 transition-colors"
+        className="border border-gray-300 text-gray-500 hover:border-[#32348A] hover:text-[#32348A] text-xs font-bold uppercase tracking-widest px-4 py-2 transition-colors"
       >
         REGISTER TO BID
       </button>

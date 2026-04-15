@@ -44,7 +44,7 @@ export default function RegisterToBidModal({ auctionId, auctionName, onClose, on
       <div className="relative bg-white w-full max-w-lg shadow-2xl z-10">
         {/* Header */}
         <div className="border-b border-gray-200 px-8 py-5">
-          <h2 className="text-xl font-black text-[#1e3058] tracking-tight text-center">Terms and Conditions</h2>
+          <h2 className="text-xl font-black text-[#32348A] tracking-tight text-center">Terms and Conditions</h2>
         </div>
 
         {/* Body */}
@@ -73,7 +73,7 @@ export default function RegisterToBidModal({ auctionId, auctionName, onClose, on
             A buyer&apos;s premium of <strong>22% + VAT</strong> is applicable to all lots unless otherwise stated.
           </p>
 
-          <p className="text-[#1e3058] font-medium">
+          <p className="text-[#32348A] font-medium">
             Please note that by registering and submitting a bid you are agreeing to our{" "}
             <a href="/terms" target="_blank" className="underline hover:text-[#2AB4A6]">
               Terms &amp; Conditions
@@ -88,7 +88,7 @@ export default function RegisterToBidModal({ auctionId, auctionName, onClose, on
                 type="checkbox"
                 checked={tick1}
                 onChange={e => setTick1(e.target.checked)}
-                className="mt-0.5 w-4 h-4 accent-[#1e3058] shrink-0"
+                className="mt-0.5 w-4 h-4 accent-[#32348A] shrink-0"
               />
               <span className="text-sm text-gray-700 group-hover:text-gray-900">
                 I accept all of the above Terms and Conditions
@@ -99,7 +99,7 @@ export default function RegisterToBidModal({ auctionId, auctionName, onClose, on
                 type="checkbox"
                 checked={tick2}
                 onChange={e => setTick2(e.target.checked)}
-                className="mt-0.5 w-4 h-4 accent-[#1e3058] shrink-0"
+                className="mt-0.5 w-4 h-4 accent-[#32348A] shrink-0"
               />
               <span className="text-sm text-gray-700 group-hover:text-gray-900">
                 I understand that all bids are legally binding and payment is required immediately upon winning
@@ -123,7 +123,7 @@ export default function RegisterToBidModal({ auctionId, auctionName, onClose, on
           <button
             onClick={handleRegister}
             disabled={!tick1 || !tick2 || isPending}
-            className="flex-1 bg-[#1e3058] hover:bg-[#162544] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest py-3 transition-colors"
+            className="flex-1 bg-[#32348A] hover:bg-[#28296e] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest py-3 transition-colors"
           >
             {isPending ? "Registering…" : "Confirm Registration"}
           </button>

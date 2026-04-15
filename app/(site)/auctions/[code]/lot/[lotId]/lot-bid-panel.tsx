@@ -104,8 +104,8 @@ export default function LotBidPanel({
 
   return (
     <>
-      <div className="border border-[#1e3058]/20 bg-white p-5 mb-6">
-        <h3 className="text-xs font-black uppercase tracking-widest text-[#1e3058] mb-4">
+      <div className="border border-[#32348A]/20 bg-white p-5 mb-6">
+        <h3 className="text-xs font-black uppercase tracking-widest text-[#32348A] mb-4">
           {existingMaxBid ? "Update Your Commission Bid" : "Place a Commission Bid"}
         </h3>
 
@@ -113,7 +113,7 @@ export default function LotBidPanel({
           <div className="bg-[#2AB4A6]/10 border border-[#2AB4A6]/30 px-3 py-2 mb-4">
             <p className="text-xs text-gray-600">
               Your current maximum bid:{" "}
-              <span className="font-black text-[#1e3058] text-sm">
+              <span className="font-black text-[#32348A] text-sm">
                 £{existingMaxBid.toLocaleString("en-GB")}
               </span>
             </p>
@@ -126,13 +126,13 @@ export default function LotBidPanel({
             Maximum Bid
           </label>
 
-          <div className={`flex items-stretch border transition-colors ${belowMin ? "border-red-400 focus-within:border-red-500" : "border-gray-300 focus-within:border-[#1e3058]"}`}>
+          <div className={`flex items-stretch border transition-colors ${belowMin ? "border-red-400 focus-within:border-red-500" : "border-gray-300 focus-within:border-[#32348A]"}`}>
             {/* Decrement */}
             <button
               type="button"
               onClick={stepDown}
               disabled={bidAmount <= minBid}
-              className="px-4 py-3 text-lg font-black text-gray-500 hover:text-[#1e3058] hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed border-r border-gray-300 transition-colors select-none"
+              className="px-4 py-3 text-lg font-black text-gray-500 hover:text-[#32348A] hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed border-r border-gray-300 transition-colors select-none"
             >
               −
             </button>
@@ -149,7 +149,7 @@ export default function LotBidPanel({
                   const v = parseInt(e.target.value, 10)
                   if (!isNaN(v) && v >= 0) { setBidAmount(v); setResult(null) }
                 }}
-                className="w-28 text-center text-2xl font-black text-[#1e3058] focus:outline-none bg-transparent"
+                className="w-28 text-center text-2xl font-black text-[#32348A] focus:outline-none bg-transparent"
               />
             </div>
 
@@ -157,7 +157,7 @@ export default function LotBidPanel({
             <button
               type="button"
               onClick={stepUp}
-              className="px-4 py-3 text-lg font-black text-gray-500 hover:text-[#1e3058] hover:bg-gray-50 border-l border-gray-300 transition-colors select-none"
+              className="px-4 py-3 text-lg font-black text-gray-500 hover:text-[#32348A] hover:bg-gray-50 border-l border-gray-300 transition-colors select-none"
             >
               +
             </button>
@@ -196,7 +196,7 @@ export default function LotBidPanel({
           type="button"
           onClick={handleBidClick}
           disabled={isPending || belowMin}
-          className="w-full bg-[#1e3058] hover:bg-[#162544] disabled:opacity-50 text-white font-black uppercase tracking-widest text-sm py-3 transition-colors mb-3"
+          className="w-full bg-[#32348A] hover:bg-[#28296e] disabled:opacity-50 text-white font-black uppercase tracking-widest text-sm py-3 transition-colors mb-3"
         >
           {isPending
             ? "Placing Bid…"
@@ -213,7 +213,7 @@ export default function LotBidPanel({
         <button
           type="button"
           onClick={() => setShowTable(v => !v)}
-          className="w-full text-[10px] text-gray-400 hover:text-[#1e3058] transition-colors text-center py-1"
+          className="w-full text-[10px] text-gray-400 hover:text-[#32348A] transition-colors text-center py-1"
         >
           {showTable ? "▲ Hide" : "▼ Show"} bid increment table
         </button>
@@ -227,7 +227,7 @@ export default function LotBidPanel({
             {INCREMENT_TABLE.map((row, i) => {
               const active = bidAmount >= row.from && (row.to === null || bidAmount < row.to)
               return (
-                <div key={i} className={`grid grid-cols-2 px-3 py-1.5 border-b border-gray-100 last:border-b-0 ${active ? "bg-[#1e3058]/5 font-bold text-[#1e3058]" : "text-gray-500"}`}>
+                <div key={i} className={`grid grid-cols-2 px-3 py-1.5 border-b border-gray-100 last:border-b-0 ${active ? "bg-[#32348A]/5 font-bold text-[#32348A]" : "text-gray-500"}`}>
                   <span>£{row.from.toLocaleString("en-GB")} {row.to ? `– £${row.to.toLocaleString("en-GB")}` : "+"}</span>
                   <span>£{row.inc.toLocaleString("en-GB")}</span>
                 </div>

@@ -104,7 +104,7 @@ export default function LiveAuctionBanner({
       <div className="flex" style={{ minHeight: "560px" }}>
 
         {/* LEFT — big lot image with overlay */}
-        <div className="relative flex-1 bg-[#1e3058] overflow-hidden">
+        <div className="relative flex-1 bg-[#32348A] overflow-hidden">
           {displayImg ? (
             <Image
               src={displayImg}
@@ -115,7 +115,7 @@ export default function LiveAuctionBanner({
              
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1e3058] to-[#2a4a7f]" />
+            <div className="absolute inset-0 bg-gradient-to-br from-[#32348A] to-[#4446a8]" />
           )}
 
           {/* Fair warning overlay */}
@@ -126,7 +126,7 @@ export default function LiveAuctionBanner({
           {/* Bottom-left info card */}
           <div className="absolute bottom-10 left-8 z-20 bg-white p-5 max-w-xs shadow-xl">
             <p className="text-[#c8923a] text-xs font-bold tracking-widest uppercase mb-2">FEATURED</p>
-            <h2 className="text-[#1e3058] font-black text-2xl leading-tight mb-1">{auctionName}</h2>
+            <h2 className="text-[#32348A] font-black text-2xl leading-tight mb-1">{auctionName}</h2>
             {auctionDate && (
               <p className="text-gray-600 text-sm mb-4">
                 {format(new Date(auctionDate), "EEEE do MMMM yyyy")}
@@ -134,7 +134,7 @@ export default function LiveAuctionBanner({
             )}
             <Link
               href={`/auctions/${auctionCode}`}
-              className="block w-full bg-[#1e3058] hover:bg-[#162544] text-white text-xs font-bold tracking-widest text-center py-3 px-6 uppercase transition-colors"
+              className="block w-full bg-[#32348A] hover:bg-[#28296e] text-white text-xs font-bold tracking-widest text-center py-3 px-6 uppercase transition-colors"
             >
               VIEW LOTS
             </Link>
@@ -161,7 +161,7 @@ export default function LiveAuctionBanner({
           {/* Header */}
           <div className="px-5 pt-5 pb-3 border-b border-gray-100">
             <p className="text-[#2AB4A6] text-xs font-bold tracking-widest uppercase mb-0.5">LIVE AUCTION</p>
-            <h3 className="text-[#1e3058] font-black text-xl leading-tight">{auctionName}</h3>
+            <h3 className="text-[#32348A] font-black text-xl leading-tight">{auctionName}</h3>
             {auctionDate && (
               <p className="text-gray-500 text-sm mt-0.5">
                 {format(new Date(auctionDate), "d MMMM yyyy")} | {format(new Date(auctionDate), "HH:mm")}
@@ -199,7 +199,7 @@ export default function LiveAuctionBanner({
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-[#1e3058] text-xs font-black tracking-widest uppercase">
+              <p className="text-[#32348A] text-xs font-black tracking-widest uppercase">
                 LOT {lot?.lotNumber ?? fallbackLot?.lotNumber ?? "—"}
               </p>
               <p className="text-gray-700 text-sm font-medium leading-snug line-clamp-2">
@@ -221,7 +221,7 @@ export default function LiveAuctionBanner({
               <span className="text-gray-600 font-medium">Current Bid:</span>
               <div className="flex items-center gap-3">
                 <span className="text-gray-500 text-xs">{lastBidderName ?? "—"}</span>
-                <span className={`font-black text-lg transition-colors ${bidFlash ? "text-green-600" : "text-[#1e3058]"}`}>
+                <span className={`font-black text-lg transition-colors ${bidFlash ? "text-green-600" : "text-[#32348A]"}`}>
                   {fmt(lot?.currentBid ?? 0)}
                 </span>
               </div>
@@ -242,20 +242,20 @@ export default function LiveAuctionBanner({
             <div className="grid grid-cols-2 gap-2">
               <Link
                 href="/portal/register"
-                className="border-2 border-[#1e3058] text-[#1e3058] hover:bg-[#1e3058] hover:text-white text-xs font-black text-center py-3 tracking-widest uppercase transition-colors"
+                className="border-2 border-[#32348A] text-[#32348A] hover:bg-[#32348A] hover:text-white text-xs font-black text-center py-3 tracking-widest uppercase transition-colors"
               >
                 BID LIVE
               </Link>
               <Link
                 href={`/auctions/${auctionCode}`}
-                className="bg-[#1e3058] hover:bg-[#162544] text-white text-xs font-black text-center py-3 tracking-widest uppercase transition-colors"
+                className="bg-[#32348A] hover:bg-[#28296e] text-white text-xs font-black text-center py-3 tracking-widest uppercase transition-colors"
               >
                 VIEW LOTS
               </Link>
             </div>
             <Link
               href="/portal/register"
-              className="border border-gray-300 text-[#1e3058] hover:bg-gray-50 text-xs font-bold text-center py-3 tracking-widest uppercase transition-colors"
+              className="border border-gray-300 text-[#32348A] hover:bg-gray-50 text-xs font-bold text-center py-3 tracking-widest uppercase transition-colors"
             >
               APPROVED TO BID LIVE
             </Link>

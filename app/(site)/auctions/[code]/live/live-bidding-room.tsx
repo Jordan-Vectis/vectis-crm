@@ -139,14 +139,14 @@ export default function LiveBiddingRoom({
       {/* ── Page header ── */}
       <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between">
         <div>
-          <h1 className="text-[#1e3058] font-black text-xl">{auctionName}</h1>
-          <Link href={`/auctions/${auctionCode}`} className="text-[#1e3058] text-xs font-bold uppercase tracking-widest underline hover:no-underline">
+          <h1 className="text-[#32348A] font-black text-xl">{auctionName}</h1>
+          <Link href={`/auctions/${auctionCode}`} className="text-[#32348A] text-xs font-bold uppercase tracking-widest underline hover:no-underline">
             VIEW CATALOGUE
           </Link>
         </div>
         <div className="text-right">
           {connected ? (
-            <span className="text-[#1e3058] text-sm font-semibold">
+            <span className="text-[#32348A] text-sm font-semibold">
               LIVE
               {auctionDate && (
                 <span className="text-gray-500 font-normal ml-2">
@@ -196,7 +196,7 @@ export default function LiveBiddingRoom({
                     key={i}
                     onClick={() => setImageIndex(i)}
                     className={`relative w-12 h-12 shrink-0 border-2 rounded overflow-hidden transition-colors ${
-                      i === imageIndex ? "border-[#1e3058]" : "border-gray-200 hover:border-gray-400"
+                      i === imageIndex ? "border-[#32348A]" : "border-gray-200 hover:border-gray-400"
                     }`}
                   >
                     <Image src={img} alt="" fill className="object-cover" />
@@ -204,7 +204,7 @@ export default function LiveBiddingRoom({
                 ))}
               </div>
             )}
-            <button className="flex items-center gap-1.5 text-[#1e3058] text-xs font-semibold hover:underline">
+            <button className="flex items-center gap-1.5 text-[#32348A] text-xs font-semibold hover:underline">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
               </svg>
@@ -214,12 +214,12 @@ export default function LiveBiddingRoom({
 
           {/* Lot number + description accordion */}
           <div className="border-t border-gray-200 px-4 py-3">
-            <p className="text-[#1e3058] text-xs font-black uppercase tracking-widest mb-1">LOT {displayLotNum}</p>
+            <p className="text-[#32348A] text-xs font-black uppercase tracking-widest mb-1">LOT {displayLotNum}</p>
             <button
               onClick={() => setDescOpen(v => !v)}
               className="flex items-center justify-between w-full text-left"
             >
-              <span className="text-[#1e3058] font-bold text-sm">Show Full Lot Description</span>
+              <span className="text-[#32348A] font-bold text-sm">Show Full Lot Description</span>
               <svg className={`w-4 h-4 text-gray-400 transition-transform ${descOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
               </svg>
@@ -232,7 +232,7 @@ export default function LiveBiddingRoom({
 
         {/* COL 2 — lot info + bidding */}
         <div className="p-6 border-r border-gray-200 flex flex-col">
-          <p className="text-[#1e3058] text-xs font-black uppercase tracking-widest mb-2">LOT {displayLotNum}</p>
+          <p className="text-[#32348A] text-xs font-black uppercase tracking-widest mb-2">LOT {displayLotNum}</p>
           <h2 className="text-gray-800 font-semibold text-base leading-snug mb-6">{displayTitle}</h2>
 
           {/* Estimate */}
@@ -250,7 +250,7 @@ export default function LiveBiddingRoom({
               {lastBid && (
                 <span className="text-gray-500 text-xs">{lastBid.bidderName ?? lastBid.type ?? "—"}</span>
               )}
-              <span className={`font-black text-xl transition-colors ${bidFlash ? "text-green-600" : "text-[#1e3058]"}`}>
+              <span className={`font-black text-xl transition-colors ${bidFlash ? "text-green-600" : "text-[#32348A]"}`}>
                 {fmt(currentBid)}
               </span>
             </div>
@@ -272,14 +272,14 @@ export default function LiveBiddingRoom({
           {/* BID button */}
           <Link
             href="/portal/register"
-            className="block w-full bg-[#1e3058] hover:bg-[#162544] text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-colors mb-3"
+            className="block w-full bg-[#32348A] hover:bg-[#28296e] text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-colors mb-3"
           >
             BID {fmt(askingBid)}
           </Link>
 
           <Link
             href="/portal/register"
-            className="block w-full border-2 border-[#1e3058] text-[#1e3058] hover:bg-[#1e3058] hover:text-white font-bold text-center py-3 text-xs tracking-widest uppercase transition-colors"
+            className="block w-full border-2 border-[#32348A] text-[#32348A] hover:bg-[#32348A] hover:text-white font-bold text-center py-3 text-xs tracking-widest uppercase transition-colors"
           >
             APPROVED TO BID LIVE
           </Link>
@@ -327,7 +327,7 @@ export default function LiveBiddingRoom({
                   bids.map((b, i) => (
                     <tr key={i} className={`border-b border-gray-100 ${i === 0 ? "bg-[#eef2f9]" : "hover:bg-gray-50"}`}>
                       <td className="px-3 py-2.5">
-                        <span className="text-[#1e3058] font-bold">LOT {displayLotNum}</span>
+                        <span className="text-[#32348A] font-bold">LOT {displayLotNum}</span>
                         <span className="text-gray-400 ml-1">| {fmtTime(b.timestamp)}</span>
                       </td>
                       <td className="px-3 py-2.5 text-right font-bold text-gray-800">{fmt(b.amount)}</td>
@@ -347,7 +347,7 @@ export default function LiveBiddingRoom({
           <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 select-none">
             <div
               onClick={() => setAutoScroll(v => !v)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${autoScroll ? "bg-[#1e3058]" : "bg-gray-300"}`}
+              className={`relative w-10 h-5 rounded-full transition-colors ${autoScroll ? "bg-[#32348A]" : "bg-gray-300"}`}
             >
               <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${autoScroll ? "translate-x-5" : "translate-x-0.5"}`} />
             </div>
@@ -367,7 +367,7 @@ export default function LiveBiddingRoom({
               <div
                 key={l.id}
                 className={`shrink-0 w-44 border-2 rounded overflow-hidden cursor-pointer transition-colors ${
-                  isActive ? "border-[#1e3058]" :
+                  isActive ? "border-[#32348A]" :
                   isSold ? "border-green-400" :
                   isPassed ? "border-red-300" :
                   "border-gray-200 hover:border-gray-400"
@@ -391,7 +391,7 @@ export default function LiveBiddingRoom({
                   )}
                 </div>
                 <div className="px-2 py-1.5 bg-white">
-                  <p className="text-[#1e3058] text-[10px] font-black uppercase">LOT {l.lotNumber}</p>
+                  <p className="text-[#32348A] text-[10px] font-black uppercase">LOT {l.lotNumber}</p>
                   <p className="text-gray-600 text-[10px] leading-tight line-clamp-2">{staticL?.title ?? ""}</p>
                 </div>
               </div>

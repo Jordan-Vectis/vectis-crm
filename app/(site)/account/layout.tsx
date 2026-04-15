@@ -38,7 +38,7 @@ function SideLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="flex items-center px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-[#1e3058] transition-colors font-medium"
+      className="flex items-center px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-[#32348A] transition-colors font-medium"
     >
       {label}
     </Link>

@@ -120,7 +120,7 @@ export default async function AuctionsPage({
       {/* ── Page header ── */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-          <h1 className="text-3xl font-black text-[#1e3058] uppercase tracking-tight mb-6">
+          <h1 className="text-3xl font-black text-[#32348A] uppercase tracking-tight mb-6">
             Auction Calendar
           </h1>
 
@@ -132,8 +132,8 @@ export default async function AuctionsPage({
                 href="/auctions"
                 className={`px-5 py-2 text-sm font-bold uppercase tracking-wider border-b-2 transition-colors ${
                   !showPast
-                    ? "border-[#1e3058] text-[#1e3058]"
-                    : "border-transparent text-gray-400 hover:text-[#1e3058]"
+                    ? "border-[#32348A] text-[#32348A]"
+                    : "border-transparent text-gray-400 hover:text-[#32348A]"
                 }`}
               >
                 Upcoming
@@ -142,8 +142,8 @@ export default async function AuctionsPage({
                 href="/auctions?tab=past"
                 className={`px-5 py-2 text-sm font-bold uppercase tracking-wider border-b-2 transition-colors ${
                   showPast
-                    ? "border-[#1e3058] text-[#1e3058]"
-                    : "border-transparent text-gray-400 hover:text-[#1e3058]"
+                    ? "border-[#32348A] text-[#32348A]"
+                    : "border-transparent text-gray-400 hover:text-[#32348A]"
                 }`}
               >
                 View Results
@@ -169,14 +169,14 @@ export default async function AuctionsPage({
               </div>
               <button
                 type="submit"
-                className="bg-[#1e3058] text-white text-xs font-bold uppercase tracking-widest px-5 py-2.5 hover:bg-[#162544] transition-colors"
+                className="bg-[#32348A] text-white text-xs font-bold uppercase tracking-widest px-5 py-2.5 hover:bg-[#28296e] transition-colors"
               >
                 GO
               </button>
               {(search || type) && (
                 <Link
                   href={tab ? `/auctions?tab=${tab}` : "/auctions"}
-                  className="text-xs text-gray-400 hover:text-[#1e3058] underline"
+                  className="text-xs text-gray-400 hover:text-[#32348A] underline"
                 >
                   Clear
                 </Link>
@@ -233,7 +233,7 @@ export default async function AuctionsPage({
                          
                         />
                       ) : (
-                        <div className="absolute inset-0 bg-[#1e3058]/5 flex items-center justify-center">
+                        <div className="absolute inset-0 bg-[#32348A]/5 flex items-center justify-center">
                           <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
@@ -260,7 +260,7 @@ export default async function AuctionsPage({
                       {/* Title + meta */}
                       <div className="mb-3">
                         <Link href={`/auctions/${auction.code}`}>
-                          <h2 className="text-[#1e3058] font-black text-xl leading-tight hover:underline mb-1">
+                          <h2 className="text-[#32348A] font-black text-xl leading-tight hover:underline mb-1">
                             {auction.name}
                           </h2>
                         </Link>
@@ -281,14 +281,14 @@ export default async function AuctionsPage({
                         {isLive && (
                           <Link
                             href={`/auctions/${auction.code}/live`}
-                            className="border-2 border-[#1e3058] text-[#1e3058] hover:bg-[#1e3058] hover:text-white text-xs font-black uppercase tracking-widest px-4 py-2 transition-colors"
+                            className="border-2 border-[#32348A] text-[#32348A] hover:bg-[#32348A] hover:text-white text-xs font-black uppercase tracking-widest px-4 py-2 transition-colors"
                           >
                             APPROVED TO BID LIVE
                           </Link>
                         )}
                         <Link
                           href={`/auctions/${auction.code}`}
-                          className="bg-[#1e3058] hover:bg-[#162544] text-white text-xs font-black uppercase tracking-widest px-4 py-2 transition-colors"
+                          className="bg-[#32348A] hover:bg-[#28296e] text-white text-xs font-black uppercase tracking-widest px-4 py-2 transition-colors"
                         >
                           {showPast ? "VIEW RESULTS" : "VIEW CATALOGUE & BID"}
                         </Link>
@@ -306,7 +306,7 @@ export default async function AuctionsPage({
                     {/* Right date block */}
                     {aDate && (
                       <div className="shrink-0 w-28 border-l border-gray-200 flex flex-col items-center justify-center py-5 px-2 bg-gray-50">
-                        <span className="text-[#1e3058] font-black text-5xl leading-none">
+                        <span className="text-[#32348A] font-black text-5xl leading-none">
                           {format(aDate, "d")}
                         </span>
                         <span className="text-gray-500 text-xs font-bold uppercase tracking-widest mt-1">
@@ -317,7 +317,7 @@ export default async function AuctionsPage({
                         </span>
                         <Link
                           href={`/auctions/${auction.code}`}
-                          className="mt-3 text-[#1e3058] text-[10px] font-semibold hover:underline text-center leading-tight"
+                          className="mt-3 text-[#32348A] text-[10px] font-semibold hover:underline text-center leading-tight"
                         >
                           + Add to<br />calendar
                         </Link>
