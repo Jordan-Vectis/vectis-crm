@@ -1,9 +1,5 @@
 [build]
-builder = "nixpacks"
+builder = "dockerfile"
 
 [deploy]
 startCommand = "npm run start"
-
-[variables]
-NIXPACKS_NODE_VERSION = "22.12.0"
-NODE_OPTIONS = "--max-old-space-size=2048"
