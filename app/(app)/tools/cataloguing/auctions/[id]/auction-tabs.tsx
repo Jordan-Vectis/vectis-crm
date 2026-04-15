@@ -401,7 +401,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       colMatch(l.receipt, fReceipt) &&
       colMatch(l.tote, fTote) &&
       colMatch(l.category, fCategory) &&
-      (fPhotos === "" || (fPhotos === "any" ? l.imageUrls.length > 0 : l.imageUrls.length === 0)) &&
+      (fPhotos === "" || (fPhotos === "any" ? l.imageUrls.length > 0 : fPhotos === "none" ? l.imageUrls.length === 0 : fPhotos === "ai-yes" ? l.aiUpgraded : !l.aiUpgraded)) &&
       (fStatus === "" || l.status === fStatus)
     )
     return f.sort((a, b) => {
@@ -818,6 +818,8 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                   <option value="">All</option>
                   <option value="any">Has photos</option>
                   <option value="none">No photos</option>
+                  <option value="ai-yes">✨ AI upgraded</option>
+                  <option value="ai-no">Not upgraded</option>
                 </select>
               </td>
               <td className="px-2 py-1.5">
