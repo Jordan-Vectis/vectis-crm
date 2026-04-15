@@ -10,30 +10,27 @@ interface Slide {
   subtitle: string
   cta: string
   ctaHref: string
-  bg: string
+  imageKey?: string | null
 }
 
-const SLIDES: Slide[] = [
+const DEFAULT_SLIDES: Slide[] = [
   {
     title: "World's No.1 Diecast Specialist",
     subtitle: "Tens of thousands of lots sold every year to collectors worldwide. Join our next auction.",
     cta: "VIEW UPCOMING AUCTIONS",
     ctaHref: "/auctions",
-    bg: "from-[#1a1b3a] via-[#32348A] to-[#32348A]",
   },
   {
     title: "Sell Your Collection",
     subtitle: "Free valuations from our specialist team. No fees, no fuss — just the best price for your collection.",
     cta: "GET A FREE VALUATION",
     ctaHref: "/submit",
-    bg: "from-[#1a1b3a] via-[#162044] to-[#32348A]",
   },
   {
     title: "Bid Live & Online",
     subtitle: "Register once and bid in real-time from anywhere in the world across 100+ auctions a year.",
     cta: "REGISTER TO BID",
     ctaHref: "/portal/register",
-    bg: "from-[#1a1b3a] via-[#1a1040] to-[#32348A]",
   },
 ]
 
@@ -68,6 +65,15 @@ interface AuctionState {
   lots: LiveLot[]
 }
 
+interface DbSlide {
+  id: string
+  title: string
+  subtitle: string
+  cta: string
+  ctaHref: string
+  imageKey: string | null
+}
+
 interface Props {
   initialLive: {
     auctionId: string
@@ -77,9 +83,12 @@ interface Props {
     status: string
     lots: LiveLot[]
   } | null
+  dbSlides: DbSlide[]
+  isLoggedIn: boolean
 }
 
-export default function HomeHero({ initialLive }: Props) {
+export default function HomeHero({ initialLive, dbSlides, isLoggedIn }: Props) {
+  const SLIDES: Slide[] = dbSlides.length > 0 ? dbSlides : DEFAULT_SLIDES
   const [slide, setSlide] = useState(0)
   const [live, setLive] = useState(initialLive)
   const [auctionState, setAuctionState] = useState<AuctionState | null>(null)
@@ -139,46 +148,65 @@ export default function HomeHero({ initialLive }: Props) {
         className="absolute top-0 left-0 h-full transition-all duration-700 ease-in-out"
         style={{ width: isLive ? "58%" : "100%" }}
       >
-        {SLIDES.map((s, i) => (
-          <div
-            key={i}
-            className={`absolute inset-0 bg-gradient-to-br ${s.bg} transition-opacity duration-1000 ${i === slide ? "opacity-100" : "opacity-0 pointer-events-none"}`}
-          >
-            {/* Decorative pattern */}
-            <div className="absolute inset-0 opacity-5"
-              style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "40px 40px" }}
-            />
-            <div className="relative h-full flex flex-col justify-center px-12 max-w-2xl">
-              {/* Mini logo watermark */}
-              <div className="flex items-center gap-2 mb-6">
-                <div className="h-px w-8 bg-[#DB0606]" />
-                <p className="text-[#DB0606] text-[10px] font-black tracking-[0.35em] uppercase">
-                  Vectis Auctions · Est. 1995
+        {SLIDES.map((s, i) => {
+          const bgImg = s.imageKey
+            ? `/api/public/photo?key=${encodeURIComponent(s.imageKey)}`
+            : null
+          return (
+            <div
+              key={i}
+              className={`absolute inset-0 transition-opacity duration-1000 ${i === slide ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            >
+              {/* Background — image or gradient */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[#1a1b3a] via-[#32348A] to-[#32348A]" />
+              {bgImg && (
+                <Image
+                  src={bgImg}
+                  alt={s.title}
+                  fill
+                  className="object-cover opacity-40"
+                  unoptimized
+                  priority={i === 0}
+                />
+              )}
+              {/* Decorative pattern */}
+              <div className="absolute inset-0 opacity-5"
+                style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "40px 40px" }}
+              />
+              <div className="relative h-full flex flex-col justify-center px-12 max-w-2xl">
+                {/* Mini logo watermark */}
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="h-px w-8 bg-[#DB0606]" />
+                  <p className="text-[#DB0606] text-[10px] font-black tracking-[0.35em] uppercase">
+                    Vectis Auctions · Est. 1995
+                  </p>
+                </div>
+                <h1 className="text-white font-black text-4xl sm:text-5xl leading-none mb-5 uppercase tracking-tight">
+                  {s.title}
+                </h1>
+                <p className="text-gray-300 text-sm mb-8 leading-relaxed max-w-lg">
+                  {s.subtitle}
                 </p>
-              </div>
-              <h1 className="text-white font-black text-4xl sm:text-5xl leading-none mb-5 uppercase tracking-tight">
-                {s.title}
-              </h1>
-              <p className="text-gray-300 text-sm mb-8 leading-relaxed max-w-lg">
-                {s.subtitle}
-              </p>
-              <div className="flex gap-3">
-                <Link
-                  href={s.ctaHref}
-                  className="bg-[#DB0606] hover:bg-[#b00505] text-white text-xs font-black uppercase tracking-widest px-7 py-3.5 transition-colors"
-                >
-                  {s.cta}
-                </Link>
-                <Link
-                  href="/portal/register"
-                  className="border-2 border-white/30 hover:border-white text-white text-xs font-black uppercase tracking-widest px-7 py-3.5 transition-colors"
-                >
-                  REGISTER FREE
-                </Link>
+                <div className="flex gap-3">
+                  <Link
+                    href={s.ctaHref}
+                    className="bg-[#DB0606] hover:bg-[#b00505] text-white text-xs font-black uppercase tracking-widest px-7 py-3.5 transition-colors"
+                  >
+                    {s.cta}
+                  </Link>
+                  {!isLoggedIn && (
+                    <Link
+                      href="/portal/register"
+                      className="border-2 border-white/30 hover:border-white text-white text-xs font-black uppercase tracking-widest px-7 py-3.5 transition-colors"
+                    >
+                      REGISTER FREE
+                    </Link>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
 
         {/* Slide dots */}
         {!isLive && (

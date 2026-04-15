@@ -1,8 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 
 const SITE_PAGES = [
+  { label: "Home",        path: "/" },
   { label: "Auctions",    path: "/auctions" },
   { label: "Login",       path: "/portal/login" },
   { label: "Register",    path: "/portal/register" },
@@ -13,7 +15,7 @@ type Tab = "website" | "controller"
 
 export default function WebsitePreviewPage() {
   const [activeTab, setActiveTab]       = useState<Tab>("website")
-  const [currentPath, setCurrentPath]   = useState("/auctions")
+  const [currentPath, setCurrentPath]   = useState("/")
 
   const origin = typeof window !== "undefined" ? window.location.origin : ""
   const iframeSrc = activeTab === "controller"
@@ -55,6 +57,14 @@ export default function WebsitePreviewPage() {
             </span>
           )}
         </button>
+
+        {/* Banner manager link */}
+        <Link
+          href="/website/banner"
+          className="flex items-center gap-1.5 px-4 py-3 text-xs font-bold tracking-wide border-b-2 border-transparent text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+        >
+          🖼 Banner Manager
+        </Link>
 
         {/* Divider */}
         <div className="w-px h-5 bg-gray-700 mx-2" />

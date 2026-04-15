@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { format } from "date-fns"
 import { lotPhotoUrl } from "@/lib/photo-url"
 import HomeHero from "./home-hero"
+import { getCustomerSession } from "@/lib/customer-auth"
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
@@ -35,6 +36,14 @@ function isPast(auctionDate: Date | null, finished: boolean, complete: boolean):
 }
 
 export default async function HomePage() {
+  const session = await getCustomerSession()
+
+  // Hero slides from DB (fall back to empty — hero has built-in defaults)
+  const dbSlides = await prisma.heroSlide.findMany({
+    where: { active: true },
+    orderBy: { order: "asc" },
+  })
+
   // Check for live auction
   const liveAuction = await prisma.liveAuction.findFirst({
     where: { status: { in: ["ACTIVE", "PAUSED"] } },
@@ -77,7 +86,7 @@ export default async function HomePage() {
   return (
     <div>
       {/* ── Hero ── */}
-      <HomeHero initialLive={initialLive} />
+      <HomeHero initialLive={initialLive} dbSlides={dbSlides} isLoggedIn={!!session} />
 
       {/* ── Upcoming Auctions ── */}
       {upcoming.length > 0 && (

@@ -126,7 +126,7 @@ export default async function SiteNav() {
       {/* ── Bottom tier: nav links ── */}
       <nav className="bg-[#32348A] relative z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <ul className="flex items-center gap-0 text-xs font-semibold tracking-wider text-white">
+          <ul className="flex items-center justify-center gap-0 text-xs font-semibold tracking-wider text-white">
 
             <NavItem href="/" label="HOME" />
 
