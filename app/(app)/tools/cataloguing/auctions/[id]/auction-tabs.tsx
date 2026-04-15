@@ -897,7 +897,7 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
   const condParts = (lot?.condition ?? "").split(" to ")
   const [cond1, setCond1] = useState(condParts[0] ?? "")
   const [cond2, setCond2] = useState(condParts[1] ?? "")
-  const condValue = [cond1, cond2].filter(Boolean).sort((a, b) => CONDITIONS.indexOf(a) - CONDITIONS.indexOf(b)).join(" to ")
+  const condValue = [cond1, cond2].filter(Boolean).sort((a, b) => CONDITIONS.indexOf(b) - CONDITIONS.indexOf(a)).join(" to ")
 
   // Parcel size is stored in notes
   const [parcel, setParcel] = useState(lot?.notes ?? "")

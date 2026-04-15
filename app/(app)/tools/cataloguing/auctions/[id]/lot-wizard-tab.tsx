@@ -503,7 +503,7 @@ export default function LotWizardTab({
     if (err) { setValidErr(err); return }
     setValidErr("")
 
-    const condArr = [cond1, cond2].filter(Boolean).sort((a, b) => CONDITIONS.indexOf(a) - CONDITIONS.indexOf(b))
+    const condArr = [cond1, cond2].filter(Boolean).sort((a, b) => CONDITIONS.indexOf(b) - CONDITIONS.indexOf(a))
     const condition = condArr.join(" to ")
     const autoTitle = [brand, mainCat, subCat].filter(Boolean).join(" – ") || barcode || "Lot"
     const title = keyPoints.split("\n")[0]?.trim() || autoTitle
@@ -778,7 +778,7 @@ export default function LotWizardTab({
               <p><span className="text-gray-600">Category:</span> {mainCat || "—"}{subCat && ` › ${subCat}`}</p>
               <p><span className="text-gray-600">Brand:</span> {brand || "—"}</p>
               <p><span className="text-gray-600">Estimate:</span> £{estLow}–£{estHigh}</p>
-              <p><span className="text-gray-600">Condition:</span> {[cond1, cond2].filter(Boolean).join(" to ") || "—"}</p>
+              <p><span className="text-gray-600">Condition:</span> {[cond1, cond2].filter(Boolean).sort((a, b) => CONDITIONS.indexOf(b) - CONDITIONS.indexOf(a)).join(" to ") || "—"}</p>
               <p><span className="text-gray-600">Parcel:</span> {parcel || "—"}</p>
             </div>
           </div>
