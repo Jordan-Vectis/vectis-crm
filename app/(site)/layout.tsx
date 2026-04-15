@@ -77,11 +77,11 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             {/* Footer logo */}
             <div>
               <Image
-                src="/Vectis Auctions Collectables Specialists logo.jpg"
+                src="/vectis-logo.svg"
                 alt="Vectis Auctions"
-                width={130}
-                height={50}
-                className="object-contain brightness-0 invert opacity-80"
+                width={140}
+                height={57}
+                className="object-contain brightness-0 invert opacity-75"
               />
             </div>
 

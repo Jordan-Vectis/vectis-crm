@@ -81,10 +81,10 @@ export default async function SiteNav() {
           {/* ── Vectis Logo ── */}
           <Link href="/" className="shrink-0">
             <Image
-              src="/Vectis Auctions Collectables Specialists logo.jpg"
+              src="/vectis-logo.svg"
               alt="Vectis Auctions — Collectables Specialists"
-              width={160}
-              height={60}
+              width={172}
+              height={70}
               className="object-contain"
               priority
             />
