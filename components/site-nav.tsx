@@ -42,23 +42,37 @@ export default async function SiteNav() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4">
 
           {/* Search */}
-          <form method="GET" action="/auctions" className="flex items-center gap-0 border border-gray-300 rounded overflow-hidden w-64 shrink-0">
-            <span className="px-3 text-gray-400">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+          <form method="GET" action="/search" className="flex items-stretch shrink-0 shadow-sm" style={{ width: "320px" }}>
+            {/* Filter select */}
+            <div className="relative shrink-0">
+              <select
+                name="filter"
+                className="h-full appearance-none border border-r-0 border-gray-300 bg-gray-50 text-[#1e3058] text-[11px] font-black uppercase tracking-wider pl-3 pr-7 focus:outline-none focus:border-[#1e3058] cursor-pointer"
+              >
+                <option value="all">All</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="past">Past</option>
+              </select>
+              <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
               </svg>
-            </span>
-            <input
-              name="search"
-              placeholder="SEARCH"
-              className="flex-1 py-2 text-sm text-gray-700 placeholder:text-gray-400 placeholder:font-semibold placeholder:tracking-wider focus:outline-none"
-            />
-            <select name="filter" className="border-l border-gray-300 px-2 py-2 text-xs text-gray-600 bg-gray-50 focus:outline-none">
-              <option>Upcoming</option>
-              <option>Past</option>
-              <option>All</option>
-            </select>
-            <button type="submit" className="bg-[#1e3058] text-white text-xs font-bold px-3 py-2 tracking-wider hover:bg-[#162544] transition-colors">
+            </div>
+            {/* Input */}
+            <div className="relative flex-1 flex items-center border border-gray-300 bg-white px-3 focus-within:border-[#1e3058] focus-within:ring-1 focus-within:ring-[#1e3058]/20 transition-all">
+              <svg className="w-3.5 h-3.5 text-gray-400 shrink-0 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              <input
+                name="q"
+                placeholder="Search lots…"
+                className="flex-1 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none bg-transparent"
+              />
+            </div>
+            {/* Button */}
+            <button
+              type="submit"
+              className="shrink-0 bg-[#1e3058] hover:bg-[#162544] text-white text-[11px] font-black uppercase tracking-widest px-4 transition-colors border border-[#1e3058]"
+            >
               GO
             </button>
           </form>
