@@ -353,6 +353,16 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   const [photoExporting, setPhotoExporting] = useState(false)
   const [photoMsg, setPhotoMsg]     = useState<string | null>(null)
 
+  // Column sort
+  type SortCol = "lotNumber" | "barcode" | "title" | "vendor" | "receipt" | "tote" | "category" | "photos" | "status"
+  const [sortCol, setSortCol] = useState<SortCol>("lotNumber")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  function toggleSort(col: SortCol) {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc")
+    else { setSortCol(col); setSortDir("asc") }
+  }
+
   // Generate titles
   const [titlesMsg, setTitlesMsg]   = useState<string | null>(null)
   const [titlesPending, startTitles] = useTransition()
@@ -394,14 +404,21 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       (fPhotos === "" || (fPhotos === "any" ? l.imageUrls.length > 0 : l.imageUrls.length === 0)) &&
       (fStatus === "" || l.status === fStatus)
     )
-    // Sort numerically when lot number is a number, alphabetically otherwise
     return f.sort((a, b) => {
-      const na = parseInt(a.lotNumber, 10)
-      const nb = parseInt(b.lotNumber, 10)
-      if (!isNaN(na) && !isNaN(nb)) return na - nb
-      return a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+      let cmp = 0
+      if (sortCol === "lotNumber") {
+        const na = parseInt(a.lotNumber, 10), nb = parseInt(b.lotNumber, 10)
+        cmp = (!isNaN(na) && !isNaN(nb)) ? na - nb : a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+      } else if (sortCol === "photos") {
+        cmp = a.imageUrls.length - b.imageUrls.length
+      } else {
+        const va = (sortCol === "barcode" ? a.barcode : sortCol === "title" ? a.title : sortCol === "vendor" ? a.vendor : sortCol === "receipt" ? a.receipt : sortCol === "tote" ? a.tote : sortCol === "category" ? a.category : sortCol === "status" ? a.status : a.lotNumber) ?? ""
+        const vb = (sortCol === "barcode" ? b.barcode : sortCol === "title" ? b.title : sortCol === "vendor" ? b.vendor : sortCol === "receipt" ? b.receipt : sortCol === "tote" ? b.tote : sortCol === "category" ? b.category : sortCol === "status" ? b.status : b.lotNumber) ?? ""
+        cmp = va.localeCompare(vb, undefined, { numeric: true })
+      }
+      return sortDir === "asc" ? cmp : -cmp
     })
-  }, [lots, fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus])
+  }, [lots, fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus, sortCol, sortDir])
 
   const filtersActive = [fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus].some(f => f !== "")
 
@@ -777,15 +794,13 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                 <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length}
                   onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-600 accent-[#2AB4A6]" />
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Lot No.</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Barcode</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Receipt</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Tote</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Category</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Photos</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+              {(["lotNumber","barcode","title","vendor","receipt","tote","category","photos","status"] as SortCol[]).map((col, i) => (
+                <th key={col} onClick={() => toggleSort(col)}
+                  className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none whitespace-nowrap">
+                  {["Lot No.","Barcode","Title","Vendor","Receipt","Tote","Category","Photos","Status"][i]}
+                  {sortCol === col ? (sortDir === "asc" ? " ▲" : " ▼") : <span className="text-gray-700"> ⇅</span>}
+                </th>
+              ))}
               <th className="px-4 py-3" />
             </tr>
             {/* Filter row */}
