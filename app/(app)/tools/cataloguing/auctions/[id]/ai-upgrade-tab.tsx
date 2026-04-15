@@ -12,6 +12,7 @@ interface Lot {
   estimateLow: number | null
   estimateHigh: number | null
   imageUrls: string[]
+  aiUpgraded: boolean
 }
 
 interface Props {
@@ -54,14 +55,16 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
   const [preset,       setPreset]       = useState(PRESET_KEYS[0] ?? "")
   const [model,        setModel]        = useState(DEFAULT_MODEL)
   const [modelList,    setModelList]    = useState<string[]>([DEFAULT_MODEL])
-  const [filter,       setFilter]       = useState<"all" | "photos" | "photos-and-desc">("photos")
+  const [filter,       setFilter]       = useState<"all" | "photos" | "photos-and-desc" | "not-upgraded">("not-upgraded")
   const [results,      setResults]      = useState<LotResult[]>([])
   const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 })
   const [runProgress,   setRunProgress]   = useState({ done: 0, total: 0 })
   const [saveProgress,  setSaveProgress]  = useState({ done: 0, total: 0 })
   const [log,          setLog]          = useState<string[]>([])
   const [error,        setError]        = useState<string | null>(null)
+  const [paused,       setPaused]       = useState(false)
   const cancelRef = useRef(false)
+  const pauseRef  = useRef(false)
   const logRef    = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -77,17 +80,45 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
     setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 50)
   }
 
+  function handlePause() {
+    pauseRef.current = true
+    setPaused(true)
+    addLog("⏸ Paused — will stop after current lot finishes")
+  }
+
+  function handleResume() {
+    pauseRef.current = false
+    setPaused(false)
+    addLog("▶ Resuming…")
+  }
+
+  function handleCancel() {
+    cancelRef.current = true
+    pauseRef.current  = false
+    setPaused(false)
+  }
+
+  // Wait while paused (called inside the run loop)
+  async function waitIfPaused() {
+    while (pauseRef.current && !cancelRef.current) {
+      await new Promise(r => setTimeout(r, 300))
+    }
+  }
+
   // Eligible lots based on filter
   const eligibleLots = lots.filter(l => {
-    if (filter === "photos")           return l.imageUrls.length > 0
-    if (filter === "photos-and-desc")  return l.imageUrls.length > 0 && l.description.trim().length > 0
-    return true // "all" — include even lots without photos (AI will do its best)
+    if (filter === "not-upgraded")    return !l.aiUpgraded && l.imageUrls.length > 0
+    if (filter === "photos")          return l.imageUrls.length > 0
+    if (filter === "photos-and-desc") return l.imageUrls.length > 0 && l.description.trim().length > 0
+    return true // "all"
   })
 
   async function start() {
     if (eligibleLots.length === 0) { setError("No lots match the selected filter."); return }
     setError(null)
     cancelRef.current = false
+    pauseRef.current  = false
+    setPaused(false)
     setLog([])
     setResults([])
 
@@ -128,6 +159,8 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
     const collected: LotResult[] = []
 
     for (let i = 0; i < eligibleLots.length; i++) {
+      // Respect pause before starting each lot
+      await waitIfPaused()
       if (cancelRef.current) { addLog(`⛔ Cancelled after ${i} lots`); break }
 
       const lot    = eligibleLots[i]
@@ -188,9 +221,13 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
       setResults([...collected])
       setRunProgress({ done: i + 1, total: runTotal })
 
-      // 8s rate-limit gap between lots (matches Gemini quota)
+      // 8s rate-limit gap — split into small chunks so pause/cancel responds quickly
       if (i < eligibleLots.length - 1 && !cancelRef.current) {
-        await new Promise(r => setTimeout(r, 8000))
+        for (let t = 0; t < 80; t++) {
+          if (cancelRef.current) break
+          await new Promise(r => setTimeout(r, 100))
+        }
+        await waitIfPaused()
       }
     }
 
@@ -222,9 +259,11 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
     onDone()
   }
 
-  const approvedCount = results.filter(r => r.approved && r.status === "ok").length
-  const failedCount   = results.filter(r => r.status === "failed").length
-  const okCount       = results.filter(r => r.status === "ok").length
+  const approvedCount         = results.filter(r => r.approved && r.status === "ok").length
+  const failedCount           = results.filter(r => r.status === "failed").length
+  const okCount               = results.filter(r => r.status === "ok").length
+  const upgradedCount         = lots.filter(l => l.aiUpgraded).length
+  const notUpgradedWithPhotos = lots.filter(l => !l.aiUpgraded && l.imageUrls.length > 0).length
 
   return (
     <div className="p-4 md:p-6 max-w-4xl">
@@ -237,6 +276,11 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
             <p className="text-xs text-gray-500 mt-0.5">
               Automatically fetches photos from storage, runs them through AI, then lets you review and approve changes before overwriting.
             </p>
+            {upgradedCount > 0 && (
+              <p className="text-xs text-purple-400 mt-1.5">
+                ✨ {upgradedCount} lot{upgradedCount !== 1 ? "s" : ""} already AI upgraded
+              </p>
+            )}
           </div>
 
           {/* Preset */}
@@ -260,11 +304,12 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
           {/* Filter */}
           <div>
             <label className="block text-xs text-gray-500 mb-1.5 uppercase tracking-wider">Which lots to process</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {([
-                ["photos",          "Lots with photos",              `${lots.filter(l => l.imageUrls.length > 0).length} lots`],
-                ["photos-and-desc", "Lots with photos & description", `${lots.filter(l => l.imageUrls.length > 0 && l.description.trim()).length} lots`],
-                ["all",             "All lots",                      `${lots.length} lots`],
+                ["not-upgraded",    "Not yet upgraded",    `${notUpgradedWithPhotos} lots`],
+                ["photos",          "Lots with photos",    `${lots.filter(l => l.imageUrls.length > 0).length} lots`],
+                ["photos-and-desc", "Photos & description",`${lots.filter(l => l.imageUrls.length > 0 && l.description.trim()).length} lots`],
+                ["all",             "All lots",            `${lots.length} lots`],
               ] as const).map(([val, label, count]) => (
                 <button key={val} onClick={() => setFilter(val)}
                   className={`flex flex-col items-center gap-0.5 py-3 px-2 rounded-xl border text-xs transition-colors ${
@@ -295,18 +340,21 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
           subtitle={`${fetchProgress.done} / ${fetchProgress.total} images downloaded`}
           pct={fetchProgress.total > 0 ? (fetchProgress.done / fetchProgress.total) * 100 : 0}
           log={log} logRef={logRef}
-          onCancel={() => { cancelRef.current = true }}
+          onCancel={handleCancel}
         />
       )}
 
       {/* ── Running AI ── */}
       {phase === "running" && (
         <ProgressCard
-          title="Running AI…"
+          title={paused ? "Paused" : "Running AI…"}
           subtitle={`${runProgress.done} / ${runProgress.total} lots processed`}
           pct={runProgress.total > 0 ? (runProgress.done / runProgress.total) * 100 : 0}
           log={log} logRef={logRef}
-          onCancel={() => { cancelRef.current = true }}
+          onCancel={handleCancel}
+          onPause={paused ? undefined : handlePause}
+          onResume={paused ? handleResume : undefined}
+          paused={paused}
           liveResults={results}
         />
       )}
@@ -377,11 +425,14 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ProgressCard({
-  title, subtitle, pct, log, logRef, onCancel, liveResults,
+  title, subtitle, pct, log, logRef, onCancel, onPause, onResume, paused, liveResults,
 }: {
   title: string; subtitle: string; pct: number
   log: string[]; logRef: React.RefObject<HTMLDivElement | null>
   onCancel: () => void
+  onPause?: () => void
+  onResume?: () => void
+  paused?: boolean
   liveResults?: { status: string; lotNumber: string }[]
 }) {
   return (
@@ -389,10 +440,30 @@ function ProgressCard({
       <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl px-6 py-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-300 font-medium">{title}</p>
-          <button onClick={onCancel} className="text-xs text-gray-600 hover:text-red-400 transition-colors">Cancel</button>
+          <div className="flex items-center gap-3">
+            {onResume && (
+              <button onClick={onResume}
+                className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors">
+                ▶ Resume
+              </button>
+            )}
+            {onPause && (
+              <button onClick={onPause}
+                className="text-xs text-yellow-500 hover:text-yellow-400 font-medium transition-colors">
+                ⏸ Pause
+              </button>
+            )}
+            <button onClick={onCancel}
+              className="text-xs text-gray-600 hover:text-red-400 transition-colors">
+              Cancel
+            </button>
+          </div>
         </div>
         <div className="w-full bg-gray-800 rounded-full h-2.5">
-          <div className="bg-purple-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
+          <div
+            className={`h-2.5 rounded-full transition-all duration-300 ${paused ? "bg-yellow-500" : "bg-purple-500"}`}
+            style={{ width: `${pct}%` }}
+          />
         </div>
         <p className="text-xs text-gray-500 text-center">{subtitle}</p>
       </div>

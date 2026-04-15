@@ -84,7 +84,7 @@ export async function applyAiDescriptions(
     updates.map(u =>
       prisma.catalogueLot.update({
         where: { id: u.id },
-        data: { description: u.description, estimateLow: u.estimateLow, estimateHigh: u.estimateHigh },
+        data: { description: u.description, estimateLow: u.estimateLow, estimateHigh: u.estimateHigh, aiUpgraded: true },
       })
     )
   )

@@ -27,7 +27,7 @@ interface Lot {
   hammerPrice: number | null; condition: string | null; vendor: string | null
   tote: string | null; receipt: string | null; category: string | null
   subCategory: string | null; brand: string | null; notes: string | null
-  status: string; createdByName: string | null; imageUrls: string[]
+  status: string; aiUpgraded: boolean; createdByName: string | null; imageUrls: string[]
 }
 
 
@@ -850,11 +850,16 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                   ) : "—"}
                 </td>
                 <td className="px-4 py-3">
-                  {lot.imageUrls.length > 0 ? (
-                    <span className="text-xs bg-[#2AB4A6]/20 text-[#2AB4A6] px-2 py-0.5 rounded-full font-medium">
-                      {lot.imageUrls.length}
-                    </span>
-                  ) : <span className="text-gray-700 text-xs">—</span>}
+                  <div className="flex items-center gap-1.5">
+                    {lot.imageUrls.length > 0 ? (
+                      <span className="text-xs bg-[#2AB4A6]/20 text-[#2AB4A6] px-2 py-0.5 rounded-full font-medium">
+                        {lot.imageUrls.length}
+                      </span>
+                    ) : <span className="text-gray-700 text-xs">—</span>}
+                    {lot.aiUpgraded && (
+                      <span title="AI upgraded" className="text-xs">✨</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[lot.status] ?? "bg-gray-700 text-gray-300"}`}>

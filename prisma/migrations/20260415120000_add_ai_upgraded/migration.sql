@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "CatalogueLot" ADD COLUMN IF NOT EXISTS "aiUpgraded" BOOLEAN NOT NULL DEFAULT false;
