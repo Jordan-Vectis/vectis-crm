@@ -8,46 +8,47 @@
   - Made the column `contactId` on table `WarehouseReceipt` required. This step will fail if there are existing NULL values in that column.
 
 */
--- DropForeignKey
-ALTER TABLE "Submission" DROP CONSTRAINT "Submission_contactId_fkey";
+-- DropForeignKey (safe)
+ALTER TABLE "Submission" DROP CONSTRAINT IF EXISTS "Submission_contactId_fkey";
+ALTER TABLE "WarehouseReceipt" DROP CONSTRAINT IF EXISTS "WarehouseReceipt_contactId_fkey";
+ALTER TABLE "Submission" DROP CONSTRAINT IF EXISTS "Submission_customerId_fkey";
+ALTER TABLE "WarehouseReceipt" DROP CONSTRAINT IF EXISTS "WarehouseReceipt_customerId_fkey";
 
--- DropForeignKey
-ALTER TABLE "WarehouseReceipt" DROP CONSTRAINT "WarehouseReceipt_contactId_fkey";
-
--- AlterTable
+-- AlterTable Contact (safe)
 ALTER TABLE "Contact" ALTER COLUMN "updatedAt" DROP DEFAULT;
 
--- AlterTable
-ALTER TABLE "CustomerAccount" ADD COLUMN     "billingCity" TEXT,
-ADD COLUMN     "billingCounty" TEXT,
-ADD COLUMN     "billingLine1" TEXT,
-ADD COLUMN     "billingLine2" TEXT,
-ADD COLUMN     "billingPostcode" TEXT,
-ADD COLUMN     "billingSameAsShipping" BOOLEAN NOT NULL DEFAULT true,
-ADD COLUMN     "phone" TEXT,
-ADD COLUMN     "shippingCity" TEXT,
-ADD COLUMN     "shippingCounty" TEXT,
-ADD COLUMN     "shippingLine1" TEXT,
-ADD COLUMN     "shippingLine2" TEXT,
-ADD COLUMN     "shippingPostcode" TEXT;
+-- AlterTable CustomerAccount — add columns only if they don't exist
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "billingCity" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "billingCounty" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "billingLine1" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "billingLine2" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "billingPostcode" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "billingSameAsShipping" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "phone" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "shippingCity" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "shippingCounty" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "shippingLine1" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "shippingLine2" TEXT;
+ALTER TABLE "CustomerAccount" ADD COLUMN IF NOT EXISTS "shippingPostcode" TEXT;
 
 -- Delete orphaned rows before making contactId NOT NULL
 DELETE FROM "Submission" WHERE "contactId" IS NULL;
 DELETE FROM "WarehouseReceipt" WHERE "contactId" IS NULL;
 
--- AlterTable
-ALTER TABLE "Submission" DROP COLUMN IF EXISTS "customerId",
-ALTER COLUMN "contactId" SET NOT NULL;
+-- AlterTable Submission
+ALTER TABLE "Submission" DROP COLUMN IF EXISTS "customerId";
+ALTER TABLE "Submission" ALTER COLUMN "contactId" SET NOT NULL;
 
--- AlterTable
-ALTER TABLE "WarehouseReceipt" DROP COLUMN IF EXISTS "customerId",
-ALTER COLUMN "contactId" SET NOT NULL;
+-- AlterTable WarehouseReceipt
+ALTER TABLE "WarehouseReceipt" DROP COLUMN IF EXISTS "customerId";
+ALTER TABLE "WarehouseReceipt" ALTER COLUMN "contactId" SET NOT NULL;
 
--- DropTable
-DROP TABLE "Customer";
+-- DropTable (safe)
+DROP TABLE IF EXISTS "Customer";
 
--- AddForeignKey
+-- AddForeignKey (safe — drop first to avoid duplicate constraint error)
+ALTER TABLE "Submission" DROP CONSTRAINT IF EXISTS "Submission_contactId_fkey";
 ALTER TABLE "Submission" ADD CONSTRAINT "Submission_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- AddForeignKey
+ALTER TABLE "WarehouseReceipt" DROP CONSTRAINT IF EXISTS "WarehouseReceipt_contactId_fkey";
 ALTER TABLE "WarehouseReceipt" ADD CONSTRAINT "WarehouseReceipt_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
