@@ -2,6 +2,36 @@ import Link from "next/link"
 import { getCustomerSession } from "@/lib/customer-auth"
 import { logoutCustomer } from "@/lib/actions/customer-auth"
 
+const DEPARTMENTS = [
+  "Action Figures",
+  "Action Man",
+  "Airfix and Model Kits",
+  "Barbie",
+  "Comics",
+  "Corgi",
+  "Dolls",
+  "Dinky",
+  "Lego",
+  "Matchbox",
+  "Militaria Memorabilia",
+  "Military Toy Figures",
+  "Music and Memorabilia",
+  "Retro Gaming",
+  "Retro Toys",
+  "Sports Memorabilia",
+  "Star Wars",
+  "Star Wars Lego",
+  "Teddy Bears",
+  "Tinplate",
+  "Trading Cards",
+  "Trains & Model Railway",
+  "Transformers",
+  "TV & Film",
+  "TV and Film Related Props and Collectables",
+  "Vintage Diecast",
+  "Vintage Toys",
+]
+
 export default async function SiteNav() {
   const session = await getCustomerSession()
 
@@ -73,15 +103,39 @@ export default async function SiteNav() {
       </div>
 
       {/* ── Bottom tier: nav links ── */}
-      <nav className="bg-[#1e3058]">
+      <nav className="bg-[#1e3058] relative z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <ul className="flex items-center gap-0 text-xs font-semibold tracking-wider text-white">
+
             <NavItem href="/" label="HOME" />
-            <NavItem href="/auctions" label="AUCTION CALENDAR" hasArrow />
-            <NavItem href="/auctions" label="DEPARTMENTS" hasArrow />
+
+            {/* Auction Calendar dropdown */}
+            <DropdownNavItem label="AUCTION CALENDAR" href="/auctions">
+              <DropdownSection>
+                <DropdownLink href="/auctions" label="Upcoming Auctions" />
+                <DropdownLink href="/auctions?tab=past" label="View Results" />
+              </DropdownSection>
+            </DropdownNavItem>
+
+            {/* Departments dropdown */}
+            <DropdownNavItem label="DEPARTMENTS" href="/auctions">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-0 p-4" style={{ minWidth: "520px" }}>
+                {DEPARTMENTS.map(dept => (
+                  <DropdownLink
+                    key={dept}
+                    href={`/auctions?type=${encodeURIComponent(dept)}`}
+                    label={dept.toUpperCase()}
+                  />
+                ))}
+                <div className="col-span-2 border-t border-gray-100 mt-2 pt-2">
+                  <DropdownLink href="/auctions" label="VIEW ALL DEPARTMENTS" bold />
+                </div>
+              </div>
+            </DropdownNavItem>
+
             <NavItem href="/portal/register" label="HOW TO BID" />
             <NavItem href="/submit" label="SELL WITH US" />
-            <NavItem href="/auctions" label="NEWS &amp; STORIES" hasArrow />
+            <NavItem href="/auctions" label="NEWS &amp; STORIES" />
             <NavItem href="/auctions" label="CAREERS" />
             <NavItem href="/auctions" label="CONTACT US" />
           </ul>
@@ -91,7 +145,7 @@ export default async function SiteNav() {
   )
 }
 
-function NavItem({ href, label, hasArrow }: { href: string; label: string; hasArrow?: boolean }) {
+function NavItem({ href, label }: { href: string; label: string }) {
   return (
     <li>
       <Link
@@ -99,12 +153,48 @@ function NavItem({ href, label, hasArrow }: { href: string; label: string; hasAr
         className="flex items-center gap-1 px-4 py-3 hover:bg-white/10 transition-colors whitespace-nowrap"
       >
         {label}
-        {hasArrow && (
-          <svg className="w-2.5 h-2.5 opacity-70" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-          </svg>
-        )}
       </Link>
     </li>
+  )
+}
+
+function DropdownNavItem({
+  href, label, children,
+}: {
+  href: string
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <li className="relative group">
+      <Link
+        href={href}
+        className="flex items-center gap-1 px-4 py-3 hover:bg-white/10 transition-colors whitespace-nowrap"
+      >
+        {label}
+        <svg className="w-2.5 h-2.5 opacity-70 group-hover:rotate-180 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+        </svg>
+      </Link>
+      {/* Dropdown panel */}
+      <div className="absolute top-full left-0 bg-white shadow-xl border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 translate-y-1 group-hover:translate-y-0 z-50">
+        {children}
+      </div>
+    </li>
+  )
+}
+
+function DropdownSection({ children }: { children: React.ReactNode }) {
+  return <div className="py-2 min-w-[200px]">{children}</div>
+}
+
+function DropdownLink({ href, label, bold }: { href: string; label: string; bold?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`block px-4 py-1.5 text-[11px] tracking-wider text-gray-700 hover:bg-[#1e3058] hover:text-white transition-colors whitespace-nowrap ${bold ? "font-black text-[#1e3058]" : "font-semibold"}`}
+    >
+      {label}
+    </Link>
   )
 }
