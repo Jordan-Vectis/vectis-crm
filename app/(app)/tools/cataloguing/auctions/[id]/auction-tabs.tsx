@@ -171,7 +171,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
       </div>
 
       {/* Tab panels — scrollable content area */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable]">
         {tab === "settings" && <SettingsTab auction={auction} />}
 
         <div className={tab === "add-lot" ? "" : "hidden"}>
