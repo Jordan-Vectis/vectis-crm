@@ -382,17 +382,26 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
 
   const uniqueStatuses = useMemo(() => Array.from(new Set(lots.map(l => l.status))).sort(), [lots])
 
-  const filtered = useMemo(() => lots.filter(l =>
-    colMatch(l.lotNumber, fLotNo) &&
-    colMatch(l.barcode, fBarcode) &&
-    colMatch(l.title, fTitle) &&
-    colMatch(l.vendor, fVendor) &&
-    colMatch(l.receipt, fReceipt) &&
-    colMatch(l.tote, fTote) &&
-    colMatch(l.category, fCategory) &&
-    (fPhotos === "" || (fPhotos === "any" ? l.imageUrls.length > 0 : l.imageUrls.length === 0)) &&
-    (fStatus === "" || l.status === fStatus)
-  ), [lots, fLotNo, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus])
+  const filtered = useMemo(() => {
+    const f = lots.filter(l =>
+      colMatch(l.lotNumber, fLotNo) &&
+      colMatch(l.barcode, fBarcode) &&
+      colMatch(l.title, fTitle) &&
+      colMatch(l.vendor, fVendor) &&
+      colMatch(l.receipt, fReceipt) &&
+      colMatch(l.tote, fTote) &&
+      colMatch(l.category, fCategory) &&
+      (fPhotos === "" || (fPhotos === "any" ? l.imageUrls.length > 0 : l.imageUrls.length === 0)) &&
+      (fStatus === "" || l.status === fStatus)
+    )
+    // Sort numerically when lot number is a number, alphabetically otherwise
+    return f.sort((a, b) => {
+      const na = parseInt(a.lotNumber, 10)
+      const nb = parseInt(b.lotNumber, 10)
+      if (!isNaN(na) && !isNaN(nb)) return na - nb
+      return a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+    })
+  }, [lots, fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus])
 
   const filtersActive = [fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus].some(f => f !== "")
 
