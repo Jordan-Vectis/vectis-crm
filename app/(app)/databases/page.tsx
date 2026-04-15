@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma"
 import DatabasesClient from "./databases-client"
 
 export default async function DatabasesPage() {
-  const [contacts, receipts, containers, lots, auctions, locations] = await Promise.all([
+  const [contacts, receipts, containers, lots, auctions, locations, commissionBids] = await Promise.all([
     prisma.contact.findMany({
       orderBy: { name: "asc" },
       take: 3000,
@@ -32,6 +32,27 @@ export default async function DatabasesPage() {
     prisma.warehouseLocation.findMany({
       orderBy: { code: "asc" },
       select: { code: true },
+    }),
+    prisma.commissionBid.findMany({
+      orderBy: { placedAt: "desc" },
+      take: 5000,
+      include: {
+        customerAccount: {
+          select: { id: true, firstName: true, lastName: true, email: true, contactId: true },
+        },
+        lot: {
+          select: {
+            id: true,
+            lotNumber: true,
+            title: true,
+            estimateLow: true,
+            estimateHigh: true,
+            hammerPrice: true,
+            status: true,
+            auction: { select: { id: true, code: true, name: true } },
+          },
+        },
+      },
     }),
   ])
 
@@ -69,6 +90,26 @@ export default async function DatabasesPage() {
       }))}
       auctions={auctions}
       locations={locations.map(l => l.code)}
+      commissionBids={commissionBids.map(b => ({
+        id: b.id,
+        lotId: b.lot.id,
+        lotNumber: b.lot.lotNumber,
+        lotTitle: b.lot.title,
+        estimateLow: b.lot.estimateLow ?? null,
+        estimateHigh: b.lot.estimateHigh ?? null,
+        hammerPrice: b.lot.hammerPrice ?? null,
+        lotStatus: b.lot.status,
+        auctionId: b.lot.auction.id,
+        auctionCode: b.lot.auction.code,
+        auctionName: b.lot.auction.name,
+        customerAccountId: b.customerAccount.id,
+        customerEmail: b.customerAccount.email,
+        customerName: `${b.customerAccount.firstName} ${b.customerAccount.lastName}`,
+        contactId: b.customerAccount.contactId ?? null,
+        maxBid: b.maxBid,
+        placedAt: b.placedAt.toISOString(),
+        updatedAt: b.updatedAt.toISOString(),
+      }))}
     />
   )
 }

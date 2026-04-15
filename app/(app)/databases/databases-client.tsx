@@ -28,15 +28,37 @@ type LotRow = {
   reserve: number | null; hammerPrice: number | null; imageCount: number
 }
 type AuctionOption = { id: string; code: string; name: string }
-type Tab = "customers" | "receipts" | "totes" | "lots"
+type Tab = "customers" | "receipts" | "totes" | "lots" | "bids"
+
+type BidRow = {
+  id: string
+  lotId: string
+  lotNumber: string
+  lotTitle: string
+  estimateLow: number | null
+  estimateHigh: number | null
+  hammerPrice: number | null
+  lotStatus: string
+  auctionId: string
+  auctionCode: string
+  auctionName: string
+  customerAccountId: string
+  customerEmail: string
+  customerName: string
+  contactId: string | null
+  maxBid: number
+  placedAt: string
+  updatedAt: string
+}
 
 interface Props {
-  contacts:   ContactRow[]
-  receipts:   ReceiptRow[]
-  containers: ContainerRow[]
-  lots:       LotRow[]
-  auctions:   AuctionOption[]
-  locations:  string[]
+  contacts:       ContactRow[]
+  receipts:       ReceiptRow[]
+  containers:     ContainerRow[]
+  lots:           LotRow[]
+  auctions:       AuctionOption[]
+  locations:      string[]
+  commissionBids: BidRow[]
 }
 
 // ── Shared UI bits ─────────────────────────────────────────────────────────
@@ -429,7 +451,7 @@ function Drawer({ title, subtitle, open, onClose, children }: {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
-export default function DatabasesClient({ contacts: initialContacts, receipts: initialReceipts, containers: initialContainers, lots: initialLots, auctions, locations }: Props) {
+export default function DatabasesClient({ contacts: initialContacts, receipts: initialReceipts, containers: initialContainers, lots: initialLots, auctions, locations, commissionBids: initialBids }: Props) {
   const [tab, setTab] = useState<Tab>("customers")
 
   // Local copies for optimistic updates
@@ -437,6 +459,7 @@ export default function DatabasesClient({ contacts: initialContacts, receipts: i
   const [receipts,   setReceipts]   = useState(initialReceipts)
   const [containers, setContainers] = useState(initialContainers)
   const [lots,       setLots]       = useState(initialLots)
+  const [bids]                      = useState(initialBids)
 
   // ── Column visibility ───────────────────────────────────────────────────
   const CUSTOMER_COLS  = [
@@ -513,6 +536,11 @@ export default function DatabasesClient({ contacts: initialContacts, receipts: i
   const [lTote,    setLTote]    = useState("")
   const [lStatus,  setLStatus]  = useState("")
 
+  const [bAuction,  setBAuction]  = useState("")
+  const [bCustomer, setBCustomer] = useState("")
+  const [bContact,  setBContact]  = useState("")
+  const [bStatus,   setBStatus]   = useState("")
+
   // ── Edit drawer ─────────────────────────────────────────────────────────
   const [editContact,   setEditContact]   = useState<ContactRow | null>(null)
   const [editReceipt,   setEditReceipt]   = useState<ReceiptRow | null>(null)
@@ -547,6 +575,13 @@ export default function DatabasesClient({ contacts: initialContacts, receipts: i
     match(l.tote, lTote) && (lStatus === "" || l.status === lStatus)
   ), [lots, lLotNo, lTitle, lAuction, lVendor, lReceipt, lTote, lStatus])
 
+  const filteredBids = useMemo(() => bids.filter(b =>
+    (bAuction  === "" || b.auctionCode === bAuction) &&
+    (match(b.customerName, bCustomer) || match(b.customerEmail, bCustomer)) &&
+    (bContact  === "" || match(b.contactId, bContact)) &&
+    (bStatus   === "" || b.lotStatus === bStatus)
+  ), [bids, bAuction, bCustomer, bContact, bStatus])
+
   // Dropdown options
   const toteTypes      = useMemo(() => Array.from(new Set(containers.map(c => c.type))).sort(), [containers])
   const auctionCodes   = useMemo(() => Array.from(new Set(lots.map(l => l.auctionCode))).sort(), [lots])
@@ -558,13 +593,18 @@ export default function DatabasesClient({ contacts: initialContacts, receipts: i
     setRId(""); setRContact(""); setRComm(""); setRStatus("")
     setTId(""); setTType(""); setTDesc(""); setTContact(""); setTCategory(""); setTLocation("")
     setLLotNo(""); setLTitle(""); setLAuction(""); setLVendor(""); setLReceipt(""); setLTote(""); setLStatus("")
+    setBAuction(""); setBCustomer(""); setBContact(""); setBStatus("")
   }
 
+  const bidAuctionCodes = useMemo(() => Array.from(new Set(bids.map(b => b.auctionCode))).sort(), [bids])
+  const bidLotStatuses  = useMemo(() => Array.from(new Set(bids.map(b => b.lotStatus))).sort(), [bids])
+
   const tabs: { key: Tab; label: string; count: number; filtered: number }[] = [
-    { key: "customers", label: "Customers",  count: contacts.length,   filtered: filteredContacts.length   },
-    { key: "receipts",  label: "Receipts",   count: receipts.length,   filtered: filteredReceipts.length   },
-    { key: "totes",     label: "Totes",      count: containers.length, filtered: filteredContainers.length },
-    { key: "lots",      label: "Lots",       count: lots.length,       filtered: filteredLots.length       },
+    { key: "customers", label: "Customers",       count: contacts.length,   filtered: filteredContacts.length   },
+    { key: "receipts",  label: "Receipts",        count: receipts.length,   filtered: filteredReceipts.length   },
+    { key: "totes",     label: "Totes",           count: containers.length, filtered: filteredContainers.length },
+    { key: "lots",      label: "Lots",            count: lots.length,       filtered: filteredLots.length       },
+    { key: "bids",      label: "Commission Bids", count: bids.length,       filtered: filteredBids.length       },
   ]
 
   // ── Row classes ──────────────────────────────────────────────────────────
@@ -769,6 +809,94 @@ export default function DatabasesClient({ contacts: initialContacts, receipts: i
                   </tr>
                 ))}
                 {filteredLots.length === 0 && <tr><td colSpan={15} className="px-4 py-8 text-center text-gray-600 text-sm">No lots match your filters</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ── Commission Bids ── */}
+        {tab === "bids" && (
+          <div className="overflow-x-auto rounded-b-xl rounded-tr-xl border border-gray-800 border-t-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800 bg-[#1C1C1E]">
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Auction</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Lot No.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Customer</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">C No.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Estimate</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Max Bid</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Hammer</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Placed</th>
+                </tr>
+                <tr className="border-b border-gray-900 bg-[#111113]">
+                  <td className="px-2 py-1.5">
+                    <select value={bAuction} onChange={e => setBAuction(e.target.value)} className={COL_SELECT}>
+                      <option value="">All</option>
+                      {bidAuctionCodes.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5">
+                    <input value={bCustomer} onChange={e => setBCustomer(e.target.value)} placeholder="Filter…" className={COL_INPUT} />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input value={bContact} onChange={e => setBContact(e.target.value)} placeholder="C000001…" className={COL_INPUT} />
+                  </td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5">
+                    <select value={bStatus} onChange={e => setBStatus(e.target.value)} className={COL_SELECT}>
+                      <option value="">All</option>
+                      {bidLotStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-2 py-1.5"></td>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBids.map((b, i) => {
+                  const won = b.lotStatus === "SOLD" && b.hammerPrice !== null
+                  const notWon = b.lotStatus === "SOLD" && b.hammerPrice === null
+                  return (
+                    <tr key={b.id} className={TR(i)}>
+                      <td className="px-3 py-2.5 text-gray-400 font-mono text-xs whitespace-nowrap">{b.auctionCode}</td>
+                      <td className="px-3 py-2.5 text-gray-300 font-mono text-xs whitespace-nowrap">{b.lotNumber}</td>
+                      <td className="px-3 py-2.5 text-gray-200 max-w-[180px] truncate">{b.lotTitle}</td>
+                      <td className="px-3 py-2.5">
+                        <p className="text-gray-200 text-xs">{b.customerName}</p>
+                        <p className="text-gray-600 text-[10px]">{b.customerEmail}</p>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-400 font-mono text-xs">{b.contactId ?? <span className="text-gray-700">—</span>}</td>
+                      <td className="px-3 py-2.5 text-gray-400 text-xs whitespace-nowrap">
+                        {b.estimateLow || b.estimateHigh
+                          ? `£${b.estimateLow ?? "?"}–£${b.estimateHigh ?? "?"}`
+                          : <span className="text-gray-700">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-violet-400 font-bold whitespace-nowrap">£{b.maxBid.toLocaleString("en-GB")}</td>
+                      <td className="px-3 py-2.5 text-gray-400 text-xs whitespace-nowrap">
+                        {b.hammerPrice != null
+                          ? <span className={won ? "text-green-400 font-bold" : "text-gray-400"}>£{b.hammerPrice.toLocaleString("en-GB")}</span>
+                          : <span className="text-gray-700">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {won     ? <Badge color="green">WON</Badge>
+                        : notWon ? <Badge color="red">NOT WON</Badge>
+                        : statusBadge(b.lotStatus)}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600 text-xs whitespace-nowrap">
+                        {new Date(b.placedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}
+                      </td>
+                    </tr>
+                  )
+                })}
+                {filteredBids.length === 0 && (
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-600 text-sm">No commission bids match your filters</td></tr>
+                )}
               </tbody>
             </table>
           </div>

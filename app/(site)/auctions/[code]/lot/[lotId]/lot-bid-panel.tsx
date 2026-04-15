@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { placeCommissionBid } from "@/lib/actions/commission-bid"
 import RegisterToBidModal from "../../../register-to-bid-modal"
+import { getIncrement, getOpeningBid, nextBid, INCREMENT_TABLE } from "@/lib/bid-increments"
 
 interface Props {
   lotId: string
@@ -16,8 +17,6 @@ interface Props {
   estimateLow: number | null
   isLive: boolean
 }
-
-const BID_INCREMENTS = [5, 10, 20, 50, 100, 200, 500]
 
 export default function LotBidPanel({
   lotId,
@@ -33,14 +32,28 @@ export default function LotBidPanel({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [showRegisterModal, setShowRegisterModal] = useState(false)
-  const [bidAmount, setBidAmount] = useState<string>(
-    existingMaxBid ? String(existingMaxBid) : (estimateLow ? String(estimateLow) : "")
-  )
+  const [showTable, setShowTable] = useState(false)
+
+  // Opening bid = half of estimate low, or existing bid
+  const defaultBid = existingMaxBid
+    ?? (estimateLow ? getOpeningBid(estimateLow) : 5)
+
+  const [bidAmount, setBidAmount] = useState<number>(defaultBid)
   const [result, setResult] = useState<{ success?: boolean; updated?: boolean; error?: string } | null>(null)
 
-  function handleIncrement(inc: number) {
-    const current = parseInt(bidAmount || "0", 10)
-    setBidAmount(String(current + inc))
+  const currentIncrement = getIncrement(bidAmount)
+
+  function stepUp() {
+    setBidAmount(prev => nextBid(prev))
+    setResult(null)
+  }
+
+  function stepDown() {
+    setBidAmount(prev => {
+      if (prev <= 5) return 5
+      const inc = getIncrement(prev - getIncrement(prev - 1))
+      return Math.max(5, prev - inc)
+    })
     setResult(null)
   }
 
@@ -57,14 +70,9 @@ export default function LotBidPanel({
   }
 
   function submitBid() {
-    const amount = parseInt(bidAmount, 10)
-    if (!amount || amount < 1) {
-      setResult({ error: "Please enter a valid bid amount." })
-      return
-    }
     setResult(null)
     startTransition(async () => {
-      const res = await placeCommissionBid(lotId, amount)
+      const res = await placeCommissionBid(lotId, bidAmount)
       if ("error" in res) {
         setResult({ error: res.error })
       } else {
@@ -74,7 +82,7 @@ export default function LotBidPanel({
     })
   }
 
-  // If live, show a banner directing to the live page instead
+  // Live auction — redirect to live room instead
   if (isLive) {
     return (
       <div className="bg-red-50 border border-red-300 p-4 mb-6">
@@ -111,38 +119,52 @@ export default function LotBidPanel({
           </div>
         )}
 
-        {/* Amount input */}
-        <div className="mb-3">
-          <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">
-            Maximum Bid (£)
+        {/* Bid stepper */}
+        <div className="mb-4">
+          <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">
+            Maximum Bid
           </label>
-          <div className="flex items-stretch border border-gray-300 focus-within:border-[#1e3058] transition-colors">
-            <span className="flex items-center px-3 text-gray-500 font-bold bg-gray-50 border-r border-gray-300 text-sm">
-              £
-            </span>
-            <input
-              type="number"
-              min={1}
-              value={bidAmount}
-              onChange={e => { setBidAmount(e.target.value); setResult(null) }}
-              placeholder="0"
-              className="flex-1 px-3 py-2.5 text-lg font-black text-[#1e3058] focus:outline-none"
-            />
-          </div>
-        </div>
 
-        {/* Quick increment buttons */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {BID_INCREMENTS.map(inc => (
+          <div className="flex items-stretch border border-gray-300 focus-within:border-[#1e3058] transition-colors">
+            {/* Decrement */}
             <button
-              key={inc}
               type="button"
-              onClick={() => handleIncrement(inc)}
-              className="px-3 py-1 text-xs font-bold border border-gray-300 text-gray-600 hover:border-[#1e3058] hover:text-[#1e3058] transition-colors"
+              onClick={stepDown}
+              disabled={bidAmount <= 5}
+              className="px-4 py-3 text-lg font-black text-gray-500 hover:text-[#1e3058] hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed border-r border-gray-300 transition-colors select-none"
             >
-              +£{inc}
+              −
             </button>
-          ))}
+
+            {/* Amount display / manual input */}
+            <div className="flex-1 flex items-center justify-center gap-1 px-4 py-3">
+              <span className="text-gray-400 font-bold text-lg">£</span>
+              <input
+                type="number"
+                min={5}
+                step={currentIncrement}
+                value={bidAmount}
+                onChange={e => {
+                  const v = parseInt(e.target.value, 10)
+                  if (!isNaN(v) && v >= 0) { setBidAmount(v); setResult(null) }
+                }}
+                className="w-28 text-center text-2xl font-black text-[#1e3058] focus:outline-none bg-transparent"
+              />
+            </div>
+
+            {/* Increment */}
+            <button
+              type="button"
+              onClick={stepUp}
+              className="px-4 py-3 text-lg font-black text-gray-500 hover:text-[#1e3058] hover:bg-gray-50 border-l border-gray-300 transition-colors select-none"
+            >
+              +
+            </button>
+          </div>
+
+          <p className="text-[10px] text-gray-400 mt-1.5 text-center">
+            Increment at this level: <span className="font-bold text-gray-600">£{currentIncrement}</span>
+          </p>
         </div>
 
         {/* Result message */}
@@ -153,7 +175,7 @@ export default function LotBidPanel({
         )}
         {result?.success && (
           <div className="bg-green-50 border border-green-300 text-green-700 text-xs font-semibold px-3 py-2 mb-3">
-            {result.updated ? "Your bid has been updated." : "Your bid has been placed successfully!"}
+            {result.updated ? "✓ Your bid has been updated." : "✓ Bid placed successfully!"}
           </div>
         )}
 
@@ -161,27 +183,53 @@ export default function LotBidPanel({
         <button
           type="button"
           onClick={handleBidClick}
-          disabled={isPending}
-          className="w-full bg-[#1e3058] hover:bg-[#162544] disabled:opacity-50 text-white font-black uppercase tracking-widest text-sm py-3 transition-colors"
+          disabled={isPending || bidAmount < 5}
+          className="w-full bg-[#1e3058] hover:bg-[#162544] disabled:opacity-50 text-white font-black uppercase tracking-widest text-sm py-3 transition-colors mb-3"
         >
           {isPending
             ? "Placing Bid…"
             : !isLoggedIn
             ? "Log In to Bid"
             : !isRegistered
-            ? "Register & Bid"
+            ? "Register & Place Bid"
             : existingMaxBid
-            ? "Update My Bid"
-            : "Place Bid"}
+            ? `Update to £${bidAmount.toLocaleString("en-GB")}`
+            : `Place Bid — £${bidAmount.toLocaleString("en-GB")}`}
         </button>
+
+        {/* Increment table toggle */}
+        <button
+          type="button"
+          onClick={() => setShowTable(v => !v)}
+          className="w-full text-[10px] text-gray-400 hover:text-[#1e3058] transition-colors text-center py-1"
+        >
+          {showTable ? "▲ Hide" : "▼ Show"} bid increment table
+        </button>
+
+        {showTable && (
+          <div className="mt-3 border border-gray-200 text-xs overflow-hidden">
+            <div className="grid grid-cols-2 bg-gray-50 border-b border-gray-200 px-3 py-1.5">
+              <span className="font-black uppercase tracking-widest text-gray-400 text-[10px]">Bid Range</span>
+              <span className="font-black uppercase tracking-widest text-gray-400 text-[10px]">Increment</span>
+            </div>
+            {INCREMENT_TABLE.map((row, i) => {
+              const active = bidAmount >= row.from && (row.to === null || bidAmount < row.to)
+              return (
+                <div key={i} className={`grid grid-cols-2 px-3 py-1.5 border-b border-gray-100 last:border-b-0 ${active ? "bg-[#1e3058]/5 font-bold text-[#1e3058]" : "text-gray-500"}`}>
+                  <span>£{row.from.toLocaleString("en-GB")} {row.to ? `– £${row.to.toLocaleString("en-GB")}` : "+"}</span>
+                  <span>£{row.inc.toLocaleString("en-GB")}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         <p className="text-[10px] text-gray-400 mt-3 leading-relaxed text-center">
           Commission bids are executed on your behalf up to your maximum.
-          Vectis charges a buyer&apos;s premium on the hammer price.
+          A buyer&apos;s premium of 22% + VAT applies to all winning lots.
         </p>
       </div>
 
-      {/* Register to bid modal (if logged in but not registered) */}
       {showRegisterModal && (
         <RegisterToBidModal
           auctionId={auctionId}
@@ -189,7 +237,6 @@ export default function LotBidPanel({
           onClose={() => setShowRegisterModal(false)}
           onRegistered={() => {
             setShowRegisterModal(false)
-            // After registration, submit the bid
             submitBid()
           }}
         />
