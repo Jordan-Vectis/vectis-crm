@@ -13,6 +13,7 @@ type LotBid = {
   lotTitle: string
   imageUrl: string | null
   lotStatus: string
+  currentBid: number | null
   hammerPrice: number | null
   estimateLow: number | null
   estimateHigh: number | null
@@ -183,19 +184,41 @@ export default function BidsClient({ groups }: Props) {
                         </p>
                       </div>
 
-                      {/* Max bid */}
-                      <div className="shrink-0 px-4 py-3 flex flex-col items-end justify-center border-l border-gray-100 min-w-[90px]">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Max bid</p>
-                        <p className="text-base font-black text-[#32348A]">£{bid.maxBid.toLocaleString("en-GB")}</p>
+                      {/* Bid figures */}
+                      <div className="shrink-0 border-l border-gray-100 flex items-center">
+                        {/* Current bid — only show when a bid has been placed on the lot */}
+                        {bid.currentBid && bid.currentBid > 0 && !won ? (
+                          <div className="px-4 py-3 flex flex-col items-end justify-center border-r border-gray-100 min-w-[100px]">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Current Bid</p>
+                            <p className={`text-base font-black ${bid.currentBid >= bid.maxBid ? "text-[#DB0606]" : "text-gray-700"}`}>
+                              £{bid.currentBid.toLocaleString("en-GB")}
+                            </p>
+                            {bid.currentBid >= bid.maxBid && (
+                              <p className="text-[9px] text-[#DB0606] font-bold uppercase tracking-wider mt-0.5">At limit</p>
+                            )}
+                          </div>
+                        ) : null}
+
+                        {/* Max / hammer */}
+                        <div className="px-4 py-3 flex flex-col items-end justify-center min-w-[90px]">
+                          {won ? (
+                            <>
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-green-600">Hammer</p>
+                              <p className="text-base font-black text-green-700">£{bid.hammerPrice!.toLocaleString("en-GB")}</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Max Bid</p>
+                              <p className="text-base font-black text-[#32348A]">£{bid.maxBid.toLocaleString("en-GB")}</p>
+                            </>
+                          )}
+                        </div>
                       </div>
 
                       {/* Status */}
                       <div className="shrink-0 w-24 border-l border-gray-100 flex items-center justify-center px-2">
                         {won ? (
-                          <div className="text-center">
-                            <span className="block text-[10px] font-black uppercase tracking-widest text-green-700 bg-green-50 border border-green-200 px-2 py-0.5">WON</span>
-                            <span className="block text-xs font-black text-green-700 mt-0.5">£{bid.hammerPrice!.toLocaleString("en-GB")}</span>
-                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-green-700 bg-green-50 border border-green-200 px-2 py-0.5">WON</span>
                         ) : sold ? (
                           <span className="text-[10px] font-black uppercase tracking-widest text-red-500 bg-red-50 border border-red-200 px-2 py-0.5">NOT WON</span>
                         ) : group.isFinished ? (

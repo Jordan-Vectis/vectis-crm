@@ -296,6 +296,7 @@ model CatalogueLot {
   estimateHigh Int?
   startingBid  Int?
   reserve      Int?
+  currentBid   Int?
   hammerPrice  Int?
   condition    String?
   vendor       String?
