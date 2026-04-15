@@ -60,7 +60,7 @@ export default async function HubPage() {
         {cards.map((app) => (
           <div
             key={app.key}
-            className={`relative bg-[#1c1f27] border ${app.border} rounded-xl p-7 flex flex-col items-center text-center h-full min-h-[240px]
+            className={`relative bg-[#1c1f27] border ${app.border} rounded-xl p-7 flex flex-col items-center text-center h-[260px]
               transition-all duration-200 hover:shadow-xl ${app.glow} hover:-translate-y-0.5`}
           >
             {app.pinned && (
