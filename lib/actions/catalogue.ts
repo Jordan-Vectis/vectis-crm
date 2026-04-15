@@ -116,6 +116,7 @@ export async function createLot(auctionId: string, formData: FormData) {
     }
   }
 
+  if (data.receipt) data.receipt = await sequencedReceipt(data.receipt)
   await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName, imageUrls } })
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
@@ -247,17 +248,33 @@ export async function fillLotsFromTotes(auctionId: string) {
     }
   }
 
+  // Pre-count existing sequenced lots per receipt base for fillFromTotes
+  const receiptOffset: Record<string, number> = {}
+  for (const lot of lots) {
+    if (lot.receipt) continue // already has one, skip
+    const info = toteMap.get(lot.tote!)
+    if (!info?.receipt) continue
+    if (!(info.receipt in receiptOffset)) {
+      receiptOffset[info.receipt] = await prisma.catalogueLot.count({ where: { receipt: { startsWith: info.receipt + "-" } } })
+    }
+  }
+
   let updated = 0
   for (const lot of lots) {
     if (!lot.tote) continue
     const info = toteMap.get(lot.tote)
     if (!info) continue
     if (!lot.vendor || !lot.receipt) {
+      let receipt = lot.receipt
+      if (!receipt && info.receipt) {
+        receiptOffset[info.receipt] = (receiptOffset[info.receipt] ?? 0) + 1
+        receipt = `${info.receipt}-${receiptOffset[info.receipt]}`
+      }
       await prisma.catalogueLot.update({
         where: { id: lot.id },
         data: {
           vendor:  lot.vendor  || info.vendor,
-          receipt: lot.receipt || info.receipt,
+          receipt: receipt     || info.receipt,
         },
       })
       updated++
@@ -315,7 +332,19 @@ export async function importLots(auctionId: string, rows: {
   const session = await requireCataloguer()
   const createdByName = session.user.name ?? session.user.email ?? "Unknown"
 
+  // Pre-count existing sequenced lots per receipt base, then track in-batch additions
+  const receiptOffset: Record<string, number> = {}
+  for (const base of [...new Set(rows.map(r => r.receipt).filter(Boolean))]) {
+    receiptOffset[base] = await prisma.catalogueLot.count({ where: { receipt: { startsWith: base + "-" } } })
+  }
+
   for (const r of rows) {
+    let receipt = r.receipt || null
+    if (receipt) {
+      receiptOffset[receipt] = (receiptOffset[receipt] ?? 0) + 1
+      receipt = `${r.receipt}-${receiptOffset[r.receipt]}`
+    }
+
     await prisma.catalogueLot.create({
       data: {
         auctionId,
@@ -331,7 +360,7 @@ export async function importLots(auctionId: string, rows: {
         status:       r.status       || "ENTERED",
         vendor:       r.vendor       || null,
         tote:         r.tote         || null,
-        receipt:      r.receipt      || null,
+        receipt,
         category:     r.category     || null,
         subCategory:  r.subCategory  || null,
         brand:        r.brand        || null,
@@ -343,6 +372,15 @@ export async function importLots(auctionId: string, rows: {
 
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
   return rows.length
+}
+
+// Returns the next sequenced receipt value, e.g. "R000123" → "R000123-4"
+// Counts all existing lots whose receipt starts with "{base}-"
+async function sequencedReceipt(base: string, extra = 0): Promise<string> {
+  const count = await prisma.catalogueLot.count({
+    where: { receipt: { startsWith: base + "-" } },
+  })
+  return `${base}-${count + extra + 1}`
 }
 
 function extractLotData(formData: FormData) {
