@@ -171,7 +171,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
       </div>
 
       {/* Tab panels — scrollable content area */}
-      <div className="flex-1 overflow-y-auto min-h-0" style={{ scrollbarWidth: "thin", scrollbarColor: "#4b5563 transparent" }}>
+      <div className="flex-1 overflow-y-auto min-h-0 pr-3" style={{ scrollbarWidth: "thin", scrollbarColor: "#4b5563 transparent" }}>
         {tab === "settings" && <SettingsTab auction={auction} />}
 
         <div className={tab === "add-lot" ? "" : "hidden"}>
@@ -626,7 +626,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   }
 
   return (
-    <div className="pr-2">
+    <div>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 flex-wrap">
