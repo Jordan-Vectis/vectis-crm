@@ -268,6 +268,7 @@ export default function ReceiptsPage() {
   const [msg, setMsg] = useState("")
   const [showAddContainer, setShowAddContainer] = useState(false)
   const [showReassign, setShowReassign] = useState(false)
+  const [lots, setLots] = useState<any[]>([])
 
   async function load() {
     const res = await fetch(`/api/warehouse/receipts?status=${filterStatus}`)
@@ -290,12 +291,14 @@ export default function ReceiptsPage() {
     setEditNotes(r.notes || "")
     setEditRate(String(r.commission_rate))
     setShowAddContainer(false)
-    const [contRes, custRes] = await Promise.all([
+    const [contRes, custRes, lotsRes] = await Promise.all([
       fetch(`/api/warehouse/receipts/${r.id}/containers`),
       fetch(`/api/warehouse/customers/${r.customer_id}`),
+      fetch(`/api/warehouse/receipts/${r.id}/lots`),
     ])
     setContainers(await contRes.json())
     setCustomer(await custRes.json())
+    setLots(await lotsRes.json())
   }
 
   async function reloadContainers() {
@@ -446,6 +449,31 @@ export default function ReceiptsPage() {
                 {containers.length === 0 && <p className="px-4 py-3 text-sm text-gray-400">No containers</p>}
               </div>
             </div>
+
+            {lots.length > 0 && (
+              <div className="wh-card p-0 overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50">
+                  <p className="text-sm font-semibold text-gray-600">Catalogue Lots ({lots.length})</p>
+                </div>
+                <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                  {lots.map((lot: any) => (
+                    <div key={lot.id} className="px-4 py-2.5 flex items-center gap-3">
+                      <span className="font-mono text-xs text-gray-400 w-20 shrink-0">{lot.receipt}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{lot.title || <span className="text-gray-400 italic">Untitled</span>}</p>
+                        <p className="text-xs text-gray-400">
+                          {lot.auction?.code} · Lot {lot.lotNumber}
+                          {lot.estimateLow ? ` · £${lot.estimateLow}–£${lot.estimateHigh}` : ""}
+                        </p>
+                      </div>
+                      <span className={`wh-badge shrink-0 ${lot.status === "SOLD" ? "wh-badge-green" : "wh-badge-gray"}`}>
+                        {lot.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
