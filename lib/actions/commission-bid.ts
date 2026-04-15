@@ -2,10 +2,11 @@
 
 import { prisma } from "@/lib/prisma"
 import { getCustomerSession } from "@/lib/customer-auth"
-import { getMinBid } from "@/lib/bid-increments"
+import { getMinBid, isValidBid, roundUpToBid, nextBid } from "@/lib/bid-increments"
 
 export type PlaceBidResult =
-  | { success: true; updated: boolean; maxBid: number }
+  | { success: true; updated: boolean; maxBid: number; outbid: false }
+  | { success: true; updated: boolean; maxBid: number; outbid: true; currentLeadingBid: number }
   | { error: string }
 
 export async function placeCommissionBid(
@@ -31,6 +32,12 @@ export async function placeCommissionBid(
   const minBid = getMinBid(lot.estimateLow)
   if (maxBid < minBid) {
     return { error: `Minimum bid for this lot is £${minBid.toLocaleString("en-GB")}.` }
+  }
+
+  // Enforce valid increment
+  if (!isValidBid(maxBid)) {
+    const suggested = roundUpToBid(maxBid)
+    return { error: `£${maxBid.toLocaleString("en-GB")} is not a valid bid increment. The nearest valid amount is £${suggested.toLocaleString("en-GB")}.` }
   }
 
   // Check bidder is registered
@@ -61,5 +68,26 @@ export async function placeCommissionBid(
     },
   })
 
-  return { success: true, updated: !!existing, maxBid: bid.maxBid }
+  // Check if this customer is immediately outbid by a competing commission bid
+  const topCompetingBid = await prisma.commissionBid.findFirst({
+    where: {
+      lotId,
+      customerAccountId: { not: session.id },
+    },
+    orderBy: { maxBid: "desc" },
+  })
+
+  if (topCompetingBid && topCompetingBid.maxBid >= maxBid) {
+    // Competitor wins — the current leading bid is one increment above this customer's max
+    const currentLeadingBid = nextBid(maxBid)
+    return {
+      success: true,
+      updated: !!existing,
+      maxBid: bid.maxBid,
+      outbid: true,
+      currentLeadingBid,
+    }
+  }
+
+  return { success: true, updated: !!existing, maxBid: bid.maxBid, outbid: false }
 }

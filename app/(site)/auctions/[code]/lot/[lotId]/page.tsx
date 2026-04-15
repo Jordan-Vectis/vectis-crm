@@ -264,25 +264,32 @@ export default async function LotDetailPage({
               )}
             </div>
 
-            {/* Estimate */}
-            <div className="bg-gray-50 border border-gray-200 p-4 mb-6">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
-                {sold ? "Hammer Price" : "Estimate"}
-              </p>
-              {sold && lot.hammerPrice ? (
-                <p className="text-3xl font-black text-[#32348A]">
-                  £{lot.hammerPrice.toLocaleString("en-GB")}
+            {/* Current bid + estimate */}
+            <div className="mb-6 space-y-1">
+              {lot.currentBid && lot.currentBid > 0 && !sold && (
+                <p className="text-base font-bold text-gray-900">
+                  Current Bid:{" "}
+                  <span className="text-[#32348A]">£{lot.currentBid.toLocaleString("en-GB")}</span>
                 </p>
-              ) : lot.estimateLow || lot.estimateHigh ? (
-                <p className="text-3xl font-black text-[#32348A]">
-                  {lot.estimateLow && lot.estimateHigh
-                    ? `£${lot.estimateLow.toLocaleString("en-GB")} – £${lot.estimateHigh.toLocaleString("en-GB")}`
-                    : lot.estimateLow
-                    ? `£${lot.estimateLow.toLocaleString("en-GB")}+`
-                    : `–£${lot.estimateHigh!.toLocaleString("en-GB")}`}
+              )}
+              {sold && lot.hammerPrice ? (
+                <p className="text-base font-bold text-gray-900">
+                  Hammer Price:{" "}
+                  <span className="text-[#32348A] text-2xl">£{lot.hammerPrice.toLocaleString("en-GB")}</span>
+                </p>
+              ) : (lot.estimateLow || lot.estimateHigh) ? (
+                <p className="text-base font-bold text-gray-900">
+                  Estimate:{" "}
+                  <span className="text-gray-700">
+                    {lot.estimateLow && lot.estimateHigh
+                      ? `£${lot.estimateLow.toLocaleString("en-GB")} – £${lot.estimateHigh.toLocaleString("en-GB")}`
+                      : lot.estimateLow
+                      ? `£${lot.estimateLow.toLocaleString("en-GB")}+`
+                      : `–£${lot.estimateHigh!.toLocaleString("en-GB")}`}
+                  </span>
                 </p>
               ) : (
-                <p className="text-xl font-bold text-gray-400">Estimate TBC</p>
+                <p className="text-base text-gray-400">Estimate TBC</p>
               )}
             </div>
 
@@ -298,6 +305,7 @@ export default async function LotDetailPage({
                 existingMaxBid={existingBid?.maxBid ?? null}
                 estimateLow={lot.estimateLow}
                 isLive={isLive}
+                currentBid={lot.currentBid}
               />
             )}
 

@@ -40,6 +40,25 @@ export function nextBid(current: number): number {
   return current + getIncrement(current)
 }
 
+/**
+ * Returns true if amount lands exactly on an increment boundary.
+ * e.g. £18 → false (should be £20), £20 → true
+ */
+export function isValidBid(amount: number): boolean {
+  if (amount <= 0) return false
+  return amount % getIncrement(amount) === 0
+}
+
+/**
+ * Round an arbitrary amount UP to the nearest valid bid boundary.
+ * e.g. £18 → £20, £55 → £60, £100 → £100
+ */
+export function roundUpToBid(amount: number): number {
+  const inc = getIncrement(amount)
+  if (amount % inc === 0) return amount
+  return Math.ceil(amount / inc) * inc
+}
+
 export const INCREMENT_TABLE = [
   { from: 5,     to: 50,    inc: 5    },
   { from: 50,    to: 200,   inc: 10   },
