@@ -34,7 +34,7 @@ export default async function SiteNav() {
           </form>
 
           {/* Logo */}
-          <Link href="/auctions" className="flex flex-col items-center">
+          <Link href="/" className="flex flex-col items-center">
             <span className="text-3xl font-black tracking-tight text-[#1e3058] leading-none">Vectis</span>
             <span className="text-[9px] font-semibold tracking-[0.25em] text-gray-500 uppercase mt-0.5">Collectables Specialists</span>
           </Link>
@@ -76,6 +76,7 @@ export default async function SiteNav() {
       <nav className="bg-[#1e3058]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <ul className="flex items-center gap-0 text-xs font-semibold tracking-wider text-white">
+            <NavItem href="/" label="HOME" />
             <NavItem href="/auctions" label="AUCTION CALENDAR" hasArrow />
             <NavItem href="/auctions" label="DEPARTMENTS" hasArrow />
             <NavItem href="/portal/register" label="HOW TO BID" />

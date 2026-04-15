@@ -6,7 +6,15 @@ import LiveAuctionBanner from "./live-auction-banner"
 import AuctionCalendarSidebar from "./auction-calendar-sidebar"
 import { lotPhotoUrl } from "@/lib/photo-url"
 
-export const metadata = { title: "Auction Calendar — Vectis" }
+export const metadata = {
+  title: "Auction Calendar",
+  description:
+    "Browse Vectis upcoming and past specialist auctions. Diecast, Matchbox, Corgi, Trains, Vinyl, Comics and more. Bid live or online.",
+  openGraph: {
+    title: "Auction Calendar — Vectis Auctions",
+    description: "Browse upcoming and past specialist auctions. Bid live or online.",
+  },
+}
 export const dynamic = "force-dynamic"
 
 const TYPE_LABELS: Record<string, string> = {

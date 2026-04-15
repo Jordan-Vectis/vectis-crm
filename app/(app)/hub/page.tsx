@@ -6,7 +6,7 @@ import { APP_CARD_DEFS } from "@/lib/app-cards"
 import Logo from "@/components/logo"
 import UserMenu from "./user-menu"
 
-export default async function HomePage() {
+export default async function HubPage() {
   const session = await auth()
   const name     = session?.user?.name?.split(" ")[0] ?? "there"
   const fullName = session?.user?.name ?? name

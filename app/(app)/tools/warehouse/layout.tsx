@@ -16,10 +16,10 @@ export default async function WarehouseLayout({ children }: { children: React.Re
       where: { id: session.user.id },
       select: { allowedApps: true, appPermissions: true },
     })
-    if (!user || !user.allowedApps.includes("WAREHOUSE")) redirect("/")
+    if (!user || !user.allowedApps.includes("WAREHOUSE")) redirect("/hub")
     const perms = user.appPermissions as { WAREHOUSE?: { role: string } } | null
     whRole = perms?.WAREHOUSE?.role ?? null
-    if (!whRole) redirect("/")
+    if (!whRole) redirect("/hub")
   }
 
   return (

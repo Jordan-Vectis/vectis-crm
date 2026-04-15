@@ -8,6 +8,6 @@ export default async function CataloguingLayout({ children }: { children: React.
   const session = await auth()
   if (!session) redirect("/login")
   const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { allowedApps: true, role: true } })
-  if (!hasAppAccess(dbUser?.role ?? "", dbUser?.allowedApps ?? [], "CATALOGUING")) redirect("/")
+  if (!hasAppAccess(dbUser?.role ?? "", dbUser?.allowedApps ?? [], "CATALOGUING")) redirect("/hub")
   return <CataloguingShell>{children}</CataloguingShell>
 }

@@ -25,7 +25,7 @@ const sections = [
 
 export default async function AdminOverviewPage() {
   const session = await auth()
-  if (!session || session.user.role !== "ADMIN") redirect("/")
+  if (!session || session.user.role !== "ADMIN") redirect("/hub")
 
   return (
     <div className="p-8 max-w-3xl">

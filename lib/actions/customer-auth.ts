@@ -33,8 +33,39 @@ export async function registerCustomer(
   const hashed = await bcrypt.hash(password, 12)
   const token  = generateToken()
 
-  await prisma.customerAccount.create({
-    data: { email, password: hashed, firstName, lastName, sessionToken: token },
+  // ── Assign next C number ──────────────────────────────────────
+  // Contact IDs for website customers follow the pattern C001, C002, ...
+  const lastContact = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Contact"
+    WHERE id ~ '^C[0-9]+$'
+    ORDER BY LENGTH(id) DESC, id DESC
+    LIMIT 1
+  `
+  const lastNum  = lastContact.length > 0 ? parseInt(lastContact[0].id.slice(1), 10) : 0
+  const nextNum  = lastNum + 1
+  const contactId = `C${String(nextNum).padStart(3, "0")}`
+
+  // Create the Contact record first, then the CustomerAccount linked to it
+  await prisma.$transaction(async (tx) => {
+    await tx.contact.create({
+      data: {
+        id:       contactId,
+        name:     `${firstName} ${lastName}`,
+        email,
+        isBuyer:  true,
+      },
+    })
+
+    await tx.customerAccount.create({
+      data: {
+        email,
+        password:     hashed,
+        firstName,
+        lastName,
+        sessionToken: token,
+        contactId,
+      },
+    })
   })
 
   const cookieStore = await cookies()

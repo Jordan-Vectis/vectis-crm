@@ -1,4 +1,29 @@
 import SiteNav from "@/components/site-nav"
+import type { Metadata } from "next"
+
+export const metadata: Metadata = {
+  metadataBase: new URL("https://www.vectis.co.uk"),
+  title: {
+    default: "Vectis Auctions — World's No.1 Diecast Specialist",
+    template: "%s — Vectis Auctions",
+  },
+  description:
+    "Vectis Auctions is the world's leading specialist auction house for diecast, tinplate and collectable toys. Browse catalogues, bid live, and sell your collection.",
+  keywords: [
+    "diecast auctions", "toy auctions", "Vectis", "collectable toys",
+    "Matchbox", "Corgi", "Dinky", "diecast specialist", "online bidding",
+  ],
+  openGraph: {
+    siteName: "Vectis Auctions",
+    type: "website",
+    locale: "en_GB",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@VectisAuctions",
+  },
+  robots: { index: true, follow: true },
+}
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -14,8 +39,8 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               <h4 className="text-xs font-bold tracking-[0.2em] uppercase mb-4 text-[#2AB4A6]">Auction Calendar</h4>
               <ul className="space-y-2 text-xs text-gray-400">
                 <li><a href="/auctions" className="hover:text-white transition-colors">Upcoming Auctions</a></li>
-                <li><a href="/auctions?filter=Past" className="hover:text-white transition-colors">Past Auctions</a></li>
-                <li><a href="/auctions" className="hover:text-white transition-colors">Auction Results</a></li>
+                <li><a href="/auctions?tab=past" className="hover:text-white transition-colors">Past Auctions</a></li>
+                <li><a href="/auctions?tab=past" className="hover:text-white transition-colors">Auction Results</a></li>
               </ul>
             </div>
             <div>

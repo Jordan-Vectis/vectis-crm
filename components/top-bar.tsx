@@ -30,7 +30,7 @@ export default function TopBar({ userName }: TopBarProps) {
         >
           →
         </button>
-        <Link href="/" className="ml-1 hover:opacity-80 transition-opacity">
+        <Link href="/hub" className="ml-1 hover:opacity-80 transition-opacity">
           <Logo variant="compact" />
         </Link>
         <Link
