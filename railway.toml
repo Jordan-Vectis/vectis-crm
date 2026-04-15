@@ -5,5 +5,5 @@ builder = "nixpacks"
 startCommand = "npm run start"
 
 [variables]
-NIXPACKS_NODE_VERSION = "24"
+NIXPACKS_NODE_VERSION = "22.12.0"
 NODE_OPTIONS = "--max-old-space-size=2048"
