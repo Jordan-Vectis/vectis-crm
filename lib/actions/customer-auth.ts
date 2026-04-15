@@ -11,17 +11,42 @@ function generateToken(): string {
   return a + b
 }
 
+function str(formData: FormData, key: string): string {
+  return ((formData.get(key) as string) ?? "").trim()
+}
+
+function optStr(formData: FormData, key: string): string | null {
+  const v = str(formData, key)
+  return v || null
+}
+
 export async function registerCustomer(
   _prev: { error: string } | null,
   formData: FormData,
 ): Promise<{ error: string } | null> {
-  const email     = (formData.get("email") as string).toLowerCase().trim()
-  const password  = formData.get("password") as string
-  const firstName = (formData.get("firstName") as string).trim()
-  const lastName  = (formData.get("lastName") as string).trim()
+  const email     = str(formData, "email").toLowerCase()
+  const password  = str(formData, "password")
+  const firstName = str(formData, "firstName")
+  const lastName  = str(formData, "lastName")
+  const phone     = optStr(formData, "phone")
+
+  // Shipping
+  const shippingLine1    = optStr(formData, "shippingLine1")
+  const shippingLine2    = optStr(formData, "shippingLine2")
+  const shippingCity     = optStr(formData, "shippingCity")
+  const shippingCounty   = optStr(formData, "shippingCounty")
+  const shippingPostcode = optStr(formData, "shippingPostcode")
+
+  // Billing
+  const billingSame      = formData.get("billingSameAsShipping") === "on"
+  const billingLine1     = billingSame ? shippingLine1 : optStr(formData, "billingLine1")
+  const billingLine2     = billingSame ? shippingLine2 : optStr(formData, "billingLine2")
+  const billingCity      = billingSame ? shippingCity  : optStr(formData, "billingCity")
+  const billingCounty    = billingSame ? shippingCounty : optStr(formData, "billingCounty")
+  const billingPostcode  = billingSame ? shippingPostcode : optStr(formData, "billingPostcode")
 
   if (!email || !password || !firstName || !lastName) {
-    return { error: "All fields are required" }
+    return { error: "First name, last name, email and password are required" }
   }
   if (password.length < 8) {
     return { error: "Password must be at least 8 characters" }
@@ -34,25 +59,26 @@ export async function registerCustomer(
   const token  = generateToken()
 
   // ── Assign next C number ──────────────────────────────────────
-  // Contact IDs for website customers follow the pattern C001, C002, ...
   const lastContact = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id FROM "Contact"
     WHERE id ~ '^C[0-9]+$'
     ORDER BY LENGTH(id) DESC, id DESC
     LIMIT 1
   `
-  const lastNum  = lastContact.length > 0 ? parseInt(lastContact[0].id.slice(1), 10) : 0
-  const nextNum  = lastNum + 1
-  const contactId = `C${String(nextNum).padStart(3, "0")}`
+  const lastNum   = lastContact.length > 0 ? parseInt(lastContact[0].id.slice(1), 10) : 0
+  const contactId = `C${String(lastNum + 1).padStart(3, "0")}`
 
-  // Create the Contact record first, then the CustomerAccount linked to it
   await prisma.$transaction(async (tx) => {
     await tx.contact.create({
       data: {
-        id:       contactId,
-        name:     `${firstName} ${lastName}`,
+        id:          contactId,
+        name:        `${firstName} ${lastName}`,
         email,
-        isBuyer:  true,
+        phone:       phone ?? undefined,
+        addressLine1: shippingLine1 ?? undefined,
+        addressLine2: shippingLine2 ?? undefined,
+        postcode:    shippingPostcode ?? undefined,
+        isBuyer:     true,
       },
     })
 
@@ -62,8 +88,12 @@ export async function registerCustomer(
         password:     hashed,
         firstName,
         lastName,
+        phone,
         sessionToken: token,
         contactId,
+        shippingLine1, shippingLine2, shippingCity, shippingCounty, shippingPostcode,
+        billingLine1,  billingLine2,  billingCity,  billingCounty,  billingPostcode,
+        billingSameAsShipping: billingSame,
       },
     })
   })
@@ -83,8 +113,8 @@ export async function loginCustomer(
   _prev: { error: string } | null,
   formData: FormData,
 ): Promise<{ error: string } | null> {
-  const email    = (formData.get("email") as string).toLowerCase().trim()
-  const password = formData.get("password") as string
+  const email    = str(formData, "email").toLowerCase()
+  const password = str(formData, "password")
 
   const account = await prisma.customerAccount.findUnique({ where: { email } })
   if (!account) return { error: "Invalid email or password" }
@@ -135,14 +165,38 @@ export async function updateCustomerDetails(
   const account = await prisma.customerAccount.findUnique({ where: { sessionToken: token } })
   if (!account) return { error: "Session expired" }
 
-  const firstName = (formData.get("firstName") as string).trim()
-  const lastName  = (formData.get("lastName") as string).trim()
-  const newPassword = formData.get("newPassword") as string
-  const currentPassword = formData.get("currentPassword") as string
+  const firstName = str(formData, "firstName")
+  const lastName  = str(formData, "lastName")
+  const phone     = optStr(formData, "phone")
 
   if (!firstName || !lastName) return { error: "Name is required" }
 
-  const updateData: Record<string, string> = { firstName, lastName }
+  // Shipping
+  const shippingLine1    = optStr(formData, "shippingLine1")
+  const shippingLine2    = optStr(formData, "shippingLine2")
+  const shippingCity     = optStr(formData, "shippingCity")
+  const shippingCounty   = optStr(formData, "shippingCounty")
+  const shippingPostcode = optStr(formData, "shippingPostcode")
+
+  // Billing
+  const billingSame     = formData.get("billingSameAsShipping") === "on"
+  const billingLine1    = billingSame ? shippingLine1 : optStr(formData, "billingLine1")
+  const billingLine2    = billingSame ? shippingLine2 : optStr(formData, "billingLine2")
+  const billingCity     = billingSame ? shippingCity  : optStr(formData, "billingCity")
+  const billingCounty   = billingSame ? shippingCounty : optStr(formData, "billingCounty")
+  const billingPostcode = billingSame ? shippingPostcode : optStr(formData, "billingPostcode")
+
+  // Password change
+  const newPassword     = str(formData, "newPassword")
+  const currentPassword = str(formData, "currentPassword")
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updateData: Record<string, any> = {
+    firstName, lastName, phone,
+    shippingLine1, shippingLine2, shippingCity, shippingCounty, shippingPostcode,
+    billingLine1,  billingLine2,  billingCity,  billingCounty,  billingPostcode,
+    billingSameAsShipping: billingSame,
+  }
 
   if (newPassword) {
     if (!currentPassword) return { error: "Enter your current password to set a new one" }
@@ -152,7 +206,23 @@ export async function updateCustomerDetails(
     updateData.password = await bcrypt.hash(newPassword, 12)
   }
 
-  await prisma.customerAccount.update({ where: { id: account.id }, data: updateData })
+  await prisma.$transaction(async (tx) => {
+    await tx.customerAccount.update({ where: { id: account.id }, data: updateData })
 
-  return { success: "Details updated" }
+    // Keep Contact in sync
+    if (account.contactId) {
+      await tx.contact.update({
+        where: { id: account.contactId },
+        data: {
+          name:        `${firstName} ${lastName}`,
+          phone:       phone ?? undefined,
+          addressLine1: shippingLine1 ?? undefined,
+          addressLine2: shippingLine2 ?? undefined,
+          postcode:    shippingPostcode ?? undefined,
+        },
+      })
+    }
+  })
+
+  return { success: "Details updated successfully" }
 }

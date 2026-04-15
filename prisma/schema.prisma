@@ -106,9 +106,26 @@ model CustomerAccount {
   password     String
   firstName    String
   lastName     String
+  phone        String?
   sessionToken String?  @unique
   contactId    String?  @unique
   contact      Contact? @relation(fields: [contactId], references: [id])
+
+  // Shipping address
+  shippingLine1   String?
+  shippingLine2   String?
+  shippingCity    String?
+  shippingCounty  String?
+  shippingPostcode String?
+
+  // Billing address
+  billingLine1    String?
+  billingLine2    String?
+  billingCity     String?
+  billingCounty   String?
+  billingPostcode String?
+  billingSameAsShipping Boolean @default(true)
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
