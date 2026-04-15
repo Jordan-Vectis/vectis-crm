@@ -1,0 +1,173 @@
+(function() {
+
+	var $ = jQuery.noConflict();
+
+	$(document).ready(function() {
+
+		// On click of the down arrow on the homepage banner
+		$(document).on('click', '.arrow-link-down', function(e) {
+			e.preventDefault();
+			e.stopPropagation();
+
+			// Prevent any existing animation
+			$('html, body').stop();
+
+			// Retrieving the current viewport height
+			var viewportHeight = $(window).outerHeight() - $('#header').outerHeight();
+
+			// Scroll the page
+			$('html, body').animate({
+				scrollTop: viewportHeight,
+			}, 1000);
+		});
+
+		// BACK TO TOP - On all pages
+		$('.arrow-link-up').click(function(e) {
+			e.preventDefault();
+
+			$('html, body').animate({
+				scrollTop: jQuery('#main-content').offset().top + 'px'
+			}, 'fast');
+		});
+
+
+
+		// login overlay
+		$('#submitLoginFormBtn').click(function(e){
+			e.preventDefault();
+
+			jQuery('#loginForm').removeClass('was-validated');
+            jQuery('#loginForm .form-input').removeClass('error');
+
+			$(this).text("Please wait...");
+			$(this).attr("disabled","disabled");
+			var username = jQuery('#login-email').val();
+			var password = jQuery('#user-password').val();
+			 
+			var register_to_bid_live  = jQuery('#txt_register_to_bid_live').val();
+			 
+			var valid = true;
+			jQuery('.login-error').html('');
+			
+			if (jQuery.trim(username) == '') {
+				jQuery('#login-email').addClass('error');
+				// jQuery('.login-error').append('<p style="color: red;">Username field is required*</p>');
+				valid = false;
+			}
+			
+			if (jQuery.trim(password) == '') {
+				// jQuery('.login-error').append('<p style="color: red;">Password field is required*</p>');
+				jQuery('#user-password').addClass('error');
+				valid = false;
+			}
+
+			if (!jQuery('#termsCheck').is(':checked')) {
+                jQuery('#acceptTerm').removeClass('d-none');
+                jQuery('#acceptTerm').addClass('d-block');
+                valid = false;
+            }else{
+                jQuery('#acceptTerm').removeClass('d-block');
+                jQuery('#acceptTerm').addClass('d-none');
+            }
+			 
+			  if (valid) {
+				  jQuery.ajax({
+					  url: jQuery('#base_url').val(),
+					  type: 'POST',
+					   data: {option: 'com_bidding', task: 'login',tmpl: 'ajax', username: username, password: password,register_to_bid_live:register_to_bid_live},
+				  })
+				  .done(function(response) {
+					  var json = JSON.parse(response);
+					  
+					  if(json.need_reset==true){
+						window.location.href = jQuery('#base_url').val()+"index.php?option=com_account&view=account_details#my_pass";
+					  }else{
+						if (json.status == true) {
+							window.location.reload(true);
+						}
+						if(json.status == 'register_to_bid_live'){
+							check_approval_bid_live(register_to_bid_live);
+						}
+						if(json.status == 'upload_document'){
+							$("#registerModal").modal('show');
+							$("#loginUserModal").modal('hide');
+						}
+						if(json.status==false){
+							$("#submitLoginFormBtn").text("LOGIN");
+							$("#submitLoginFormBtn").removeAttr("disabled");
+							jQuery('.login-error').html('<span style="color: red;">'+json.message+'</span>');
+						}
+						if (json.status == 'redirect') {
+							   window.location = json.redirect;
+						}
+						// if (json.status == 'onhold') {
+						// 	window.location = jQuery('#base_url').val() + "index.php?option=com_bidders&view=account_on_hold";
+						// }
+  
+						// if (json.status == 'failure') {
+						// 	jQuery('.login-error').html('<span style="color: red;">Please enter valid username and password</span>');
+						// }
+						if(json.status=='blocked'){
+							$("#submitLoginFormBtn").text("LOGIN");
+							  $("#submitLoginFormBtn").removeAttr("disabled");
+							jQuery('.login-error').html('<span style="color: red;">Your account is temporarily blocked!</span>');
+						}
+					  }
+					  
+					  
+				  })
+				  .fail(function(response) {
+					  $("#submitLoginFormBtn").text("LOGIN");
+					  $("#submitLoginFormBtn").removeAttr("disabled");
+					  jQuery('.login-error').html('<p>Something went wrong, Please try again.</p>');
+				  });
+			  }else{
+				  $('#loginForm').addClass('was-validated');
+				  $("#submitLoginFormBtn").text("LOGIN");
+				  $("#submitLoginFormBtn").removeAttr("disabled");
+			  }
+	  	});
+
+		
+		$(".btnRegBidLive").click(function(e){
+			var id = $(this).attr("data-register_to_bid_live");
+			$("#txt_register_to_bid_live").val(id);
+		});
+
+		function check_approval_bid_live(auction_id){
+			var commissionurl = jQuery('#base_url').val()+'index.php?option=com_bidding&format=json&task=commission.';
+			var task = 'check_bid_live_approval';
+			$.ajax({
+				type: 'POST',
+				url: commissionurl + task,
+				dataType: 'JSON',
+				data: {
+					auction_id:auction_id
+				},
+				success: function(response) {
+					if (response.status) {
+						$("#loginUserModal").modal('hide');
+						$("#bid_live_approval_message2").modal('toggle');
+						$("#msg_approval2").text(response.message);
+						
+					} else {
+						$("#loginUserModal").modal('hide');
+						$("#bid_live_approval_message2").modal('toggle');
+						$("#msg_approval2").html(response.message);
+
+						if(response.redirect){
+							setTimeout(() => {
+								window.location = jQuery('#base_url').val()+'index.php?option=com_account&view=account_details';
+							}, 3000);
+						}
+
+					}
+				}
+			}).fail(function(error) {
+				console.log('Error: ' + error.statusText);
+			});
+		}
+	 
+
+	});
+})();

@@ -1,0 +1,224 @@
+// Define WSClient instance
+window.AwsWSClient = function() {
+
+	// Whether to reconnect
+	this.shouldReconnect = true;
+
+	// Default reconnect interval
+	this.reconnectInterval = 5000;
+
+	// Default max reconnect tries (constantly)
+	this.maxReconnectTries = false;
+	this.currentReconnectTries = 0;
+
+	// Define whether it has ever reconnected
+	this.reconnected = false;
+
+	// Log messages
+	this.debug = false;
+
+	this.extend = function () {
+		// Create a new object
+		var extended = {};
+
+		// Merge the object into the extended object
+		var merge = function (obj) {
+			for (var prop in obj) {
+				if (obj.hasOwnProperty(prop)) {
+					// Push each value from `obj` into `extended`
+					extended[prop] = obj[prop];
+				}
+			}
+		};
+
+		// Loop through each object and conduct a merge
+		for (var i = 0; i < arguments.length; i++) {
+			merge(arguments[i]);
+		}
+
+		return extended;
+	};
+
+	// Set reconnect interval
+	this.setDelay = function(amount) {
+		// Set the amount to the given amount as seconds
+		this.reconnectInterval = parseInt(amount) * 1000;
+	};
+
+	// Open the URL
+	this.open = function(url, tenantID, env) {
+		// Define as it should
+		this.shouldReconnect = true;
+
+		// Define that
+		var that = this;
+
+		// Open the URL
+		this.url = url;
+		this.tenantID = tenantID;
+		this.env = env;
+
+		// Create underlying websocket instance
+		this.instance = new WebSocket(this.url);
+
+		// Setup the event handler for onopen
+		this.instance.onopen = function (ev) {
+
+			// If it has ever reconnected lets say that
+			if (that.reconnected && that.debug) {
+				console.log('[AWS WS]: Reconnected.');
+			}
+
+			// Run the open function
+			that.onopen(ev);
+		}
+
+		// Setup the event handler for onmessage
+		this.instance.onmessage = function(data, flags) {
+			that.onmessage(data, flags);
+		}
+
+		// Setup the event handler for onclose
+		this.instance.onclose = function(e) {
+			switch (e){
+				// Normal closure
+				case 1000:
+					// Notify if debug is enabled
+					if (that.debug) {
+						console.log("[AWS WS]: Closed");
+					}
+
+					// Run onclose event
+					that.onclose(e);
+					break;
+				// Abnormal closure
+				default:
+					that.reconnect(e);
+					if (typeof that.onreconnect == 'function') { that.onreconnect(e); };
+					that.onclose(e);
+					break;
+			}
+		}
+
+		// Setup the event handler for onerror
+		this.instance.onerror = function(e) {
+			switch (e.code){
+				// Try and reconnect
+				case 'ECONNREFUSED':
+					that.onerror(e);
+					that.reconnect(e);
+					if (typeof that.onreconnect == 'function') { that.onreconnect(e); };
+					break;
+
+				// Otherwise run error
+				default:
+					that.onerror(e);
+					break;
+			}
+		}
+	};
+
+	// Setup send function
+	this.sendRaw = function(data, option) {
+		try {
+			this.instance.send(data, option);
+		} catch (e) {
+			this.instance.emit('error', e);
+		}
+	};
+
+	// Create the packets code
+	this.send = function(command, content) {
+		this.instance.send(this.packet_build(command, content));
+	};
+
+	this.build_auth_parameters = function() {
+		return {
+			tenantID: this.tenantID,
+			env: this.env
+		}
+	}
+
+	// Build a packet with the given information
+	this.packet_build = function(action, data = {}) {
+		var baseRequest = {
+			action: action,
+			authParameters: this.build_auth_parameters(),
+			tstamp: + new Date(),
+		}
+		return JSON.stringify(this.extend(baseRequest, data));
+	};
+
+	// Read a packet that's been received
+	this.packet_read = function(packet) {
+		var data = JSON.parse(packet);
+		try {
+			if(data.authorizationData.tenantID === this.tenantID && data.authorizationData.env === this.env) {
+				delete data.authorizationData;
+				return data;
+			}
+		} catch (e) {
+			return null;
+		}
+	};
+
+	// Define the reconnection function
+	this.reconnect = function(e) {
+
+		// Check max reconnect tries
+		this.currentReconnectTries++;
+
+		// Check if bigger
+		if (!this.maxReconnectTries === false) {
+			if (this.currentReconnectTries >= this.maxReconnectTries) {
+				this.shouldReconnect = false;
+				this.currentReconnectTries = 0;
+			}
+		}
+
+		// Check whether to reconnect
+		if (this.shouldReconnect) {
+
+			// Define that
+			var that = this;
+
+			// Log reconnection
+			if (that.debug) {
+				console.log('[AWS WS]: Reconnecting in ' + this.reconnectInterval / 1000 + ' seconds.');
+			}
+
+			// Set reconnect timeout
+			setTimeout(function() {
+
+				// Log reconnecting
+				if (that.debug) {
+					console.log("[AWS WS]: Reconnecting...");
+				}
+
+				// Define has reconnected
+				that.reconnected = true;
+
+				// Try and open the URL
+				that.open(that.url, that.tenantID, that.env);
+
+			}, this.reconnectInterval);
+
+		} else {
+
+			// Define that
+			var that = this;
+
+		}
+	};
+
+	// Close the WebSocket connnection
+	this.close = function(e) {
+
+		// Define false for reconnection
+		this.shouldReconnect = false;
+
+		// Close the connection
+		this.instance.close();
+
+	};
+}

@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import { getCustomerSession } from "@/lib/customer-auth"
 import { logoutCustomer } from "@/lib/actions/customer-auth"
 
@@ -78,30 +79,15 @@ export default async function SiteNav() {
           </form>
 
           {/* ── Vectis Logo ── */}
-          <Link href="/" className="flex flex-col items-center shrink-0 select-none">
-            {/* Wordmark */}
-            <div className="flex items-baseline leading-none">
-              <span
-                className="text-[38px] font-black leading-none tracking-tight text-[#C8102E]"
-                style={{ fontStyle: "italic", fontFamily: "Georgia, 'Times New Roman', serif" }}
-              >
-                V
-              </span>
-              <span
-                className="text-[30px] font-black leading-none tracking-tight text-[#1e3058]"
-                style={{ fontStyle: "italic", fontFamily: "Georgia, 'Times New Roman', serif" }}
-              >
-                ectis
-              </span>
-            </div>
-            {/* AUCTIONS badge */}
-            <div className="bg-[#1e3058] text-white text-[8px] font-black tracking-[0.45em] px-3 py-[3px] w-full text-center uppercase mt-0.5">
-              AUCTIONS
-            </div>
-            {/* Strapline */}
-            <span className="text-[7px] font-semibold tracking-[0.25em] text-gray-400 uppercase mt-1">
-              Collectables Specialists
-            </span>
+          <Link href="/" className="shrink-0">
+            <Image
+              src="/Vectis Auctions Collectables Specialists logo.jpg"
+              alt="Vectis Auctions — Collectables Specialists"
+              width={160}
+              height={60}
+              className="object-contain"
+              priority
+            />
           </Link>
 
           {/* Account */}

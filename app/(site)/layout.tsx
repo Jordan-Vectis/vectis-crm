@@ -1,4 +1,5 @@
 import SiteNav from "@/components/site-nav"
+import Image from "next/image"
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
@@ -74,27 +75,14 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
 
           <div className="border-t border-white/10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-500">
             {/* Footer logo */}
-            <div className="flex flex-col items-center sm:items-start">
-              <div className="flex items-baseline leading-none">
-                <span
-                  className="text-[28px] font-black leading-none tracking-tight text-[#C8102E]"
-                  style={{ fontStyle: "italic", fontFamily: "Georgia, 'Times New Roman', serif" }}
-                >
-                  V
-                </span>
-                <span
-                  className="text-[22px] font-black leading-none tracking-tight text-white"
-                  style={{ fontStyle: "italic", fontFamily: "Georgia, 'Times New Roman', serif" }}
-                >
-                  ectis
-                </span>
-              </div>
-              <div className="bg-white/15 text-white text-[7px] font-black tracking-[0.45em] px-3 py-[2px] mt-0.5 text-center uppercase">
-                AUCTIONS
-              </div>
-              <span className="text-[7px] font-semibold tracking-[0.2em] text-gray-500 uppercase mt-1">
-                Collectables Specialists
-              </span>
+            <div>
+              <Image
+                src="/Vectis Auctions Collectables Specialists logo.jpg"
+                alt="Vectis Auctions"
+                width={130}
+                height={50}
+                className="object-contain brightness-0 invert opacity-80"
+              />
             </div>
 
             <div className="text-center sm:text-right space-y-1">
