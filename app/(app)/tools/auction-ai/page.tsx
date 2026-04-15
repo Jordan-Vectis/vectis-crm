@@ -1112,14 +1112,14 @@ function SavedRunsTab() {
 type CustomPreset = { key: string; instruction: string }
 
 function InstructionsTab() {
-  const [presets,   setPresets]   = useState<CustomPreset[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [selected,  setSelected]  = useState<string | null>(null)
-  const [mode,      setMode]      = useState<"view" | "edit" | "new">("view")
-  const [newName,   setNewName]   = useState("")
-  const [draftText, setDraftText] = useState("")
-  const [saving,    setSaving]    = useState(false)
-  const [error,     setError]     = useState<string | null>(null)
+  const [presets,  setPresets]  = useState<CustomPreset[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [mode,     setMode]     = useState<"view" | "edit" | "new">("view")
+  const [newName,  setNewName]  = useState("")
+  const [draftText,setDraftText]= useState("")
+  const [saving,   setSaving]   = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
 
   const builtInKeys = Object.keys(PRESETS).filter(k => k !== "Custom (paste my own)")
 
@@ -1127,7 +1127,23 @@ function InstructionsTab() {
     setLoading(true)
     try {
       const data: Record<string, string> = await fetch("/api/auction-ai/presets").then(r => r.json())
-      setPresets(Object.entries(data).map(([key, instruction]) => ({ key, instruction })))
+      const dbKeys = new Set(Object.keys(data))
+
+      // Seed any built-ins not yet saved to DB
+      const toSeed = builtInKeys.filter(k => !dbKeys.has(k))
+      await Promise.all(toSeed.map(k =>
+        fetch("/api/auction-ai/presets", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: k, instruction: PRESETS[k] }),
+        })
+      ))
+
+      // Build unified list: built-in order first, then any DB-only extras
+      const merged: CustomPreset[] = [
+        ...builtInKeys.map(k => ({ key: k, instruction: data[k] ?? PRESETS[k] })),
+        ...Object.entries(data).filter(([k]) => !builtInKeys.includes(k)).map(([key, instruction]) => ({ key, instruction })),
+      ]
+      setPresets(merged)
     } catch { setError("Failed to load") }
     setLoading(false)
   }
@@ -1138,18 +1154,15 @@ function InstructionsTab() {
     setSelected(null); setNewName(""); setDraftText(""); setMode("new"); setError(null)
   }
 
-  function openEdit(key: string, text: string) {
-    setSelected(key); setDraftText(text); setMode("edit"); setError(null)
-  }
-
-  function openView(key: string, text: string) {
-    setSelected(key); setDraftText(text); setMode("view"); setError(null)
+  function openView(key: string) {
+    const p = presets.find(x => x.key === key)
+    setSelected(key); setDraftText(p?.instruction ?? ""); setMode("view"); setError(null)
   }
 
   async function saveNew() {
     const name = newName.trim()
     if (!name) return
-    if (presets.some(p => p.key === name) || PRESETS[name]) { setError("Name already exists"); return }
+    if (presets.some(p => p.key === name)) { setError("Name already exists"); return }
     setSaving(true); setError(null)
     try {
       const res = await fetch("/api/auction-ai/presets", {
@@ -1157,8 +1170,7 @@ function InstructionsTab() {
         body: JSON.stringify({ key: name, instruction: draftText }),
       })
       if (!res.ok) throw new Error("Save failed")
-      const newPreset = { key: name, instruction: draftText }
-      setPresets(p => [...p, newPreset])
+      setPresets(p => [...p, { key: name, instruction: draftText }])
       setSelected(name); setMode("view"); setNewName("")
     } catch (e: any) { setError(e.message) }
     setSaving(false)
@@ -1194,52 +1206,33 @@ function InstructionsTab() {
     setSaving(false)
   }
 
-  // right panel content
-  const selectedCustom = presets.find(p => p.key === selected)
-  const isBuiltIn      = selected ? builtInKeys.includes(selected) : false
+  const selectedPreset = presets.find(p => p.key === selected)
 
   return (
     <div className="flex gap-5 h-full" style={{ minHeight: 0 }}>
 
       {/* ── Left list ── */}
-      <div className="w-64 flex-shrink-0 flex flex-col gap-3">
+      <div className="w-64 flex-shrink-0 flex flex-col gap-2">
         <button onClick={openNew}
           className="w-full py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors">
           + New Instruction
         </button>
 
         {loading ? (
-          <p className="text-gray-500 text-xs px-1">Loading…</p>
+          <p className="text-gray-500 text-xs px-1 mt-2">Loading…</p>
         ) : (
-          <>
-            {/* Custom */}
-            {presets.length > 0 && (
-              <div>
-                <p className="text-xs text-gray-600 uppercase tracking-wider px-1 mb-1">My Instructions</p>
-                <div className="space-y-0.5">
-                  {presets.map(p => (
-                    <button key={p.key} onClick={() => openView(p.key, p.instruction)}
-                      className={`w-full text-left px-3 py-2 rounded text-sm transition-colors truncate ${selected === p.key ? "bg-[#C8A96E]/15 text-[#C8A96E] border border-[#C8A96E]/30" : "text-gray-300 hover:bg-[#2C2C2E]"}`}>
-                      {p.key}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Built-in */}
-            <div>
-              <p className="text-xs text-gray-600 uppercase tracking-wider px-1 mb-1">Built-in</p>
-              <div className="space-y-0.5">
-                {builtInKeys.map(k => (
-                  <button key={k} onClick={() => openView(k, PRESETS[k])}
-                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors truncate ${selected === k ? "bg-[#C8A96E]/15 text-[#C8A96E] border border-[#C8A96E]/30" : "text-gray-500 hover:bg-[#2C2C2E] hover:text-gray-300"}`}>
-                    {k}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
+          <div className="space-y-0.5 mt-1">
+            {presets.map(p => (
+              <button key={p.key} onClick={() => openView(p.key)}
+                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors truncate ${
+                  selected === p.key
+                    ? "bg-[#C8A96E]/15 text-[#C8A96E] border border-[#C8A96E]/30"
+                    : "text-gray-300 hover:bg-[#2C2C2E]"
+                }`}>
+                {p.key}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
@@ -1279,79 +1272,51 @@ function InstructionsTab() {
         {/* Edit form */}
         {mode === "edit" && selected && (
           <div className="flex flex-col h-full p-5 gap-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white truncate">{selected}</h3>
-              <span className="text-xs bg-[#C8A96E]/20 text-[#C8A96E] px-2 py-0.5 rounded">Editing</span>
-            </div>
+            <h3 className="text-sm font-bold text-white truncate">{selected}</h3>
             <textarea
               value={draftText}
               onChange={e => setDraftText(e.target.value)}
               className="flex-1 bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] resize-none font-mono"
             />
             {error && <p className="text-red-400 text-xs">{error}</p>}
-            <div className="flex gap-2 justify-between">
-              {isBuiltIn
-                ? <button onClick={() => setDraftText(PRESETS[selected] ?? "")}
-                    className="px-4 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-sm rounded hover:border-gray-500 hover:text-gray-300 transition-colors">
-                    Reset to default
-                  </button>
-                : <span />
-              }
-              <div className="flex gap-2">
-                <button onClick={() => setMode("view")}
-                  className="px-4 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-400 text-sm rounded hover:border-gray-500 transition-colors">
-                  Cancel
-                </button>
-                <button onClick={saveEdit} disabled={saving}
-                  className="px-5 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors disabled:opacity-40">
-                  {saving ? "Saving…" : "Save Changes"}
-                </button>
-              </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setMode("view")}
+                className="px-4 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-400 text-sm rounded hover:border-gray-500 transition-colors">
+                Cancel
+              </button>
+              <button onClick={saveEdit} disabled={saving}
+                className="px-5 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors disabled:opacity-40">
+                {saving ? "Saving…" : "Save Changes"}
+              </button>
             </div>
           </div>
         )}
 
-        {/* View / read-only */}
+        {/* View */}
         {mode === "view" && selected && (
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 flex-shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <h3 className="text-sm font-bold text-white truncate">{selected}</h3>
-                {isBuiltIn && selectedCustom
-                  ? <span className="text-xs text-[#C8A96E]/70 bg-[#C8A96E]/10 px-2 py-0.5 rounded flex-shrink-0">Overridden</span>
-                  : isBuiltIn
-                  ? <span className="text-xs text-gray-600 bg-gray-800 px-2 py-0.5 rounded flex-shrink-0">Built-in</span>
-                  : <span className="text-xs text-[#C8A96E]/70 bg-[#C8A96E]/10 px-2 py-0.5 rounded flex-shrink-0">Custom</span>
-                }
-              </div>
+              <h3 className="text-sm font-bold text-white truncate">{selected}</h3>
               <div className="flex gap-2 flex-shrink-0 ml-3">
-                <button onClick={() => openEdit(selected, selectedCustom?.instruction ?? PRESETS[selected] ?? "")}
+                <button onClick={() => { setDraftText(selectedPreset?.instruction ?? ""); setMode("edit"); setError(null) }}
                   className="px-4 py-1.5 text-sm border border-gray-700 text-gray-300 rounded hover:border-[#C8A96E] hover:text-[#C8A96E] transition-colors">
                   ✎ Edit
                 </button>
-                {isBuiltIn && selectedCustom && (
-                  <button onClick={() => deletePreset(selected)} disabled={saving}
-                    className="px-4 py-1.5 text-sm border border-gray-700 text-gray-500 rounded hover:border-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40">
-                    Reset
-                  </button>
-                )}
-                {!isBuiltIn && (
-                  <button onClick={() => deletePreset(selected)} disabled={saving}
-                    className="px-4 py-1.5 text-sm border border-red-900/60 text-red-500 rounded hover:bg-red-900/20 transition-colors disabled:opacity-40">
-                    Delete
-                  </button>
-                )}
+                <button onClick={() => deletePreset(selected)} disabled={saving}
+                  className="px-4 py-1.5 text-sm border border-red-900/60 text-red-500 rounded hover:bg-red-900/20 transition-colors disabled:opacity-40">
+                  Delete
+                </button>
               </div>
             </div>
             <pre className="flex-1 px-5 py-4 text-xs text-gray-400 font-mono whitespace-pre-wrap overflow-auto">
-              {selectedCustom?.instruction ?? PRESETS[selected] ?? ""}
+              {selectedPreset?.instruction ?? ""}
             </pre>
           </div>
         )}
 
         {/* Empty state */}
         {mode === "view" && !selected && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-3 p-8">
+          <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <p className="text-gray-600 text-sm">Select an instruction from the list to view it,<br/>or create a new one.</p>
           </div>
         )}
