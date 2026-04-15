@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids, bulkUpdateBarcodes } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids } from "@/lib/actions/catalogue"
 import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import ImportTab from "./import-tab"
@@ -369,12 +369,6 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   const [bidsMsg, setBidsMsg]   = useState<string | null>(null)
   const [bidsPending, startBids] = useTransition()
 
-  // Import barcodes panel
-  const [showBarcodeImport, setShowBarcodeImport] = useState(false)
-  const [barcodeText, setBarcodeText]             = useState("")
-  const [barcodeImportMsg, setBarcodeImportMsg]   = useState<string | null>(null)
-  const [barcodePending, startBarcode]            = useTransition()
-
   // ── Per-column filters ──────────────────────────────────────────────────
   const [fLotNo,    setFLotNo]    = useState("")
   const [fBarcode,  setFBarcode]  = useState("")
@@ -589,49 +583,6 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
     })
   }
 
-  function handleImportBarcodes() {
-    // Parse input: one barcode per line (matches lot order by current lot number ascending)
-    // OR "LotNumber,Barcode" CSV format
-    const lines = barcodeText.split("\n").map(l => l.trim()).filter(Boolean)
-    if (lines.length === 0) return
-
-    // Detect CSV format (has comma)
-    const isCsv = lines[0].includes(",")
-    const sortedLots = [...lots].sort((a, b) => {
-      const na = parseInt(a.lotNumber) || 0
-      const nb = parseInt(b.lotNumber) || 0
-      return na !== nb ? na - nb : a.lotNumber.localeCompare(b.lotNumber)
-    })
-
-    let updates: { id: string; barcode: string }[] = []
-    if (isCsv) {
-      // CSV: LotNumber,Barcode — match by lot number
-      const lotByNumber = new Map(lots.map(l => [l.lotNumber.toLowerCase().trim(), l.id]))
-      for (const line of lines) {
-        const [lotNo, barcode] = line.split(",").map(s => s.trim())
-        const id = lotByNumber.get(lotNo.toLowerCase())
-        if (id && barcode) updates.push({ id, barcode })
-      }
-    } else {
-      // One barcode per line — match by row order (lot 1 = line 1, lot 2 = line 2, etc.)
-      updates = lines.slice(0, sortedLots.length).map((barcode, i) => ({
-        id: sortedLots[i].id,
-        barcode,
-      }))
-    }
-
-    if (updates.length === 0) { setBarcodeImportMsg("No matches found — check format."); return }
-
-    startBarcode(async () => {
-      await bulkUpdateBarcodes(auctionId, updates)
-      setBarcodeImportMsg(`✓ Updated barcodes for ${updates.length} lots`)
-      setShowBarcodeImport(false)
-      setBarcodeText("")
-      onDelete()
-      setTimeout(() => setBarcodeImportMsg(null), 4000)
-    })
-  }
-
   function toggleSelect(id: string) {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
@@ -674,19 +625,13 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
             🔢 Auto-number Lots
           </button>
           <button
-            onClick={() => { setShowBarcodeImport(v => !v); setShowAutolotter(false); setShowBids(false) }}
-            className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showBarcodeImport ? "border-orange-500 text-orange-400 bg-orange-900/20" : "border-gray-600 text-gray-400 hover:border-orange-500 hover:text-orange-400"}`}>
-            🔁 Import Barcodes
-          </button>
-          <button
-            onClick={() => { setShowBids(v => !v); setShowAutolotter(false); setShowBarcodeImport(false) }}
+            onClick={() => { setShowBids(v => !v); setShowAutolotter(false) }}
             className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showBids ? "border-green-500 text-green-400 bg-green-900/20" : "border-gray-600 text-gray-400 hover:border-green-500 hover:text-green-400"}`}>
             💰 Set Starting Bids
           </button>
           {fillMsg  && <span className="text-xs text-[#2AB4A6]">{fillMsg}</span>}
           {lotterMsg && <span className="text-xs text-yellow-400">{lotterMsg}</span>}
           {bidsMsg  && <span className="text-xs text-green-400">{bidsMsg}</span>}
-          {barcodeImportMsg && <span className="text-xs text-orange-400">{barcodeImportMsg}</span>}
           {titlesMsg && <span className="text-xs text-[#2AB4A6]">{titlesMsg}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -723,46 +668,6 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
         </div>
       </div>
       {photoMsg && <p className="text-xs text-[#2AB4A6] mb-2">{photoMsg}</p>}
-
-      {/* ── Import Barcodes panel ── */}
-      {showBarcodeImport && (
-        <div className="mb-4 bg-[#1C1C1E] border border-orange-700/40 rounded-xl p-4 space-y-3">
-          <p className="text-sm font-semibold text-orange-300">Import Barcodes</p>
-          <p className="text-xs text-gray-500">
-            Paste barcodes to restore or bulk-assign them. Two formats supported:
-          </p>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="bg-[#141416] rounded-lg p-3">
-              <p className="text-gray-400 font-medium mb-1">One per line (by lot order)</p>
-              <p className="font-mono text-gray-600">R00001{"\n"}R00002{"\n"}R00003</p>
-              <p className="text-gray-600 mt-1">Lots sorted by lot number 1, 2, 3…</p>
-            </div>
-            <div className="bg-[#141416] rounded-lg p-3">
-              <p className="text-gray-400 font-medium mb-1">CSV (LotNumber,Barcode)</p>
-              <p className="font-mono text-gray-600">1,R00001{"\n"}2,R00002{"\n"}3,R00003</p>
-              <p className="text-gray-600 mt-1">Matches by lot number exactly</p>
-            </div>
-          </div>
-          <textarea
-            value={barcodeText}
-            onChange={e => setBarcodeText(e.target.value)}
-            rows={8}
-            placeholder={"Paste barcodes here…\nR00001\nR00002\nR00003"}
-            className="w-full bg-[#141416] border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
-          />
-          <p className="text-xs text-gray-600">{barcodeText.split("\n").filter(l => l.trim()).length} barcodes entered · {lots.length} lots in auction</p>
-          <div className="flex gap-2">
-            <button onClick={() => { setShowBarcodeImport(false); setBarcodeText("") }}
-              className="px-4 py-2 rounded-lg border border-gray-700 text-gray-400 text-sm hover:border-gray-500 transition-colors">
-              Cancel
-            </button>
-            <button onClick={handleImportBarcodes} disabled={barcodePending || !barcodeText.trim()}
-              className="flex-1 py-2 bg-orange-700 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold rounded-lg text-sm transition-colors">
-              {barcodePending ? "Importing…" : "Apply barcodes"}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── Auto-number Lots panel ── */}
       {showAutolotter && (

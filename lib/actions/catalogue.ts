@@ -48,14 +48,6 @@ export async function deleteAuction(id: string) {
   revalidatePath("/tools/cataloguing/auctions")
 }
 
-export async function bulkUpdateBarcodes(auctionId: string, updates: { id: string; barcode: string }[]) {
-  await requireCataloguer()
-  await Promise.all(updates.map(u =>
-    prisma.catalogueLot.update({ where: { id: u.id }, data: { barcode: u.barcode } })
-  ))
-  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
-}
-
 export async function generateTitlesFromDescriptions(auctionId: string, lotIds: string[]) {
   await requireCataloguer()
   const lots = await prisma.catalogueLot.findMany({ where: { id: { in: lotIds } }, select: { id: true, description: true } })
