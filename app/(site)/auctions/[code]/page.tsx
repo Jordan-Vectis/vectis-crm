@@ -4,6 +4,8 @@ import Image from "next/image"
 import { prisma } from "@/lib/prisma"
 import { format } from "date-fns"
 import { lotPhotoUrl } from "@/lib/photo-url"
+import { getCustomerSession } from "@/lib/customer-auth"
+import RegisterToBidButton from "../register-to-bid-button"
 
 const TYPE_LABELS: Record<string, string> = {
   GENERAL: "General Auction", DIECAST: "Diecast", TRAINS: "Trains",
@@ -58,6 +60,20 @@ export default async function AuctionDetailPage({
 
   const heroImg = lotPhotoUrl(auction.lots.find(l => l.imageUrls.length > 0)?.imageUrls[0], true)
 
+  // Check customer session + registration status
+  const customerSession = await getCustomerSession()
+  const isLoggedIn = !!customerSession
+  const alreadyRegistered = customerSession
+    ? !!(await prisma.bidderRegistration.findUnique({
+        where: {
+          auctionId_customerAccountId: {
+            auctionId: auction.id,
+            customerAccountId: customerSession.id,
+          },
+        },
+      }))
+    : false
+
   return (
     <div>
       {/* ── Auction hero ── */}
@@ -83,15 +99,25 @@ export default async function AuctionDetailPage({
             <span>{auction.lots.length} lots</span>
             {auction.finished && <span className="text-amber-400 font-semibold">Auction Ended</span>}
           </div>
-          {isLive && (
-            <Link
-              href={`/auctions/${auction.code}/live`}
-              className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white font-black text-sm px-6 py-3 uppercase tracking-widest transition-colors"
-            >
-              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-              BID LIVE NOW
-            </Link>
-          )}
+          <div className="flex flex-wrap gap-3">
+            {isLive && (
+              <Link
+                href={`/auctions/${auction.code}/live`}
+                className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white font-black text-sm px-6 py-3 uppercase tracking-widest transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                BID LIVE NOW
+              </Link>
+            )}
+            {!auction.finished && !auction.complete && (
+              <RegisterToBidButton
+                auctionId={auction.id}
+                auctionName={auction.name}
+                isLoggedIn={isLoggedIn}
+                alreadyRegistered={alreadyRegistered}
+              />
+            )}
+          </div>
         </div>
       </div>
 

@@ -110,6 +110,7 @@ model CustomerAccount {
   sessionToken String?  @unique
   contactId    String?  @unique
   contact      Contact? @relation(fields: [contactId], references: [id])
+  bidderRegistrations BidderRegistration[]
 
   // Shipping address
   shippingLine1   String?
@@ -258,6 +259,20 @@ model CatalogueAuction {
   lots        CatalogueLot[]
   photoSessions CataloguePhotoSession[]
   liveAuction LiveAuction?
+  bidderRegistrations BidderRegistration[]
+}
+
+model BidderRegistration {
+  id                String           @id @default(cuid())
+  auctionId         String
+  auction           CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  customerAccountId String
+  customerAccount   CustomerAccount  @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
+  contactId         String?          // C number e.g. C000001
+  acceptedTerms     Boolean          @default(true)
+  registeredAt      DateTime         @default(now())
+
+  @@unique([auctionId, customerAccountId])
 }
 
 model LiveAuction {
