@@ -109,7 +109,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
   }
 
   return (
-    <div className="flex flex-col p-6 gap-0">
+    <div className="flex flex-col h-full min-h-0 p-6 gap-0">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-5 flex-shrink-0">
@@ -170,8 +170,8 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         ))}
       </div>
 
-      {/* Tab panels */}
-      <div>
+      {/* Tab panels — scrollable content area */}
+      <div className="flex-1 overflow-y-auto min-h-0">
         {tab === "settings" && <SettingsTab auction={auction} />}
 
         <div className={tab === "add-lot" ? "" : "hidden"}>

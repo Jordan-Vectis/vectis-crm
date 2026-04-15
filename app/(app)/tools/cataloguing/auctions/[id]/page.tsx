@@ -54,7 +54,7 @@ export default async function AuctionDetailPage({
   }))
 
   return (
-    <div>
+    <div className="h-full flex flex-col min-h-0">
       {/* Registered Bidders banner */}
       <RegisteredBiddersPanel
         auctionId={auction.id}
@@ -62,6 +62,7 @@ export default async function AuctionDetailPage({
         registrations={registrations}
       />
 
+      <div className="flex-1 min-h-0">
       <AuctionTabs
         auction={{
           id: auction.id,
@@ -100,6 +101,7 @@ export default async function AuctionDetailPage({
           imageUrls: l.imageUrls,
         }))}
       />
+      </div>
     </div>
   )
 }
