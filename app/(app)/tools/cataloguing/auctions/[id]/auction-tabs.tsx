@@ -873,7 +873,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                 </td>
                 <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
                   <button
-                    onClick={() => toggleLotAiUpgraded(lot.id, auction.id, !lot.aiUpgraded)}
+                    onClick={() => toggleLotAiUpgraded(lot.id, auctionId, !lot.aiUpgraded)}
                     title={lot.aiUpgraded ? "Click to mark as not upgraded" : "Click to mark as AI upgraded"}
                     className="transition-opacity hover:opacity-60">
                     {lot.aiUpgraded
