@@ -5,6 +5,8 @@ import { format } from "date-fns"
 import LiveAuctionBanner from "./live-auction-banner"
 import AuctionCalendarSidebar from "./auction-calendar-sidebar"
 import { lotPhotoUrl } from "@/lib/photo-url"
+import { getCustomerSession } from "@/lib/customer-auth"
+import RegisterToBidButton from "./register-to-bid-button"
 
 export const metadata = {
   title: "Auction Calendar",
@@ -38,6 +40,18 @@ export default async function AuctionsPage({
 }) {
   const { search, tab, type } = await searchParams
   const showPast = tab === "past"
+
+  // Customer session + existing registrations
+  const customerSession = await getCustomerSession()
+  const isLoggedIn = !!customerSession
+  const registeredAuctionIds: Set<string> = new Set()
+  if (customerSession) {
+    const regs = await prisma.bidderRegistration.findMany({
+      where: { customerAccountId: customerSession.id },
+      select: { auctionId: true },
+    })
+    regs.forEach(r => registeredAuctionIds.add(r.auctionId))
+  }
 
   // Check for active live auction
   const liveAuction = await prisma.liveAuction.findFirst({
@@ -279,12 +293,12 @@ export default async function AuctionsPage({
                           {showPast ? "VIEW RESULTS" : "VIEW CATALOGUE & BID"}
                         </Link>
                         {!showPast && !isLive && (
-                          <Link
-                            href="/portal/register"
-                            className="border border-gray-300 text-gray-500 hover:border-[#1e3058] hover:text-[#1e3058] text-xs font-bold uppercase tracking-widest px-4 py-2 transition-colors"
-                          >
-                            REGISTER TO BID
-                          </Link>
+                          <RegisterToBidButton
+                            auctionId={auction.id}
+                            auctionName={auction.name}
+                            isLoggedIn={isLoggedIn}
+                            alreadyRegistered={registeredAuctionIds.has(auction.id)}
+                          />
                         )}
                       </div>
                     </div>
