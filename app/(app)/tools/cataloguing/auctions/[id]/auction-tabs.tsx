@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids } from "@/lib/actions/catalogue"
 import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import ImportTab from "./import-tab"
@@ -32,6 +32,22 @@ interface Lot {
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+// Title character limit — matches the longest standard Vectis title format
+const TITLE_LIMIT = 83
+
+// Round a value UP to the nearest bidding increment
+function roundUpToIncrement(value: number): number {
+  if (value <= 0)     return 5
+  if (value <= 50)    return Math.ceil(value / 5)   * 5
+  if (value <= 200)   return Math.ceil(value / 10)  * 10
+  if (value <= 700)   return Math.ceil(value / 20)  * 20
+  if (value <= 1000)  return Math.ceil(value / 50)  * 50
+  if (value <= 3000)  return Math.ceil(value / 100) * 100
+  if (value <= 7000)  return Math.ceil(value / 200) * 200
+  if (value <= 10000) return Math.ceil(value / 500) * 500
+  return Math.ceil(value / 1000) * 1000
+}
 
 const AUCTION_TYPES = [
   "GENERAL","DIECAST","TRAINS","VINYL","TV_FILM","MATCHBOX","COMICS","BEARS","DOLLS",
@@ -337,6 +353,22 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   const [photoExporting, setPhotoExporting] = useState(false)
   const [photoMsg, setPhotoMsg]     = useState<string | null>(null)
 
+  // Generate titles
+  const [titlesMsg, setTitlesMsg]   = useState<string | null>(null)
+  const [titlesPending, startTitles] = useTransition()
+
+  // Autolotter panel
+  const [showAutolotter, setShowAutolotter] = useState(false)
+  const [sortMode, setSortMode] = useState<"subcat" | "vendor" | "subcat_vendor" | "vendor_subcat">("subcat")
+  const [lotterMsg, setLotterMsg] = useState<string | null>(null)
+  const [lotterPending, startLotter] = useTransition()
+
+  // Starting bid panel
+  const [showBids, setShowBids] = useState(false)
+  const [bidPct, setBidPct]     = useState(60)
+  const [bidsMsg, setBidsMsg]   = useState<string | null>(null)
+  const [bidsPending, startBids] = useTransition()
+
   // ── Per-column filters ──────────────────────────────────────────────────
   const [fLotNo,    setFLotNo]    = useState("")
   const [fTitle,    setFTitle]    = useState("")
@@ -482,6 +514,71 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
     })
   }
 
+  async function handleGenerateTitles() {
+    if (selected.size === 0) return
+    startTitles(async () => {
+      await generateTitlesFromDescriptions(auctionId, Array.from(selected))
+      setTitlesMsg(`✓ Titles generated for ${selected.size} lot${selected.size !== 1 ? "s" : ""}`)
+      setSelected(new Set())
+      onDelete()
+      setTimeout(() => setTitlesMsg(null), 3000)
+    })
+  }
+
+  function getSortedLotIds(): string[] {
+    const sortKey = (l: Lot) => {
+      const a = l.subCategory?.toLowerCase() ?? "zzz"
+      const b = l.vendor?.toLowerCase() ?? "zzz"
+      if (sortMode === "subcat")         return `${a}|||${b}`
+      if (sortMode === "vendor")         return `${b}|||${a}`
+      if (sortMode === "subcat_vendor")  return `${a}|||${b}`
+      return `${b}|||${a}` // vendor_subcat
+    }
+    return [...lots].sort((a, b) => sortKey(a).localeCompare(sortKey(b))).map(l => l.id)
+  }
+
+  function getAutoLotterPreview() {
+    const sorted = getSortedLotIds().map(id => lots.find(l => l.id === id)!)
+    const groups: Record<string, number> = {}
+    for (const l of sorted) {
+      const key = sortMode === "vendor" || sortMode === "vendor_subcat"
+        ? (l.vendor ?? "(no vendor)")
+        : (l.subCategory ?? "(no sub-category)")
+      groups[key] = (groups[key] ?? 0) + 1
+    }
+    return groups
+  }
+
+  function handleAssignLotNumbers() {
+    if (!confirm(`This will renumber all ${lots.length} lots starting from 1. Continue?`)) return
+    const orderedIds = getSortedLotIds()
+    startLotter(async () => {
+      await assignLotNumbers(auctionId, orderedIds)
+      setLotterMsg(`✓ ${lots.length} lots renumbered`)
+      setShowAutolotter(false)
+      onDelete()
+      setTimeout(() => setLotterMsg(null), 3000)
+    })
+  }
+
+  function handleSetStartingBids() {
+    const eligible = (selected.size > 0 ? lots.filter(l => selected.has(l.id)) : lots)
+      .filter(l => l.estimateLow != null)
+    if (eligible.length === 0) { setBidsMsg("No lots with estimates to update."); return }
+    const updates = eligible.map(l => ({
+      id:      l.id,
+      reserve: roundUpToIncrement(Math.ceil(l.estimateLow! * bidPct / 100)),
+    }))
+    startBids(async () => {
+      await setStartingBids(auctionId, updates)
+      setBidsMsg(`✓ Starting bids set for ${updates.length} lot${updates.length !== 1 ? "s" : ""}`)
+      setShowBids(false)
+      setSelected(new Set())
+      onDelete()
+      setTimeout(() => setBidsMsg(null), 3000)
+    })
+  }
+
   function toggleSelect(id: string) {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
@@ -518,14 +615,33 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
           >
             {fillPending ? "Pulling…" : "⟳ Pull Vendor/Receipt from Totes"}
           </button>
-          {fillMsg && <span className="text-xs text-[#2AB4A6]">{fillMsg}</span>}
+          <button
+            onClick={() => { setShowAutolotter(v => !v); setShowBids(false) }}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showAutolotter ? "border-yellow-500 text-yellow-400 bg-yellow-900/20" : "border-gray-600 text-gray-400 hover:border-yellow-500 hover:text-yellow-400"}`}>
+            🔢 Auto-number Lots
+          </button>
+          <button
+            onClick={() => { setShowBids(v => !v); setShowAutolotter(false) }}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showBids ? "border-green-500 text-green-400 bg-green-900/20" : "border-gray-600 text-gray-400 hover:border-green-500 hover:text-green-400"}`}>
+            💰 Set Starting Bids
+          </button>
+          {fillMsg  && <span className="text-xs text-[#2AB4A6]">{fillMsg}</span>}
+          {lotterMsg && <span className="text-xs text-yellow-400">{lotterMsg}</span>}
+          {bidsMsg  && <span className="text-xs text-green-400">{bidsMsg}</span>}
+          {titlesMsg && <span className="text-xs text-[#2AB4A6]">{titlesMsg}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {selected.size > 0 && (
-            <button onClick={handleBulkDelete} disabled={bulkDeleting}
-              className="px-4 py-1.5 text-sm font-medium rounded-lg border border-red-700 text-red-400 hover:bg-red-900/30 transition-colors disabled:opacity-50">
-              {bulkDeleting ? "Deleting…" : `🗑 Delete ${selected.size} selected`}
-            </button>
+            <>
+              <button onClick={handleGenerateTitles} disabled={titlesPending}
+                className="px-4 py-1.5 text-sm font-medium rounded-lg border border-blue-700 text-blue-400 hover:bg-blue-900/30 transition-colors disabled:opacity-50">
+                {titlesPending ? "Generating…" : `✏️ Generate Titles (${selected.size})`}
+              </button>
+              <button onClick={handleBulkDelete} disabled={bulkDeleting}
+                className="px-4 py-1.5 text-sm font-medium rounded-lg border border-red-700 text-red-400 hover:bg-red-900/30 transition-colors disabled:opacity-50">
+                {bulkDeleting ? "Deleting…" : `🗑 Delete ${selected.size} selected`}
+              </button>
+            </>
           )}
           {filtersActive && (
             <span className="text-xs text-gray-500">
@@ -548,6 +664,96 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
         </div>
       </div>
       {photoMsg && <p className="text-xs text-[#2AB4A6] mb-2">{photoMsg}</p>}
+
+      {/* ── Auto-number Lots panel ── */}
+      {showAutolotter && (
+        <div className="mb-4 bg-[#1C1C1E] border border-yellow-700/40 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-yellow-300">Auto-number Lots</p>
+          <p className="text-xs text-gray-500">Sorts all {lots.length} lots by the chosen criteria then assigns lot numbers 1, 2, 3… sequentially.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {([
+              ["subcat",        "By Sub-Category"],
+              ["vendor",        "By Vendor"],
+              ["subcat_vendor", "Sub-Cat → Vendor"],
+              ["vendor_subcat", "Vendor → Sub-Cat"],
+            ] as const).map(([val, label]) => (
+              <button key={val} onClick={() => setSortMode(val)}
+                className={`py-2 px-3 rounded-lg border text-xs font-medium transition-colors ${
+                  sortMode === val ? "border-yellow-500 bg-yellow-900/20 text-yellow-300" : "border-gray-700 text-gray-400 hover:border-gray-500"
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* Preview groups */}
+          <div className="text-xs text-gray-500 space-y-0.5 max-h-32 overflow-y-auto">
+            {Object.entries(getAutoLotterPreview()).map(([group, count]) => (
+              <div key={group} className="flex gap-2">
+                <span className="text-yellow-400/70 w-6 text-right">{count}</span>
+                <span>{group}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setShowAutolotter(false)}
+              className="px-4 py-2 rounded-lg border border-gray-700 text-gray-400 text-sm hover:border-gray-500 transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleAssignLotNumbers} disabled={lotterPending}
+              className="flex-1 py-2 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-semibold rounded-lg text-sm transition-colors">
+              {lotterPending ? "Numbering…" : `Assign lot numbers 1–${lots.length}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Set Starting Bids panel ── */}
+      {showBids && (() => {
+        const eligible = (selected.size > 0 ? lots.filter(l => selected.has(l.id)) : lots).filter(l => l.estimateLow != null)
+        const preview  = eligible.slice(0, 3).map(l => ({
+          lotNumber: l.lotNumber,
+          low: l.estimateLow!,
+          bid: roundUpToIncrement(Math.ceil(l.estimateLow! * bidPct / 100)),
+        }))
+        return (
+          <div className="mb-4 bg-[#1C1C1E] border border-green-700/40 rounded-xl p-4 space-y-3">
+            <p className="text-sm font-semibold text-green-300">Set Starting Bids</p>
+            <p className="text-xs text-gray-500">
+              Calculates {bidPct}% of each lot's low estimate, rounded up to the nearest bidding increment.
+              {selected.size > 0 ? ` Applies to ${eligible.length} selected lot${eligible.length !== 1 ? "s" : ""} with estimates.` : ` Applies to all ${eligible.length} lots with estimates.`}
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-gray-400">Percentage of low estimate:</label>
+              <input type="number" min={1} max={100} value={bidPct}
+                onChange={e => setBidPct(Math.max(1, Math.min(100, Number(e.target.value))))}
+                className="w-20 bg-[#2C2C2E] border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 text-center" />
+              <span className="text-xs text-gray-600">%</span>
+            </div>
+            {preview.length > 0 && (
+              <div className="text-xs text-gray-500 space-y-1">
+                <p className="text-gray-600 uppercase tracking-wider">Preview</p>
+                {preview.map(p => (
+                  <div key={p.lotNumber} className="flex gap-3">
+                    <span className="text-gray-400 font-mono w-10">{p.lotNumber}</span>
+                    <span>Low est. £{p.low} → starting bid <span className="text-green-400 font-semibold">£{p.bid}</span></span>
+                  </div>
+                ))}
+                {eligible.length > 3 && <p className="text-gray-600">…and {eligible.length - 3} more</p>}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => setShowBids(false)}
+                className="px-4 py-2 rounded-lg border border-gray-700 text-gray-400 text-sm hover:border-gray-500 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleSetStartingBids} disabled={bidsPending || eligible.length === 0}
+                className="flex-1 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white font-semibold rounded-lg text-sm transition-colors">
+                {bidsPending ? "Applying…" : `Set starting bids for ${eligible.length} lots`}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Table */}
       <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl overflow-x-auto">
@@ -654,6 +860,8 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
 
+  const [titleVal, setTitleVal] = useState(lot?.title ?? "")
+
   // Parse stored condition "Good to Excellent" → cond1="Good", cond2="Excellent"
   const condParts = (lot?.condition ?? "").split(" to ")
   const [cond1, setCond1] = useState(condParts[0] ?? "")
@@ -744,8 +952,14 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
               <input name="lotNumber" required defaultValue={lot.lotNumber} className={input} />
             </div>
             <div>
-              <label className={lbl}>Title *</label>
-              <input name="title" required defaultValue={lot.title} className={input} />
+              <div className="flex items-center justify-between mb-1">
+                <label className={lbl} style={{margin:0}}>Title *</label>
+                <span className={`text-xs ${titleVal.length > TITLE_LIMIT ? "text-red-400" : titleVal.length > TITLE_LIMIT * 0.9 ? "text-yellow-400" : "text-gray-600"}`}>
+                  {titleVal.length}/{TITLE_LIMIT}
+                </span>
+              </div>
+              <input name="title" required value={titleVal} onChange={e => setTitleVal(e.target.value.slice(0, TITLE_LIMIT))}
+                maxLength={TITLE_LIMIT} className={input} />
             </div>
             <div>
               <label className={lbl}>Description</label>

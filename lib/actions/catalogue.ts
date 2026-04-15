@@ -48,6 +48,33 @@ export async function deleteAuction(id: string) {
   revalidatePath("/tools/cataloguing/auctions")
 }
 
+export async function generateTitlesFromDescriptions(auctionId: string, lotIds: string[]) {
+  await requireCataloguer()
+  const lots = await prisma.catalogueLot.findMany({ where: { id: { in: lotIds } }, select: { id: true, description: true } })
+  await Promise.all(lots.map(l => {
+    const title = l.description.trim().slice(0, 83).trimEnd()
+    if (!title) return Promise.resolve()
+    return prisma.catalogueLot.update({ where: { id: l.id }, data: { title } })
+  }))
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+}
+
+export async function assignLotNumbers(auctionId: string, orderedIds: string[]) {
+  await requireCataloguer()
+  await Promise.all(orderedIds.map((id, i) =>
+    prisma.catalogueLot.update({ where: { id }, data: { lotNumber: String(i + 1) } })
+  ))
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+}
+
+export async function setStartingBids(auctionId: string, updates: { id: string; reserve: number }[]) {
+  await requireCataloguer()
+  await Promise.all(updates.map(u =>
+    prisma.catalogueLot.update({ where: { id: u.id }, data: { reserve: u.reserve } })
+  ))
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+}
+
 export async function applyAiDescriptions(
   auctionId: string,
   updates: { id: string; description: string; estimateLow: number | null; estimateHigh: number | null }[]
