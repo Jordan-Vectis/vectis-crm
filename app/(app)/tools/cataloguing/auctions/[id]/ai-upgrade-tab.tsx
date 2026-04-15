@@ -46,7 +46,7 @@ function parseEstimate(est: string): { low: number | null; high: number | null }
   }
 }
 
-const DEFAULT_MODEL = "gemini-2.5-flash-preview-04-17"
+const DEFAULT_MODEL = "gemini-3-flash-preview"
 const PRESET_KEYS   = Object.keys(PRESETS).filter(k => k !== "Custom (paste my own)")
 
 export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
