@@ -39,10 +39,15 @@ export default async function HomePage() {
   const session = await getCustomerSession()
 
   // Hero slides from DB (fall back to empty — hero has built-in defaults)
-  const dbSlides = await prisma.heroSlide.findMany({
-    where: { active: true },
-    orderBy: { order: "asc" },
-  })
+  let dbSlides: { id: string; title: string; subtitle: string; cta: string; ctaHref: string; imageKey: string | null }[] = []
+  try {
+    dbSlides = await prisma.heroSlide.findMany({
+      where: { active: true },
+      orderBy: { order: "asc" },
+    })
+  } catch {
+    // Table may not exist yet in this environment — hero falls back to built-in slides
+  }
 
   // Check for live auction
   const liveAuction = await prisma.liveAuction.findFirst({

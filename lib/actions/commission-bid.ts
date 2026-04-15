@@ -68,17 +68,18 @@ export async function placeCommissionBid(
     },
   })
 
-  // Check if this customer is immediately outbid by a competing commission bid
+  // Check if this customer is immediately outbid by a DIFFERENT bidder's commission bid
+  // We explicitly exclude the current customer so they can never be shown as outbid by themselves
   const topCompetingBid = await prisma.commissionBid.findFirst({
     where: {
       lotId,
-      customerAccountId: { not: session.id },
+      customerAccountId: { not: session.id },  // strictly other customers only
     },
     orderBy: { maxBid: "desc" },
   })
 
   if (topCompetingBid && topCompetingBid.maxBid >= maxBid) {
-    // Competitor wins — the current leading bid is one increment above this customer's max
+    // Another bidder's max beats this customer — leading bid is one increment above theirs
     const currentLeadingBid = nextBid(maxBid)
     return {
       success: true,
