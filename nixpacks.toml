@@ -1,0 +1,6 @@
+[variables]
+NIXPACKS_NODE_VERSION = "24"
+NODE_OPTIONS = "--max-old-space-size=2048"
+
+[phases.setup]
+nixPkgs = ["nodejs_24"]
