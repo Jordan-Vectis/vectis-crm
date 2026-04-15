@@ -230,7 +230,10 @@ function LotCard({ lot, auctionCode }: {
   const lotNum = displayLotNum(lot.lotNumber, auctionCode)
 
   return (
-    <div className="group border-r border-b border-gray-200 bg-white hover:bg-gray-50 transition-colors flex flex-col cursor-pointer">
+    <Link
+      href={`/auctions/${auctionCode}/lot/${lot.id}`}
+      className="group border-r border-b border-gray-200 bg-white hover:bg-gray-50 transition-colors flex flex-col cursor-pointer"
+    >
       {/* Image */}
       <div className="relative bg-gray-100 aspect-square overflow-hidden">
         {img ? (
@@ -240,7 +243,6 @@ function LotCard({ lot, auctionCode }: {
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-300"
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-           
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-200">
@@ -290,7 +292,7 @@ function LotCard({ lot, auctionCode }: {
           )}
         </div>
       </div>
-    </div>
+    </Link>
   )
 }
 

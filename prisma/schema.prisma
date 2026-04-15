@@ -111,6 +111,7 @@ model CustomerAccount {
   contactId    String?  @unique
   contact      Contact? @relation(fields: [contactId], references: [id])
   bidderRegistrations BidderRegistration[]
+  commissionBids      CommissionBid[]
 
   // Shipping address
   shippingLine1   String?
@@ -312,6 +313,22 @@ model CatalogueLot {
 
   auctionId    String
   auction      CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  commissionBids CommissionBid[]
+}
+
+model CommissionBid {
+  id                String          @id @default(cuid())
+  lotId             String
+  lot               CatalogueLot    @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  customerAccountId String
+  customerAccount   CustomerAccount @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
+  maxBid            Int
+  contactId         String?
+  notes             String?
+  placedAt          DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([lotId, customerAccountId])
 }
 
 model CataloguePhotoSession {
