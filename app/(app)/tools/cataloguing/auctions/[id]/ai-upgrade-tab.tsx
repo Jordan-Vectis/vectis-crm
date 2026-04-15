@@ -351,9 +351,14 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
           subtitle={`${runProgress.done} / ${runProgress.total} lots processed`}
           pct={runProgress.total > 0 ? (runProgress.done / runProgress.total) * 100 : 0}
           log={log} logRef={logRef}
-          onCancel={handleCancel}
+          onCancel={() => { handleCancel(); }}
+          cancelLabel="Stop & review"
           onPause={paused ? undefined : handlePause}
           onResume={paused ? handleResume : undefined}
+          onReviewNow={paused && results.filter(r => r.status === "ok").length > 0
+            ? () => { handleCancel(); }
+            : undefined}
+          reviewNowCount={results.filter(r => r.status === "ok").length}
           paused={paused}
           liveResults={results}
         />
@@ -425,13 +430,16 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ProgressCard({
-  title, subtitle, pct, log, logRef, onCancel, onPause, onResume, paused, liveResults,
+  title, subtitle, pct, log, logRef, onCancel, cancelLabel, onPause, onResume, onReviewNow, reviewNowCount, paused, liveResults,
 }: {
   title: string; subtitle: string; pct: number
   log: string[]; logRef: React.RefObject<HTMLDivElement | null>
   onCancel: () => void
+  cancelLabel?: string
   onPause?: () => void
   onResume?: () => void
+  onReviewNow?: () => void
+  reviewNowCount?: number
   paused?: boolean
   liveResults?: { status: string; lotNumber: string }[]
 }) {
@@ -441,9 +449,15 @@ function ProgressCard({
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-300 font-medium">{title}</p>
           <div className="flex items-center gap-3">
+            {onReviewNow && (
+              <button onClick={onReviewNow}
+                className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors">
+                Review {reviewNowCount} result{reviewNowCount !== 1 ? "s" : ""} →
+              </button>
+            )}
             {onResume && (
               <button onClick={onResume}
-                className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors">
+                className="text-xs text-green-400 hover:text-green-300 font-medium transition-colors">
                 ▶ Resume
               </button>
             )}
@@ -455,7 +469,7 @@ function ProgressCard({
             )}
             <button onClick={onCancel}
               className="text-xs text-gray-600 hover:text-red-400 transition-colors">
-              Cancel
+              {cancelLabel ?? "Cancel"}
             </button>
           </div>
         </div>
