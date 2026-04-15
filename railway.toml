@@ -4,6 +4,6 @@ builder = "nixpacks"
 [deploy]
 startCommand = "npm run start"
 
-[build.nixpacksPlan.variables]
-NODE_OPTIONS = "--max-old-space-size=2048"
+[variables]
 NIXPACKS_NODE_VERSION = "24"
+NODE_OPTIONS = "--max-old-space-size=2048"
