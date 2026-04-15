@@ -23,7 +23,7 @@ interface Auction {
 
 interface Lot {
   id: string; lotNumber: string; title: string; description: string
-  estimateLow: number | null; estimateHigh: number | null; reserve: number | null
+  estimateLow: number | null; estimateHigh: number | null; startingBid: number | null; reserve: number | null
   hammerPrice: number | null; condition: string | null; vendor: string | null
   tote: string | null; receipt: string | null; category: string | null
   subCategory: string | null; brand: string | null; notes: string | null
@@ -406,6 +406,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       "Description":  l.description,
       "Estimate Low": l.estimateLow ?? "",
       "Estimate High":l.estimateHigh ?? "",
+      "Starting Bid": l.startingBid ?? "",
       "Reserve":      l.reserve ?? "",
       "Hammer Price": l.hammerPrice ?? "",
       "Condition":    l.condition ?? "",
@@ -566,8 +567,8 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       .filter(l => l.estimateLow != null)
     if (eligible.length === 0) { setBidsMsg("No lots with estimates to update."); return }
     const updates = eligible.map(l => ({
-      id:      l.id,
-      reserve: roundUpToIncrement(Math.ceil(l.estimateLow! * bidPct / 100)),
+      id:         l.id,
+      startingBid: roundUpToIncrement(Math.ceil(l.estimateLow! * bidPct / 100)),
     }))
     startBids(async () => {
       await setStartingBids(auctionId, updates)
@@ -1022,13 +1023,20 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
+                <label className={lbl}>Starting Bid (£)</label>
+                <input name="startingBid" type="number" min="0" defaultValue={lot.startingBid ?? ""} className={input} />
+              </div>
+              <div>
                 <label className={lbl}>Reserve (£)</label>
                 <input name="reserve" type="number" min="0" defaultValue={lot.reserve ?? ""} className={input} />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Hammer Price (£)</label>
                 <input name="hammerPrice" type="number" min="0" defaultValue={lot.hammerPrice ?? ""} className={input} />
               </div>
+              <div />
             </div>
             <div>
               <label className={lbl}>Vendor</label>

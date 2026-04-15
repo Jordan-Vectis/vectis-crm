@@ -260,6 +260,7 @@ model CatalogueLot {
   description  String           @db.Text @default("")
   estimateLow  Int?
   estimateHigh Int?
+  startingBid  Int?
   reserve      Int?
   hammerPrice  Int?
   condition    String?

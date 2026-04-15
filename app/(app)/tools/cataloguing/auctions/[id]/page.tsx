@@ -44,6 +44,7 @@ export default async function AuctionDetailPage({
         description: l.description,
         estimateLow: l.estimateLow,
         estimateHigh: l.estimateHigh,
+        startingBid: l.startingBid,
         reserve: l.reserve,
         hammerPrice: l.hammerPrice,
         condition: l.condition,

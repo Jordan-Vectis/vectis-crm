@@ -67,10 +67,10 @@ export async function assignLotNumbers(auctionId: string, orderedIds: string[]) 
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
-export async function setStartingBids(auctionId: string, updates: { id: string; reserve: number }[]) {
+export async function setStartingBids(auctionId: string, updates: { id: string; startingBid: number }[]) {
   await requireCataloguer()
   await Promise.all(updates.map(u =>
-    prisma.catalogueLot.update({ where: { id: u.id }, data: { reserve: u.reserve } })
+    prisma.catalogueLot.update({ where: { id: u.id }, data: { startingBid: u.startingBid } })
   ))
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
@@ -346,6 +346,7 @@ function extractLotData(formData: FormData) {
     description: (formData.get("description") as string) || "",
     estimateLow:  formData.get("estimateLow")  ? parseInt(formData.get("estimateLow") as string)  : null,
     estimateHigh: formData.get("estimateHigh") ? parseInt(formData.get("estimateHigh") as string) : null,
+    startingBid:  formData.get("startingBid")  ? parseInt(formData.get("startingBid") as string)  : null,
     reserve:      formData.get("reserve")      ? parseInt(formData.get("reserve") as string)      : null,
     hammerPrice:  formData.get("hammerPrice")  ? parseInt(formData.get("hammerPrice") as string)  : null,
     condition:   (formData.get("condition") as string) || null,
