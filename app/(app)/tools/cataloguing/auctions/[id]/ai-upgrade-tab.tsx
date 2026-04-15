@@ -55,6 +55,7 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
   const [preset,       setPreset]       = useState(PRESET_KEYS[0] ?? "")
   const [model,        setModel]        = useState(DEFAULT_MODEL)
   const [modelList,    setModelList]    = useState<string[]>([DEFAULT_MODEL])
+  const [sendDesc,     setSendDesc]     = useState(true)
   const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(
     () => new Set(lots.filter(l => !l.aiUpgraded && l.imageUrls.length > 0).map(l => l.id))
   )
@@ -182,7 +183,7 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
         photos.forEach((blob, j) => {
           fd.append(`lot_${lot.lotNumber}_image_${j}`, blob, `photo_${j}.jpg`)
         })
-        if (lot.description.trim()) {
+        if (sendDesc && lot.description.trim()) {
           fd.set(`lot_${lot.lotNumber}_context`, lot.description.trim())
         }
 
@@ -301,6 +302,14 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
               {modelList.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
+
+          {/* Options */}
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input type="checkbox" checked={sendDesc} onChange={e => setSendDesc(e.target.checked)}
+              className="w-4 h-4 rounded accent-purple-500" />
+            <span className="text-sm text-gray-300">Send existing descriptions to the AI</span>
+            <span className="text-xs text-gray-600">(helps the AI refine rather than rewrite from scratch)</span>
+          </label>
 
           {/* Lot selector */}
           <div>
