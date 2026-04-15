@@ -42,6 +42,15 @@ export default async function MyBidsPage() {
     },
   })
 
+  // Fetch highest commission bid per lot (from any bidder) to show as current bid pre-auction
+  const lotIds = bids.map(b => b.lotId)
+  const topBids = await prisma.commissionBid.groupBy({
+    by: ["lotId"],
+    _max: { maxBid: true },
+    where: { lotId: { in: lotIds } },
+  })
+  const topBidMap = Object.fromEntries(topBids.map(t => [t.lotId, t._max.maxBid]))
+
   // Check for active live auction
   const liveAuction = await prisma.liveAuction.findFirst({
     where: { status: { in: ["ACTIVE", "PAUSED"] } },
@@ -82,7 +91,7 @@ export default async function MyBidsPage() {
       lotTitle: b.lot.title,
       imageUrl: b.lot.imageUrls[0] ?? null,
       lotStatus: b.lot.status,
-      currentBid: b.lot.currentBid,
+      currentBid: b.lot.currentBid ?? topBidMap[b.lot.id] ?? null,
       hammerPrice: b.lot.hammerPrice,
       estimateLow: b.lot.estimateLow,
       estimateHigh: b.lot.estimateHigh,

@@ -35,7 +35,19 @@ export default async function AuctionDetailPage({
 
   const auction = await prisma.catalogueAuction.findFirst({
     where: { code: code.toUpperCase(), published: true },
-    include: { lots: { orderBy: { lotNumber: "asc" } }, liveAuction: true },
+    include: {
+      lots: {
+        orderBy: { lotNumber: "asc" },
+        include: {
+          commissionBids: {
+            select: { maxBid: true },
+            orderBy: { maxBid: "desc" },
+            take: 1,
+          },
+        },
+      },
+      liveAuction: true,
+    },
   })
 
   const isLive = !!auction?.liveAuction && ["ACTIVE", "PAUSED"].includes(auction.liveAuction.status)
@@ -176,7 +188,7 @@ export default async function AuctionDetailPage({
           <div className="text-center py-20 text-gray-400">No lots match your search.</div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-0 border-l border-t border-gray-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {lots.map(lot => <LotCard key={lot.id} lot={lot} auctionCode={auction.code} />)}
             </div>
 
@@ -222,17 +234,28 @@ function LotCard({ lot, auctionCode }: {
     estimateLow: number | null; estimateHigh: number | null
     hammerPrice: number | null; condition: string | null
     imageUrls: string[]; status: string
+    commissionBids: { maxBid: number }[]
+    currentBid: number | null
   }
   auctionCode: string
 }) {
   const img = lotPhotoUrl(lot.imageUrls[0], true)
   const sold = lot.status === "SOLD"
   const lotNum = displayLotNum(lot.lotNumber, auctionCode)
+  const currentBid = lot.currentBid ?? lot.commissionBids[0]?.maxBid ?? null
+
+  const estimateStr = lot.estimateLow && lot.estimateHigh
+    ? `£${lot.estimateLow.toLocaleString("en-GB")} – £${lot.estimateHigh.toLocaleString("en-GB")}`
+    : lot.estimateLow
+    ? `£${lot.estimateLow.toLocaleString("en-GB")}+`
+    : lot.estimateHigh
+    ? `–£${lot.estimateHigh.toLocaleString("en-GB")}`
+    : null
 
   return (
     <Link
       href={`/auctions/${auctionCode}/lot/${lot.id}`}
-      className="group border-r border-b border-gray-200 bg-white hover:bg-gray-50 transition-colors flex flex-col cursor-pointer"
+      className="group bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex flex-col cursor-pointer"
     >
       {/* Image */}
       <div className="relative bg-gray-100 aspect-square overflow-hidden">
@@ -242,18 +265,20 @@ function LotCard({ lot, auctionCode }: {
             alt={lot.title}
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-300"
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-200">
-            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
         )}
-        {/* Lot number badge */}
-        <div className="absolute top-0 left-0 bg-[#32348A] text-white text-[10px] font-bold px-2 py-0.5 tracking-wider">
-          LOT {lotNum}
+        {/* Heart / favourites icon */}
+        <div className="absolute top-2 right-2">
+          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
         </div>
         {sold && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
@@ -263,32 +288,41 @@ function LotCard({ lot, auctionCode }: {
       </div>
 
       {/* Details */}
-      <div className="p-2.5 flex flex-col flex-1">
-        <p className="text-xs font-medium text-gray-800 leading-snug line-clamp-2 mb-1.5 group-hover:text-[#32348A]">
+      <div className="p-3 flex flex-col flex-1">
+        {/* Lot number + estimate row */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold text-[#DB0606] tracking-wide">LOT {lotNum}</span>
+          {estimateStr && (
+            <span className="text-[11px] text-gray-500">Estimate: {estimateStr}</span>
+          )}
+        </div>
+
+        {/* Title */}
+        <p className="text-sm font-bold text-gray-800 leading-snug line-clamp-2 mb-2 group-hover:text-[#32348A]">
           {lot.title}
         </p>
-        {lot.condition && (
-          <p className="text-[10px] text-gray-400 mb-1">{lot.condition}</p>
-        )}
+
+        {/* Current bid */}
+        <div className="mb-3">
+          {currentBid && currentBid > 0 ? (
+            <p className="text-sm font-bold text-gray-900">
+              Current Bid: £{currentBid.toLocaleString("en-GB")}
+            </p>
+          ) : (
+            <p className="text-sm text-gray-400">No Bids Yet</p>
+          )}
+        </div>
+
+        {/* CTA button */}
         <div className="mt-auto">
-          {sold && lot.hammerPrice ? (
-            <div>
-              <p className="text-[10px] text-gray-400">Sold</p>
-              <p className="text-sm font-black text-[#32348A]">£{lot.hammerPrice.toLocaleString("en-GB")}</p>
-            </div>
-          ) : (lot.estimateLow || lot.estimateHigh) ? (
-            <div>
-              <p className="text-[10px] text-gray-400">Estimate</p>
-              <p className="text-xs font-bold text-gray-700">
-                {lot.estimateLow && lot.estimateHigh
-                  ? `£${lot.estimateLow.toLocaleString("en-GB")} – £${lot.estimateHigh.toLocaleString("en-GB")}`
-                  : lot.estimateLow
-                  ? `£${lot.estimateLow.toLocaleString("en-GB")}+`
-                  : `–£${lot.estimateHigh!.toLocaleString("en-GB")}`}
-              </p>
+          {sold ? (
+            <div className="w-full bg-gray-100 text-gray-500 text-xs font-black uppercase tracking-widest py-2.5 text-center">
+              SOLD — £{lot.hammerPrice ? lot.hammerPrice.toLocaleString("en-GB") : "–"}
             </div>
           ) : (
-            <p className="text-[10px] text-gray-300">Estimate TBC</p>
+            <div className="w-full bg-[#32348A] hover:bg-[#28296e] text-white text-xs font-black uppercase tracking-widest py-2.5 text-center transition-colors">
+              PLACE BID
+            </div>
           )}
         </div>
       </div>
