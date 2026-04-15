@@ -387,8 +387,9 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   const [fReceipt,  setFReceipt]  = useState("")
   const [fTote,     setFTote]     = useState("")
   const [fCategory, setFCategory] = useState("")
-  const [fPhotos,   setFPhotos]   = useState("")   // "any" | "none" | ""
-  const [fStatus,   setFStatus]   = useState("")
+  const [fPhotos,      setFPhotos]      = useState("")   // "any" | "none" | ""
+  const [fAiUpgraded,  setFAiUpgraded]  = useState("")   // "yes" | "no" | ""
+  const [fStatus,      setFStatus]      = useState("")
 
   const uniqueStatuses = useMemo(() => Array.from(new Set(lots.map(l => l.status))).sort(), [lots])
 
@@ -401,7 +402,8 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       colMatch(l.receipt, fReceipt) &&
       colMatch(l.tote, fTote) &&
       colMatch(l.category, fCategory) &&
-      (fPhotos === "" || (fPhotos === "any" ? l.imageUrls.length > 0 : fPhotos === "none" ? l.imageUrls.length === 0 : fPhotos === "ai-yes" ? l.aiUpgraded : !l.aiUpgraded)) &&
+      (fPhotos === "" || (fPhotos === "any" ? l.imageUrls.length > 0 : l.imageUrls.length === 0)) &&
+      (fAiUpgraded === "" || (fAiUpgraded === "yes" ? l.aiUpgraded : !l.aiUpgraded)) &&
       (fStatus === "" || l.status === fStatus)
     )
     return f.sort((a, b) => {
@@ -418,13 +420,13 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       }
       return sortDir === "asc" ? cmp : -cmp
     })
-  }, [lots, fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus, sortCol, sortDir])
+  }, [lots, fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fAiUpgraded, fStatus, sortCol, sortDir])
 
-  const filtersActive = [fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus].some(f => f !== "")
+  const filtersActive = [fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fAiUpgraded, fStatus].some(f => f !== "")
 
   function clearFilters() {
     setFLotNo(""); setFBarcode(""); setFTitle(""); setFVendor(""); setFReceipt("")
-    setFTote(""); setFCategory(""); setFPhotos(""); setFStatus("")
+    setFTote(""); setFCategory(""); setFPhotos(""); setFAiUpgraded(""); setFStatus("")
   }
 
   function exportExcel() {
@@ -801,6 +803,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                   {sortCol === col ? (sortDir === "asc" ? " ▲" : " ▼") : <span className="text-gray-700"> ⇅</span>}
                 </th>
               ))}
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">AI</th>
               <th className="px-4 py-3" />
             </tr>
             {/* Filter row */}
@@ -818,14 +821,19 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                   <option value="">All</option>
                   <option value="any">Has photos</option>
                   <option value="none">No photos</option>
-                  <option value="ai-yes">✨ AI upgraded</option>
-                  <option value="ai-no">Not upgraded</option>
                 </select>
               </td>
               <td className="px-2 py-1.5">
                 <select value={fStatus} onChange={e => setFStatus(e.target.value)} className={COL_SELECT}>
                   <option value="">All</option>
                   {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </td>
+              <td className="px-2 py-1.5">
+                <select value={fAiUpgraded} onChange={e => setFAiUpgraded(e.target.value)} className={COL_SELECT}>
+                  <option value="">All</option>
+                  <option value="yes">✨ Upgraded</option>
+                  <option value="no">Not yet</option>
                 </select>
               </td>
               <td />
@@ -852,21 +860,21 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                   ) : "—"}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    {lot.imageUrls.length > 0 ? (
-                      <span className="text-xs bg-[#2AB4A6]/20 text-[#2AB4A6] px-2 py-0.5 rounded-full font-medium">
-                        {lot.imageUrls.length}
-                      </span>
-                    ) : <span className="text-gray-700 text-xs">—</span>}
-                    {lot.aiUpgraded && (
-                      <span title="AI upgraded" className="text-xs">✨</span>
-                    )}
-                  </div>
+                  {lot.imageUrls.length > 0 ? (
+                    <span className="text-xs bg-[#2AB4A6]/20 text-[#2AB4A6] px-2 py-0.5 rounded-full font-medium">
+                      {lot.imageUrls.length}
+                    </span>
+                  ) : <span className="text-gray-700 text-xs">—</span>}
                 </td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[lot.status] ?? "bg-gray-700 text-gray-300"}`}>
                     {lot.status}
                   </span>
+                </td>
+                <td className="px-4 py-3 text-center">
+                  {lot.aiUpgraded
+                    ? <span title="AI upgraded">✨</span>
+                    : <span className="text-gray-700 text-xs">—</span>}
                 </td>
                 <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                   <button onClick={() => handleDelete(lot)} disabled={deleting === lot.id || pending}
