@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids, toggleLotAiUpgraded } from "@/lib/actions/catalogue"
 import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import ImportTab from "./import-tab"
@@ -871,10 +871,15 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                     {lot.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-center">
-                  {lot.aiUpgraded
-                    ? <span title="AI upgraded">✨</span>
-                    : <span className="text-gray-700 text-xs">—</span>}
+                <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => toggleLotAiUpgraded(lot.id, auction.id, !lot.aiUpgraded)}
+                    title={lot.aiUpgraded ? "Click to mark as not upgraded" : "Click to mark as AI upgraded"}
+                    className="transition-opacity hover:opacity-60">
+                    {lot.aiUpgraded
+                      ? <span>✨</span>
+                      : <span className="text-gray-700 text-xs">—</span>}
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                   <button onClick={() => handleDelete(lot)} disabled={deleting === lot.id || pending}

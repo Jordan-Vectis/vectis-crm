@@ -159,6 +159,12 @@ export async function deleteLot(lotId: string, auctionId: string) {
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
+export async function toggleLotAiUpgraded(lotId: string, auctionId: string, value: boolean) {
+  await requireCataloguer()
+  await prisma.catalogueLot.update({ where: { id: lotId }, data: { aiUpgraded: value } })
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+}
+
 export async function createPhotoSession(formData: FormData) {
   const session = await requireCataloguer()
 
