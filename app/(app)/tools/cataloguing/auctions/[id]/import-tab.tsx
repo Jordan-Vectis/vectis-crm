@@ -35,25 +35,37 @@ export default function ImportTab({ auctionId, auctionCode, onImported }: Props)
     const reader = new FileReader()
     reader.onload = ev => {
       try {
-        const wb      = XLSX.read(ev.target!.result, { type: "binary" })
-        const ws      = wb.Sheets[wb.SheetNames[0]]
-        const raw     = XLSX.utils.sheet_to_json<Record<string, string | number>>(ws)
+        const wb  = XLSX.read(ev.target!.result, { type: "binary" })
+        const ws  = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json<Record<string, string | number>>(ws)
+
+        // col() tries multiple header name variants (supports both app exports and auction system exports)
+        const col = (r: Record<string, string | number>, ...names: string[]) => {
+          for (const n of names) {
+            const v = r[n]
+            if (v !== undefined && v !== null && String(v).trim() !== "" && String(v).trim().toLowerCase() !== "undefined") {
+              return String(v).trim()
+            }
+          }
+          return ""
+        }
+
         const parsed = raw.map(r => ({
-          lotNumber:    String(r["Lot No."]      ?? "").trim(),
-          title:        String(r["Title"]        ?? "").trim(),
-          description:  String(r["Description"]  ?? "").trim(),
-          estimateLow:  String(r["Estimate Low"]  ?? "").trim(),
-          estimateHigh: String(r["Estimate High"] ?? "").trim(),
-          reserve:      String(r["Reserve"]       ?? "").trim(),
-          condition:    String(r["Condition"]     ?? "").trim(),
-          status:       String(r["Status"]        ?? "").trim(),
-          vendor:       String(r["Vendor"]        ?? "").trim(),
-          tote:         String(r["Tote"]          ?? "").trim(),
-          receipt:      String(r["Receipt"]       ?? "").trim(),
-          category:     String(r["Category"]      ?? "").trim(),
-          subCategory:  String(r["Sub-Category"]  ?? "").trim(),
-          brand:        String(r["Brand"]         ?? "").trim(),
-          notes:        String(r["Notes"]         ?? "").trim(),
+          lotNumber:    col(r, "Lot No."),
+          title:        col(r, "Title", "Short Description"),
+          description:  col(r, "Description", "Catalogue Description"),
+          estimateLow:  col(r, "Estimate Low", "Low Estimate"),
+          estimateHigh: col(r, "Estimate High", "High Estimate"),
+          reserve:      col(r, "Reserve", "Reserve Price"),
+          condition:    col(r, "Condition", "Condition Report"),
+          status:       col(r, "Status"),
+          vendor:       col(r, "Vendor", "Vendor Name"),
+          tote:         col(r, "Tote", "Tote No."),
+          receipt:      col(r, "Receipt", "Receipt No."),
+          category:     col(r, "Category", "Article Category Code"),
+          subCategory:  col(r, "Sub-Category", "Article Subcategory Code"),
+          brand:        col(r, "Brand"),
+          notes:        col(r, "Notes"),
         })).filter(r => r.lotNumber)
 
         if (parsed.length === 0) { setError("No valid rows found — make sure the file has a 'Lot No.' column."); return }
@@ -94,7 +106,7 @@ export default function ImportTab({ auctionId, auctionCode, onImported }: Props)
         className="w-full py-8 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex flex-col items-center gap-2 mb-4">
         <span className="text-3xl">📂</span>
         <span className="text-sm font-medium">{fileName ?? "Choose Excel file"}</span>
-        <span className="text-xs text-gray-600">Must be exported from this app</span>
+        <span className="text-xs text-gray-600">Supports app exports and auction system exports</span>
       </button>
 
       {error  && <p className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2 mb-4">{error}</p>}
