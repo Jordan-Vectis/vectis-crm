@@ -19,21 +19,21 @@ const SLIDES: Slide[] = [
     subtitle: "Tens of thousands of lots sold every year to collectors worldwide. Join our next auction.",
     cta: "VIEW UPCOMING AUCTIONS",
     ctaHref: "/auctions",
-    bg: "from-[#0d1f3c] via-[#1e3058] to-[#2a4a7f]",
+    bg: "from-[#0a1628] via-[#1e3058] to-[#1e3058]",
   },
   {
     title: "Sell Your Collection",
-    subtitle: "Free valuations from our specialist team. Get the best price with no hassle.",
+    subtitle: "Free valuations from our specialist team. No fees, no fuss — just the best price for your collection.",
     cta: "GET A FREE VALUATION",
     ctaHref: "/submit",
-    bg: "from-[#1a3a2a] via-[#1e5038] to-[#2AB4A6]/60",
+    bg: "from-[#0a1628] via-[#162044] to-[#1e3058]",
   },
   {
     title: "Bid Live & Online",
-    subtitle: "Register once and bid in real-time from anywhere in the world.",
+    subtitle: "Register once and bid in real-time from anywhere in the world across 100+ auctions a year.",
     cta: "REGISTER TO BID",
     ctaHref: "/portal/register",
-    bg: "from-[#3a1a0d] via-[#5c2a1a] to-[#8B4513]/60",
+    bg: "from-[#0a1628] via-[#1a1040] to-[#1e3058]",
   },
 ]
 
@@ -149,19 +149,23 @@ export default function HomeHero({ initialLive }: Props) {
               style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "40px 40px" }}
             />
             <div className="relative h-full flex flex-col justify-center px-12 max-w-2xl">
-              <p className="text-[#2AB4A6] text-xs font-black tracking-[0.3em] uppercase mb-4">
-                Vectis Auctions · Est. 1995
-              </p>
+              {/* Mini logo watermark */}
+              <div className="flex items-center gap-2 mb-6">
+                <div className="h-px w-8 bg-[#C8102E]" />
+                <p className="text-[#C8102E] text-[10px] font-black tracking-[0.35em] uppercase">
+                  Vectis Auctions · Est. 1995
+                </p>
+              </div>
               <h1 className="text-white font-black text-4xl sm:text-5xl leading-none mb-5 uppercase tracking-tight">
                 {s.title}
               </h1>
-              <p className="text-gray-300 text-base mb-8 leading-relaxed max-w-lg">
+              <p className="text-gray-300 text-sm mb-8 leading-relaxed max-w-lg">
                 {s.subtitle}
               </p>
               <div className="flex gap-3">
                 <Link
                   href={s.ctaHref}
-                  className="bg-[#2AB4A6] hover:bg-[#22928a] text-white text-xs font-black uppercase tracking-widest px-7 py-3.5 transition-colors"
+                  className="bg-[#C8102E] hover:bg-[#a50d26] text-white text-xs font-black uppercase tracking-widest px-7 py-3.5 transition-colors"
                 >
                   {s.cta}
                 </Link>
@@ -183,7 +187,7 @@ export default function HomeHero({ initialLive }: Props) {
               <button
                 key={i}
                 onClick={() => setSlide(i)}
-                className={`w-2 h-2 rounded-full transition-all ${i === slide ? "bg-[#2AB4A6] w-6" : "bg-white/40 hover:bg-white/70"}`}
+                className={`h-1 rounded-none transition-all ${i === slide ? "bg-[#C8102E] w-8" : "bg-white/30 w-4 hover:bg-white/60"}`}
               />
             ))}
           </div>

@@ -37,17 +37,19 @@ export default async function SiteNav() {
 
   return (
     <header>
-      {/* ── Top tier: search / logo / account ── */}
+      {/* ── Top bar: thin red accent ── */}
+      <div className="h-1 bg-[#C8102E]" />
+
+      {/* ── Middle tier: search / logo / account ── */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-6">
 
           {/* Search */}
-          <form method="GET" action="/search" className="flex items-stretch shrink-0 shadow-sm" style={{ width: "320px" }}>
-            {/* Filter select */}
+          <form method="GET" action="/search" className="flex items-stretch shrink-0 shadow-sm" style={{ width: "300px" }}>
             <div className="relative shrink-0">
               <select
                 name="filter"
-                className="h-full appearance-none border border-r-0 border-gray-300 bg-gray-50 text-[#1e3058] text-[11px] font-black uppercase tracking-wider pl-3 pr-7 focus:outline-none focus:border-[#1e3058] cursor-pointer"
+                className="h-full appearance-none border border-r-0 border-gray-300 bg-gray-50 text-[#1e3058] text-[10px] font-black uppercase tracking-wider pl-3 pr-7 focus:outline-none focus:border-[#1e3058] cursor-pointer"
               >
                 <option value="all">All</option>
                 <option value="upcoming">Upcoming</option>
@@ -57,8 +59,7 @@ export default async function SiteNav() {
                 <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
               </svg>
             </div>
-            {/* Input */}
-            <div className="relative flex-1 flex items-center border border-gray-300 bg-white px-3 focus-within:border-[#1e3058] focus-within:ring-1 focus-within:ring-[#1e3058]/20 transition-all">
+            <div className="relative flex-1 flex items-center border border-gray-300 bg-white px-3 focus-within:border-[#1e3058] transition-all">
               <svg className="w-3.5 h-3.5 text-gray-400 shrink-0 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
               </svg>
@@ -68,19 +69,39 @@ export default async function SiteNav() {
                 className="flex-1 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none bg-transparent"
               />
             </div>
-            {/* Button */}
             <button
               type="submit"
-              className="shrink-0 bg-[#1e3058] hover:bg-[#162544] text-white text-[11px] font-black uppercase tracking-widest px-4 transition-colors border border-[#1e3058]"
+              className="shrink-0 bg-[#1e3058] hover:bg-[#162544] text-white text-[10px] font-black uppercase tracking-widest px-4 transition-colors border border-[#1e3058]"
             >
               GO
             </button>
           </form>
 
-          {/* Logo */}
-          <Link href="/" className="flex flex-col items-center">
-            <span className="text-3xl font-black tracking-tight text-[#1e3058] leading-none">Vectis</span>
-            <span className="text-[9px] font-semibold tracking-[0.25em] text-gray-500 uppercase mt-0.5">Collectables Specialists</span>
+          {/* ── Vectis Logo ── */}
+          <Link href="/" className="flex flex-col items-center shrink-0 select-none">
+            {/* Wordmark */}
+            <div className="flex items-baseline leading-none">
+              <span
+                className="text-[38px] font-black leading-none tracking-tight text-[#C8102E]"
+                style={{ fontStyle: "italic", fontFamily: "Georgia, 'Times New Roman', serif" }}
+              >
+                V
+              </span>
+              <span
+                className="text-[30px] font-black leading-none tracking-tight text-[#1e3058]"
+                style={{ fontStyle: "italic", fontFamily: "Georgia, 'Times New Roman', serif" }}
+              >
+                ectis
+              </span>
+            </div>
+            {/* AUCTIONS badge */}
+            <div className="bg-[#1e3058] text-white text-[8px] font-black tracking-[0.45em] px-3 py-[3px] w-full text-center uppercase mt-0.5">
+              AUCTIONS
+            </div>
+            {/* Strapline */}
+            <span className="text-[7px] font-semibold tracking-[0.25em] text-gray-400 uppercase mt-1">
+              Collectables Specialists
+            </span>
           </Link>
 
           {/* Account */}
@@ -190,7 +211,6 @@ function DropdownNavItem({
           <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
         </svg>
       </Link>
-      {/* Dropdown panel */}
       <div className="absolute top-full left-0 bg-white shadow-xl border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 translate-y-1 group-hover:translate-y-0 z-50">
         {children}
       </div>

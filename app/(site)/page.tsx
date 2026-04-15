@@ -85,12 +85,12 @@ export default async function HomePage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="flex items-end justify-between mb-8">
               <div>
-                <p className="text-[#2AB4A6] text-xs font-black tracking-[0.25em] uppercase mb-1">Don&apos;t Miss</p>
+                <p className="text-[#C8102E] text-xs font-black tracking-[0.25em] uppercase mb-1">Don&apos;t Miss</p>
                 <h2 className="text-2xl font-black text-[#1e3058] uppercase tracking-tight">Upcoming Auctions</h2>
               </div>
               <Link
                 href="/auctions"
-                className="text-xs font-black text-[#1e3058] uppercase tracking-wider hover:text-[#2AB4A6] transition-colors flex items-center gap-1"
+                className="text-xs font-black text-[#1e3058] uppercase tracking-wider hover:text-[#C8102E] transition-colors flex items-center gap-1"
               >
                 VIEW ALL
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -129,14 +129,14 @@ export default async function HomePage() {
                         </div>
                       )}
                       {/* Type badge */}
-                      <div className="absolute top-3 left-3 bg-[#2AB4A6] text-white text-[9px] font-black uppercase tracking-widest px-2 py-1">
+                      <div className="absolute top-3 left-3 bg-[#C8102E] text-white text-[9px] font-black uppercase tracking-widest px-2 py-1">
                         {label}
                       </div>
                     </div>
 
                     {/* Info */}
                     <div className="px-5 py-4 flex flex-col flex-1">
-                      <h3 className="text-[#1e3058] font-black text-base leading-tight group-hover:text-[#2AB4A6] transition-colors mb-2 line-clamp-2">
+                      <h3 className="text-[#1e3058] font-black text-base leading-tight group-hover:text-[#C8102E] transition-colors mb-2 line-clamp-2">
                         {auction.name}
                       </h3>
                       {aDate && (
@@ -146,7 +146,7 @@ export default async function HomePage() {
                       )}
                       <p className="text-gray-400 text-xs mt-1 mb-4">{auction._count.lots} lots</p>
                       <div className="mt-auto flex items-center justify-between">
-                        <span className="text-[#1e3058] text-xs font-black uppercase tracking-wider group-hover:text-[#2AB4A6] transition-colors">
+                        <span className="text-[#1e3058] text-xs font-black uppercase tracking-wider group-hover:text-[#C8102E] transition-colors">
                           VIEW CATALOGUE →
                         </span>
                         {aDate && (
@@ -176,7 +176,7 @@ export default async function HomePage() {
               { value: "180+", label: "Countries Reached" },
             ].map(s => (
               <div key={s.label}>
-                <p className="text-[#2AB4A6] font-black text-4xl mb-1">{s.value}</p>
+                <p className="text-[#C8102E] font-black text-4xl mb-1">{s.value}</p>
                 <p className="text-gray-400 text-xs uppercase tracking-widest">{s.label}</p>
               </div>
             ))}
@@ -188,7 +188,7 @@ export default async function HomePage() {
       <section className="bg-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-12">
-            <p className="text-[#2AB4A6] text-xs font-black tracking-[0.25em] uppercase mb-2">The Vectis Difference</p>
+            <p className="text-[#C8102E] text-xs font-black tracking-[0.25em] uppercase mb-2">The Vectis Difference</p>
             <h2 className="text-3xl font-black text-[#1e3058] uppercase tracking-tight">Why Choose Vectis?</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
@@ -222,7 +222,7 @@ export default async function HomePage() {
               },
             ].map(f => (
               <div key={f.title} className="text-center group">
-                <div className="w-16 h-16 bg-[#1e3058]/5 rounded-full flex items-center justify-center mx-auto mb-5 text-[#1e3058] group-hover:bg-[#2AB4A6]/10 group-hover:text-[#2AB4A6] transition-colors">
+                <div className="w-16 h-16 bg-[#1e3058]/5 rounded-full flex items-center justify-center mx-auto mb-5 text-[#1e3058] group-hover:bg-[#C8102E]/10 group-hover:text-[#C8102E] transition-colors">
                   {f.icon}
                 </div>
                 <h3 className="text-[#1e3058] font-black text-lg mb-3 uppercase tracking-tight">{f.title}</h3>
@@ -239,7 +239,7 @@ export default async function HomePage() {
           style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "32px 32px" }}
         />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 text-center">
-          <p className="text-[#2AB4A6] text-xs font-black tracking-[0.3em] uppercase mb-4">Free Valuation</p>
+          <p className="text-[#C8102E] text-xs font-black tracking-[0.3em] uppercase mb-4">Free Valuation</p>
           <h2 className="text-white font-black text-4xl uppercase tracking-tight mb-4">
             Ready to Sell Your Collection?
           </h2>
@@ -249,7 +249,7 @@ export default async function HomePage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               href="/submit"
-              className="bg-[#2AB4A6] hover:bg-[#22928a] text-white font-black text-sm uppercase tracking-widest px-10 py-4 transition-colors"
+              className="bg-[#C8102E] hover:bg-[#22928a] text-white font-black text-sm uppercase tracking-widest px-10 py-4 transition-colors"
             >
               GET A FREE VALUATION
             </Link>
@@ -267,7 +267,7 @@ export default async function HomePage() {
       <section className="bg-gray-50 py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-10">
-            <p className="text-[#2AB4A6] text-xs font-black tracking-[0.25em] uppercase mb-2">Explore by Category</p>
+            <p className="text-[#C8102E] text-xs font-black tracking-[0.25em] uppercase mb-2">Explore by Category</p>
             <h2 className="text-2xl font-black text-[#1e3058] uppercase tracking-tight">Our Specialisms</h2>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-0 border-l border-t border-gray-200">
