@@ -1277,7 +1277,7 @@ function InstructionsTab() {
         )}
 
         {/* Edit form */}
-        {mode === "edit" && selected && !isBuiltIn && (
+        {mode === "edit" && selected && (
           <div className="flex flex-col h-full p-5 gap-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-white truncate">{selected}</h3>
@@ -1289,15 +1289,24 @@ function InstructionsTab() {
               className="flex-1 bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] resize-none font-mono"
             />
             {error && <p className="text-red-400 text-xs">{error}</p>}
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => { setMode("view") }}
-                className="px-4 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-400 text-sm rounded hover:border-gray-500 transition-colors">
-                Cancel
-              </button>
-              <button onClick={saveEdit} disabled={saving}
-                className="px-5 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors disabled:opacity-40">
-                {saving ? "Saving…" : "Save Changes"}
-              </button>
+            <div className="flex gap-2 justify-between">
+              {isBuiltIn
+                ? <button onClick={() => setDraftText(PRESETS[selected] ?? "")}
+                    className="px-4 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-sm rounded hover:border-gray-500 hover:text-gray-300 transition-colors">
+                    Reset to default
+                  </button>
+                : <span />
+              }
+              <div className="flex gap-2">
+                <button onClick={() => setMode("view")}
+                  className="px-4 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-400 text-sm rounded hover:border-gray-500 transition-colors">
+                  Cancel
+                </button>
+                <button onClick={saveEdit} disabled={saving}
+                  className="px-5 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors disabled:opacity-40">
+                  {saving ? "Saving…" : "Save Changes"}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1308,23 +1317,31 @@ function InstructionsTab() {
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 flex-shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <h3 className="text-sm font-bold text-white truncate">{selected}</h3>
-                {isBuiltIn
+                {isBuiltIn && selectedCustom
+                  ? <span className="text-xs text-[#C8A96E]/70 bg-[#C8A96E]/10 px-2 py-0.5 rounded flex-shrink-0">Overridden</span>
+                  : isBuiltIn
                   ? <span className="text-xs text-gray-600 bg-gray-800 px-2 py-0.5 rounded flex-shrink-0">Built-in</span>
                   : <span className="text-xs text-[#C8A96E]/70 bg-[#C8A96E]/10 px-2 py-0.5 rounded flex-shrink-0">Custom</span>
                 }
               </div>
-              {!isBuiltIn && (
-                <div className="flex gap-2 flex-shrink-0 ml-3">
-                  <button onClick={() => openEdit(selected, selectedCustom?.instruction ?? "")}
-                    className="px-4 py-1.5 text-sm border border-gray-700 text-gray-300 rounded hover:border-[#C8A96E] hover:text-[#C8A96E] transition-colors">
-                    ✎ Edit
+              <div className="flex gap-2 flex-shrink-0 ml-3">
+                <button onClick={() => openEdit(selected, selectedCustom?.instruction ?? PRESETS[selected] ?? "")}
+                  className="px-4 py-1.5 text-sm border border-gray-700 text-gray-300 rounded hover:border-[#C8A96E] hover:text-[#C8A96E] transition-colors">
+                  ✎ Edit
+                </button>
+                {isBuiltIn && selectedCustom && (
+                  <button onClick={() => deletePreset(selected)} disabled={saving}
+                    className="px-4 py-1.5 text-sm border border-gray-700 text-gray-500 rounded hover:border-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40">
+                    Reset
                   </button>
+                )}
+                {!isBuiltIn && (
                   <button onClick={() => deletePreset(selected)} disabled={saving}
                     className="px-4 py-1.5 text-sm border border-red-900/60 text-red-500 rounded hover:bg-red-900/20 transition-colors disabled:opacity-40">
                     Delete
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
             <pre className="flex-1 px-5 py-4 text-xs text-gray-400 font-mono whitespace-pre-wrap overflow-auto">
               {selectedCustom?.instruction ?? PRESETS[selected] ?? ""}
