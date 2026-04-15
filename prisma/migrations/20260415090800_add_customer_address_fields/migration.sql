@@ -31,12 +31,16 @@ ADD COLUMN     "shippingLine1" TEXT,
 ADD COLUMN     "shippingLine2" TEXT,
 ADD COLUMN     "shippingPostcode" TEXT;
 
+-- Delete orphaned rows before making contactId NOT NULL
+DELETE FROM "Submission" WHERE "contactId" IS NULL;
+DELETE FROM "WarehouseReceipt" WHERE "contactId" IS NULL;
+
 -- AlterTable
-ALTER TABLE "Submission" DROP COLUMN "customerId",
+ALTER TABLE "Submission" DROP COLUMN IF EXISTS "customerId",
 ALTER COLUMN "contactId" SET NOT NULL;
 
 -- AlterTable
-ALTER TABLE "WarehouseReceipt" DROP COLUMN "customerId",
+ALTER TABLE "WarehouseReceipt" DROP COLUMN IF EXISTS "customerId",
 ALTER COLUMN "contactId" SET NOT NULL;
 
 -- DropTable
