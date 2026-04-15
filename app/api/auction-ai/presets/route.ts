@@ -27,3 +27,14 @@ export async function PUT(req: NextRequest) {
   })
   return NextResponse.json({ ok: true })
 }
+
+export async function DELETE(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+
+  const { key } = await req.json()
+  if (!key) return NextResponse.json({ error: "Missing key" }, { status: 400 })
+
+  await prisma.aiPreset.deleteMany({ where: { key } })
+  return NextResponse.json({ ok: true })
+}

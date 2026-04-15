@@ -6,7 +6,7 @@ import { PRESETS } from "@/lib/auction-ai-presets"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "chat" | "batch" | "barcode" | "copier" | "runs"
+type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "instructions"
 
 type ChatMessage = {
   role: "user" | "model"
@@ -45,16 +45,27 @@ function PresetSelector({ value, onChange, overrides, onEdit }: {
   overrides: Record<string, string>
   onEdit: () => void
 }) {
-  const isEdited = value !== "Custom (paste my own)" && overrides[value] !== undefined
+  const builtInKeys = Object.keys(PRESETS)
+  const customKeys  = Object.keys(overrides).filter(k => !PRESETS[k])
+  const isEdited    = value !== "Custom (paste my own)" && builtInKeys.includes(value) && overrides[value] !== undefined
+  const isCustom    = customKeys.includes(value)
+
   return (
     <div className="mb-3">
       <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">System Instruction Preset</label>
       <div className="flex gap-2">
         <select value={value} onChange={(e) => onChange(e.target.value)}
           className="flex-1 bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E]">
-          {Object.keys(PRESETS).map((k) => <option key={k}>{k}</option>)}
+          <optgroup label="Built-in">
+            {builtInKeys.map((k) => <option key={k}>{k}</option>)}
+          </optgroup>
+          {customKeys.length > 0 && (
+            <optgroup label="My Instructions">
+              {customKeys.map((k) => <option key={k}>{k}</option>)}
+            </optgroup>
+          )}
         </select>
-        {value !== "Custom (paste my own)" && (
+        {value !== "Custom (paste my own)" && !isCustom && (
           <button onClick={onEdit}
             className={`px-3 py-1.5 text-xs rounded border transition-colors flex-shrink-0 ${isEdited ? "border-[#C8A96E] text-[#C8A96E] bg-[#2C2C2E] hover:bg-[#3a3a2e]" : "border-gray-700 text-gray-400 bg-[#2C2C2E] hover:border-gray-500"}`}>
             {isEdited ? "✎ Edited" : "✎ Edit"}
@@ -1096,14 +1107,217 @@ function SavedRunsTab() {
   )
 }
 
+// ─── Instructions Tab ─────────────────────────────────────────────────────────
+
+type CustomPreset = { key: string; instruction: string }
+
+function InstructionsTab() {
+  const [presets,   setPresets]   = useState<CustomPreset[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [editing,   setEditing]   = useState<string | null>(null)   // key being edited
+  const [creating,  setCreating]  = useState(false)
+  const [newName,   setNewName]   = useState("")
+  const [newText,   setNewText]   = useState("")
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [draftText, setDraftText] = useState<Record<string, string>>({})
+  const [error,     setError]     = useState<string | null>(null)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const data: Record<string, string> = await fetch("/api/auction-ai/presets").then(r => r.json())
+      setPresets(Object.entries(data).map(([key, instruction]) => ({ key, instruction })))
+    } catch { setError("Failed to load instructions") }
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function save(key: string, instruction: string) {
+    setSavingKey(key)
+    setError(null)
+    try {
+      const res = await fetch("/api/auction-ai/presets", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, instruction }),
+      })
+      if (!res.ok) throw new Error("Save failed")
+      setPresets(p => p.map(x => x.key === key ? { ...x, instruction } : x))
+      setEditing(null)
+    } catch (e: any) { setError(e.message) }
+    setSavingKey(null)
+  }
+
+  async function deletePreset(key: string) {
+    if (!confirm(`Delete "${key}"? This cannot be undone.`)) return
+    setSavingKey(key)
+    try {
+      const res = await fetch("/api/auction-ai/presets", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      })
+      if (!res.ok) throw new Error("Delete failed")
+      setPresets(p => p.filter(x => x.key !== key))
+    } catch (e: any) { setError(e.message) }
+    setSavingKey(null)
+  }
+
+  async function createPreset() {
+    const name = newName.trim()
+    if (!name) return
+    if (presets.some(p => p.key === name) || PRESETS[name]) {
+      setError("A preset with that name already exists."); return
+    }
+    setSavingKey("__new__")
+    setError(null)
+    try {
+      const res = await fetch("/api/auction-ai/presets", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: name, instruction: newText }),
+      })
+      if (!res.ok) throw new Error("Save failed")
+      setPresets(p => [...p, { key: name, instruction: newText }])
+      setNewName(""); setNewText(""); setCreating(false)
+    } catch (e: any) { setError(e.message) }
+    setSavingKey(null)
+  }
+
+  // Built-in presets (read-only display)
+  const builtInKeys = Object.keys(PRESETS).filter(k => k !== "Custom (paste my own)")
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-white">System Instructions</h2>
+          <p className="text-gray-500 text-sm mt-0.5">Create and manage custom AI presets available across all tabs.</p>
+        </div>
+        <button onClick={() => { setCreating(true); setError(null) }}
+          className="px-4 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors">
+          + New Instruction
+        </button>
+      </div>
+
+      {error && <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded px-3 py-2">{error}</p>}
+
+      {/* Create new */}
+      {creating && (
+        <div className="bg-[#141416] border border-[#C8A96E]/40 rounded-xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-[#C8A96E]">New Instruction Preset</h3>
+          <input
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            placeholder="Preset name (e.g. My Custom Preset)"
+            className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E]"
+          />
+          <textarea
+            value={newText}
+            onChange={e => setNewText(e.target.value)}
+            placeholder="Paste your system instruction here…"
+            rows={10}
+            className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] resize-none font-mono"
+          />
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => { setCreating(false); setNewName(""); setNewText(""); setError(null) }}
+              className="px-4 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-400 text-sm rounded hover:border-gray-500 transition-colors">
+              Cancel
+            </button>
+            <button onClick={createPreset} disabled={savingKey === "__new__" || !newName.trim()}
+              className="px-5 py-1.5 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors disabled:opacity-40">
+              {savingKey === "__new__" ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom (saved) presets */}
+      {loading ? (
+        <p className="text-gray-500 text-sm">Loading…</p>
+      ) : (
+        <div className="space-y-3">
+          {presets.length === 0 && !creating && (
+            <p className="text-gray-500 text-sm">No custom instructions saved yet. Click &quot;+ New Instruction&quot; to create one.</p>
+          )}
+          {presets.map(p => (
+            <div key={p.key} className="bg-[#141416] border border-gray-800 rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+                <span className="text-sm font-semibold text-white">{p.key}</span>
+                <div className="flex gap-2">
+                  {editing === p.key ? null : (
+                    <>
+                      <button onClick={() => { setEditing(p.key); setDraftText(d => ({ ...d, [p.key]: p.instruction })); setError(null) }}
+                        className="px-3 py-1 text-xs border border-gray-700 text-gray-400 rounded hover:border-gray-500 hover:text-gray-200 transition-colors">
+                        ✎ Edit
+                      </button>
+                      <button onClick={() => deletePreset(p.key)} disabled={savingKey === p.key}
+                        className="px-3 py-1 text-xs border border-red-900 text-red-500 rounded hover:bg-red-900/20 transition-colors disabled:opacity-40">
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              {editing === p.key ? (
+                <div className="p-4 space-y-3">
+                  <textarea
+                    value={draftText[p.key] ?? p.instruction}
+                    onChange={e => setDraftText(d => ({ ...d, [p.key]: e.target.value }))}
+                    rows={12}
+                    className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] resize-none font-mono"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => { setEditing(null); setError(null) }}
+                      className="px-4 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-400 text-sm rounded hover:border-gray-500 transition-colors">
+                      Cancel
+                    </button>
+                    <button onClick={() => save(p.key, draftText[p.key] ?? p.instruction)} disabled={savingKey === p.key}
+                      className="px-5 py-1.5 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors disabled:opacity-40">
+                      {savingKey === p.key ? "Saving…" : "Save Changes"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <pre className="px-4 py-3 text-xs text-gray-400 font-mono whitespace-pre-wrap line-clamp-4 overflow-hidden">
+                  {p.instruction}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Built-in presets (read-only) */}
+      <div className="space-y-3">
+        <h3 className="text-xs text-gray-600 uppercase tracking-wider pt-2 border-t border-gray-800">
+          Built-in Presets (read-only — use ✎ Edit on Chat or Batch tabs to override)
+        </h3>
+        {builtInKeys.map(k => (
+          <div key={k} className="bg-[#141416] border border-gray-800 rounded-xl overflow-hidden opacity-60">
+            <div className="px-4 py-3 border-b border-gray-800">
+              <span className="text-sm font-semibold text-gray-400">{k}</span>
+            </div>
+            <pre className="px-4 py-3 text-xs text-gray-500 font-mono whitespace-pre-wrap line-clamp-3 overflow-hidden">
+              {PRESETS[k]}
+            </pre>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
-  { id: "chat",      label: "Chat Window",        icon: "💬" },
-  { id: "batch",     label: "Batch Run",          icon: "⚡" },
-  { id: "runs",      label: "Saved Runs",         icon: "🗂" },
-  { id: "barcode",   label: "Barcode Sorter",     icon: "▦"  },
-  { id: "copier",    label: "Description Copier", icon: "📋" },
+  { id: "chat",         label: "Chat Window",        icon: "💬" },
+  { id: "batch",        label: "Batch Run",          icon: "⚡" },
+  { id: "runs",         label: "Saved Runs",         icon: "🗂" },
+  { id: "barcode",      label: "Barcode Sorter",     icon: "▦"  },
+  { id: "copier",       label: "Description Copier", icon: "📋" },
+  { id: "instructions", label: "Instructions",       icon: "📝" },
 ]
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -1163,11 +1377,12 @@ export default function AuctionAIPage() {
       </aside>
 
       <main className="flex-1 overflow-auto p-6">
-        <div className={tab === "chat"      ? "" : "hidden"}><ChatTab model={model} /></div>
-        <div className={tab === "batch"     ? "" : "hidden"}><BatchTab model={model} /></div>
-        <div className={tab === "runs"      ? "" : "hidden"}><SavedRunsTab /></div>
-        <div className={tab === "barcode"   ? "" : "hidden"}><BarcodeTab /></div>
-        <div className={tab === "copier"    ? "" : "hidden"}><CopierTab /></div>
+        <div className={tab === "chat"         ? "" : "hidden"}><ChatTab model={model} /></div>
+        <div className={tab === "batch"        ? "" : "hidden"}><BatchTab model={model} /></div>
+        <div className={tab === "runs"         ? "" : "hidden"}><SavedRunsTab /></div>
+        <div className={tab === "barcode"      ? "" : "hidden"}><BarcodeTab /></div>
+        <div className={tab === "copier"       ? "" : "hidden"}><CopierTab /></div>
+        <div className={tab === "instructions" ? "" : "hidden"}><InstructionsTab /></div>
       </main>
     </div>
   )
