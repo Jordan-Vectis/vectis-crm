@@ -22,7 +22,7 @@ interface Auction {
 }
 
 interface Lot {
-  id: string; lotNumber: string; title: string; description: string
+  id: string; lotNumber: string; barcode: string | null; title: string; description: string
   estimateLow: number | null; estimateHigh: number | null; startingBid: number | null; reserve: number | null
   hammerPrice: number | null; condition: string | null; vendor: string | null
   tote: string | null; receipt: string | null; category: string | null
@@ -371,6 +371,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
 
   // ── Per-column filters ──────────────────────────────────────────────────
   const [fLotNo,    setFLotNo]    = useState("")
+  const [fBarcode,  setFBarcode]  = useState("")
   const [fTitle,    setFTitle]    = useState("")
   const [fVendor,   setFVendor]   = useState("")
   const [fReceipt,  setFReceipt]  = useState("")
@@ -383,6 +384,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
 
   const filtered = useMemo(() => lots.filter(l =>
     colMatch(l.lotNumber, fLotNo) &&
+    colMatch(l.barcode, fBarcode) &&
     colMatch(l.title, fTitle) &&
     colMatch(l.vendor, fVendor) &&
     colMatch(l.receipt, fReceipt) &&
@@ -392,16 +394,17 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
     (fStatus === "" || l.status === fStatus)
   ), [lots, fLotNo, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus])
 
-  const filtersActive = [fLotNo, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus].some(f => f !== "")
+  const filtersActive = [fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fStatus].some(f => f !== "")
 
   function clearFilters() {
-    setFLotNo(""); setFTitle(""); setFVendor(""); setFReceipt("")
+    setFLotNo(""); setFBarcode(""); setFTitle(""); setFVendor(""); setFReceipt("")
     setFTote(""); setFCategory(""); setFPhotos(""); setFStatus("")
   }
 
   function exportExcel() {
     const rows = filtered.map(l => ({
       "Lot No.":      l.lotNumber,
+      "Barcode":      l.barcode ?? "",
       "Title":        l.title,
       "Description":  l.description,
       "Estimate Low": l.estimateLow ?? "",
@@ -434,7 +437,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       if (!l.tote?.trim()) continue
       const tote = l.tote.trim()
       if (!toteMap.has(tote)) toteMap.set(tote, [])
-      toteMap.get(tote)!.push(l.lotNumber.trim())
+      toteMap.get(tote)!.push((l.barcode ?? l.lotNumber).trim())
     }
     if (toteMap.size === 0) { alert("No lots with tote numbers in current filter."); return }
     const lines = ["ToteNumber,LotCount,Barcodes", ...Array.from(toteMap.entries()).map(([t, barcodes]) => `${t},${barcodes.length},${barcodes.join("|")}`)]
@@ -766,6 +769,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                   onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-600 accent-[#2AB4A6]" />
               </th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Lot No.</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Barcode</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Receipt</th>
@@ -779,6 +783,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
             <tr className="border-b border-gray-800 bg-[#111113]">
               <td className="px-4 py-1.5" />
               <td className="px-2 py-1.5"><input value={fLotNo}    onChange={e => setFLotNo(e.target.value)}    placeholder="Filter…" className={COL_INPUT} /></td>
+              <td className="px-2 py-1.5"><input value={fBarcode}  onChange={e => setFBarcode(e.target.value)}  placeholder="Filter…" className={COL_INPUT} /></td>
               <td className="px-2 py-1.5"><input value={fTitle}    onChange={e => setFTitle(e.target.value)}    placeholder="Filter…" className={COL_INPUT} /></td>
               <td className="px-2 py-1.5"><input value={fVendor}   onChange={e => setFVendor(e.target.value)}   placeholder="Filter…" className={COL_INPUT} /></td>
               <td className="px-2 py-1.5"><input value={fReceipt}  onChange={e => setFReceipt(e.target.value)}  placeholder="Filter…" className={COL_INPUT} /></td>
@@ -809,7 +814,8 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                       className="w-4 h-4 rounded border-gray-600 accent-[#2AB4A6]" />
                   </label>
                 </td>
-                <td className="px-4 py-3 font-mono font-semibold text-[#2AB4A6] whitespace-nowrap">{lot.lotNumber}</td>
+                <td className="px-4 py-3 font-mono font-semibold text-[#2AB4A6] whitespace-nowrap">{lot.lotNumber || "—"}</td>
+                <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">{lot.barcode ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-200 max-w-[160px] truncate">{lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.vendor ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.receipt ?? "—"}</td>
@@ -949,8 +955,12 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
           {/* Left */}
           <div className="space-y-4">
             <div>
-              <label className={lbl}>Lot Number *</label>
-              <input name="lotNumber" required defaultValue={lot.lotNumber} className={input} />
+              <label className={lbl}>Barcode</label>
+              <input name="barcode" defaultValue={lot.barcode ?? ""} className={input} placeholder="BC internal barcode" />
+            </div>
+            <div>
+              <label className={lbl}>Lot Number <span className="text-gray-600 font-normal">(auction catalogue number)</span></label>
+              <input name="lotNumber" defaultValue={lot.lotNumber} className={input} placeholder="Set by Auto-number" />
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">

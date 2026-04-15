@@ -40,6 +40,7 @@ export default async function AuctionDetailPage({
       lots={auction.lots.map(l => ({
         id: l.id,
         lotNumber: l.lotNumber,
+        barcode: l.barcode,
         title: l.title,
         description: l.description,
         estimateLow: l.estimateLow,

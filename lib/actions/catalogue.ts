@@ -342,6 +342,7 @@ export async function importLots(auctionId: string, rows: {
 function extractLotData(formData: FormData) {
   return {
     lotNumber:   (formData.get("lotNumber") as string) || "",
+    barcode:     (formData.get("barcode") as string) || null,
     title:       (formData.get("title") as string) || "",
     description: (formData.get("description") as string) || "",
     estimateLow:  formData.get("estimateLow")  ? parseInt(formData.get("estimateLow") as string)  : null,

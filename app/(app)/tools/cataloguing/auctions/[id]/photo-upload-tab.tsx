@@ -5,7 +5,7 @@ import { uploadLotPhoto } from "@/lib/actions/catalogue"
 
 interface Props {
   auctionId: string
-  lots: { id: string; lotNumber: string }[]
+  lots: { id: string; lotNumber: string; barcode: string | null }[]
   onUploaded: () => void
 }
 
@@ -26,8 +26,11 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
   const [error, setError]         = useState<string | null>(null)
   const [skipped, setSkipped]     = useState<string[]>([])
 
-  // Lookup: normalised lot number → lot id
-  const lotMap = new Map(lots.map(l => [l.lotNumber.toLowerCase().trim(), l.id]))
+  // Lookup: barcode → lot id (falls back to lotNumber for older lots pre-migration)
+  const lotMap = new Map([
+    ...lots.map(l => [l.lotNumber.toLowerCase().trim(), l.id] as [string, string]),
+    ...lots.filter(l => l.barcode).map(l => [l.barcode!.toLowerCase().trim(), l.id] as [string, string]),
+  ])
 
   async function decodeBarcode(file: File): Promise<string | null> {
     try {

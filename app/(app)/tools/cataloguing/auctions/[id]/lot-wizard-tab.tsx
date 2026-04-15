@@ -509,7 +509,8 @@ export default function LotWizardTab({
     const title = keyPoints.split("\n")[0]?.trim() || autoTitle
 
     const fd = new FormData()
-    fd.append("lotNumber",    barcode)
+    fd.append("lotNumber",    barcode)   // kept as temp lot ID until auto-lotter assigns a number
+    fd.append("barcode",      barcode)   // stored separately — auto-lotter only changes lotNumber
     fd.append("title",        title)
     fd.append("description",  keyPoints)
     fd.append("estimateLow",  estLow.replace(/[£,]/g, "").trim())

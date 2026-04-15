@@ -258,6 +258,7 @@ model CatalogueLot {
   lotNumber    String
   title        String
   description  String           @db.Text @default("")
+  barcode      String?
   estimateLow  Int?
   estimateHigh Int?
   startingBid  Int?

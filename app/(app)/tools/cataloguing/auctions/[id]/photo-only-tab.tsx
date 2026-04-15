@@ -84,7 +84,8 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
 
   function buildFormData() {
     const fd = new FormData()
-    fd.set("lotNumber", lotBarcode.trim())
+    fd.set("lotNumber", lotBarcode.trim())   // temp ID until auto-lotter runs
+    fd.set("barcode",   lotBarcode.trim())   // permanent barcode field
     if (toteNumber.trim()) fd.set("tote", toteNumber.trim())
     if (notes.trim()) fd.set("notes", notes.trim())
     itemPhotos.forEach(p => fd.append("itemPhoto", p.file))
