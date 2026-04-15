@@ -7,18 +7,12 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
-    // Allow Next.js image optimiser to process our local R2 proxy routes
-    remotePatterns: [
-      {
-        protocol: "http",
-        hostname: "localhost",
-        pathname: "/api/**",
-      },
-      {
-        protocol: "https",
-        hostname: "**",
-        pathname: "/api/**",
-      },
+    // Allow query-string local proxy routes (required by Next.js 16)
+    localPatterns: [
+      { pathname: "/api/public/photo/**" },
+      { pathname: "/api/public/photo" },
+      { pathname: "/api/catalogue/photo-proxy/**" },
+      { pathname: "/api/catalogue/photo-proxy" },
     ],
     // Serve thumbnails at these widths — keeps the lot grid fast
     deviceSizes: [640, 1080, 1920],
