@@ -55,7 +55,9 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
   const [preset,       setPreset]       = useState(PRESET_KEYS[0] ?? "")
   const [model,        setModel]        = useState(DEFAULT_MODEL)
   const [modelList,    setModelList]    = useState<string[]>([DEFAULT_MODEL])
-  const [filter,       setFilter]       = useState<"all" | "photos" | "photos-and-desc" | "not-upgraded">("not-upgraded")
+  const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(
+    () => new Set(lots.filter(l => !l.aiUpgraded && l.imageUrls.length > 0).map(l => l.id))
+  )
   const [results,      setResults]      = useState<LotResult[]>([])
   const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 })
   const [runProgress,   setRunProgress]   = useState({ done: 0, total: 0 })
@@ -105,13 +107,19 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
     }
   }
 
-  // Eligible lots based on filter
-  const eligibleLots = lots.filter(l => {
-    if (filter === "not-upgraded")    return !l.aiUpgraded && l.imageUrls.length > 0
-    if (filter === "photos")          return l.imageUrls.length > 0
-    if (filter === "photos-and-desc") return l.imageUrls.length > 0 && l.description.trim().length > 0
-    return true // "all"
-  })
+  function toggleLot(id: string) {
+    setSelectedLotIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function quickSelect(ids: string[]) {
+    setSelectedLotIds(new Set(ids))
+  }
+
+  const eligibleLots = lots.filter(l => selectedLotIds.has(l.id))
 
   async function start() {
     if (eligibleLots.length === 0) { setError("No lots match the selected filter."); return }
@@ -259,11 +267,9 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
     onDone()
   }
 
-  const approvedCount         = results.filter(r => r.approved && r.status === "ok").length
-  const failedCount           = results.filter(r => r.status === "failed").length
-  const okCount               = results.filter(r => r.status === "ok").length
-  const upgradedCount         = lots.filter(l => l.aiUpgraded).length
-  const notUpgradedWithPhotos = lots.filter(l => !l.aiUpgraded && l.imageUrls.length > 0).length
+  const approvedCount = results.filter(r => r.approved && r.status === "ok").length
+  const failedCount   = results.filter(r => r.status === "failed").length
+  const okCount       = results.filter(r => r.status === "ok").length
 
   return (
     <div className="p-4 md:p-6 max-w-4xl">
@@ -274,13 +280,8 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
           <div>
             <h2 className="text-sm font-semibold text-gray-200">AI Description Upgrade</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Automatically fetches photos from storage, runs them through AI, then lets you review and approve changes before overwriting.
+              Select the lots to process, choose a preset and model, then run.
             </p>
-            {upgradedCount > 0 && (
-              <p className="text-xs text-purple-400 mt-1.5">
-                ✨ {upgradedCount} lot{upgradedCount !== 1 ? "s" : ""} already AI upgraded
-              </p>
-            )}
           </div>
 
           {/* Preset */}
@@ -301,26 +302,61 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
             </select>
           </div>
 
-          {/* Filter */}
+          {/* Lot selector */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1.5 uppercase tracking-wider">Which lots to process</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {([
-                ["not-upgraded",    "Not yet upgraded",    `${notUpgradedWithPhotos} lots`],
-                ["photos",          "Lots with photos",    `${lots.filter(l => l.imageUrls.length > 0).length} lots`],
-                ["photos-and-desc", "Photos & description",`${lots.filter(l => l.imageUrls.length > 0 && l.description.trim()).length} lots`],
-                ["all",             "All lots",            `${lots.length} lots`],
-              ] as const).map(([val, label, count]) => (
-                <button key={val} onClick={() => setFilter(val)}
-                  className={`flex flex-col items-center gap-0.5 py-3 px-2 rounded-xl border text-xs transition-colors ${
-                    filter === val
-                      ? "border-purple-500 bg-purple-900/20 text-purple-300"
-                      : "border-gray-700 text-gray-500 hover:border-gray-500"
-                  }`}>
-                  <span className="font-semibold text-sm">{count}</span>
-                  <span className="text-center leading-tight">{label}</span>
-                </button>
-              ))}
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs text-gray-500 uppercase tracking-wider">Select lots</label>
+              <div className="flex gap-2 flex-wrap justify-end">
+                <button onClick={() => quickSelect(lots.filter(l => !l.aiUpgraded && l.imageUrls.length > 0).map(l => l.id))}
+                  className="text-xs text-gray-500 hover:text-purple-400 transition-colors">Not upgraded</button>
+                <span className="text-gray-700 text-xs">·</span>
+                <button onClick={() => quickSelect(lots.filter(l => l.imageUrls.length > 0).map(l => l.id))}
+                  className="text-xs text-gray-500 hover:text-purple-400 transition-colors">Has photos</button>
+                <span className="text-gray-700 text-xs">·</span>
+                <button onClick={() => quickSelect(lots.map(l => l.id))}
+                  className="text-xs text-gray-500 hover:text-purple-400 transition-colors">All</button>
+                <span className="text-gray-700 text-xs">·</span>
+                <button onClick={() => quickSelect([])}
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors">None</button>
+              </div>
+            </div>
+
+            <div className="border border-gray-700 rounded-xl overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 py-2 bg-[#111113] border-b border-gray-800">
+                <input type="checkbox"
+                  checked={lots.length > 0 && selectedLotIds.size === lots.length}
+                  onChange={() => selectedLotIds.size === lots.length ? quickSelect([]) : quickSelect(lots.map(l => l.id))}
+                  className="w-3.5 h-3.5 rounded accent-purple-500 flex-shrink-0" />
+                <span className="text-xs text-gray-600 flex-1">
+                  {selectedLotIds.size} of {lots.length} lots selected
+                </span>
+                <span className="text-xs text-gray-700 w-10 text-center">Photos</span>
+                <span className="text-xs text-gray-700 w-6 text-center">AI</span>
+              </div>
+
+              {/* Lot rows */}
+              <div className="max-h-56 overflow-y-auto" style={{ scrollbarWidth: "thin", scrollbarColor: "#4b5563 transparent" }}>
+                {lots.map(lot => (
+                  <label key={lot.id}
+                    className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-gray-800 last:border-0 transition-colors ${
+                      selectedLotIds.has(lot.id) ? "bg-purple-900/10" : "hover:bg-[#1a1a1e]"
+                    }`}>
+                    <input type="checkbox" checked={selectedLotIds.has(lot.id)} onChange={() => toggleLot(lot.id)}
+                      className="w-3.5 h-3.5 rounded accent-purple-500 flex-shrink-0" />
+                    <span className="font-mono text-xs text-purple-300 w-14 flex-shrink-0">{lot.lotNumber}</span>
+                    <span className="text-xs text-gray-300 flex-1 truncate">{lot.title || <span className="text-gray-600 italic">Untitled</span>}</span>
+                    <span className="text-xs w-10 text-center">
+                      {lot.imageUrls.length > 0
+                        ? <span className="text-[#2AB4A6]">{lot.imageUrls.length}</span>
+                        : <span className="text-gray-700">—</span>}
+                    </span>
+                    <span className="w-6 text-center text-xs">
+                      {lot.aiUpgraded ? "✨" : <span className="text-gray-700">—</span>}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -328,7 +364,7 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
 
           <button onClick={start} disabled={eligibleLots.length === 0}
             className="w-full py-3 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 text-white font-semibold rounded-xl text-sm transition-colors">
-            ✨ Run AI on {eligibleLots.length} lots
+            ✨ Run AI on {eligibleLots.length} lot{eligibleLots.length !== 1 ? "s" : ""}
           </button>
         </div>
       )}
