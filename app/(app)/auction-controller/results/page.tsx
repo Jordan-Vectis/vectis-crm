@@ -40,6 +40,27 @@ interface AuctionState {
   onlineCount: number
 }
 
+interface PastAuction {
+  id: string
+  name: string
+  code: string
+  auctionDate: string | null
+  finished: boolean
+  complete: boolean
+  _count: { lots: number }
+}
+
+interface DbLot {
+  id: string
+  lotNumber: string
+  title: string
+  status: string
+  hammerPrice: number | null
+  currentBid: number | null
+  estimateLow: number | null
+  estimateHigh: number | null
+}
+
 interface FlatBid {
   lotNumber: string
   lotId: string
@@ -78,11 +99,20 @@ function bidTypeLabel(type: string) {
 }
 
 export default function ResultsPage() {
+  // ── Live socket state ────────────────────────────────────────────────────
   const [state, setState] = useState<AuctionState | null>(null)
   const [lotBids, setLotBids] = useState<Record<string, BidEntry[]>>({})
   const [lotTitles, setLotTitles] = useState<Record<string, string>>({})
   const socketRef = useRef<Socket | null>(null)
 
+  // ── DB / historical state ────────────────────────────────────────────────
+  const [pastAuctions, setPastAuctions] = useState<PastAuction[]>([])
+  const [selectedAuctionId, setSelectedAuctionId] = useState<string | null>(null)
+  const [dbAuctionName, setDbAuctionName] = useState<string>("")
+  const [dbLots, setDbLots] = useState<DbLot[]>([])
+  const [dbLoading, setDbLoading] = useState(false)
+
+  // ── Socket connection ────────────────────────────────────────────────────
   useEffect(() => {
     const socket = ioClient(window.location.origin, { transports: ["websocket", "polling"] })
     socketRef.current = socket
@@ -103,6 +133,29 @@ export default function ResultsPage() {
     return () => { socket.disconnect() }
   }, [])
 
+  // ── Load past auctions list ──────────────────────────────────────────────
+  useEffect(() => {
+    fetch("/api/auction-results")
+      .then(r => r.json())
+      .then(setPastAuctions)
+      .catch(() => {})
+  }, [])
+
+  // ── Load DB lots when an auction is selected ────────────────────────────
+  useEffect(() => {
+    if (!selectedAuctionId) return
+    setDbLoading(true)
+    fetch(`/api/auction-results?auctionId=${selectedAuctionId}`)
+      .then(r => r.json())
+      .then(data => {
+        setDbAuctionName(data.auction?.name ?? "")
+        setDbLots(data.lots ?? [])
+        setDbLoading(false)
+      })
+      .catch(() => setDbLoading(false))
+  }, [selectedAuctionId])
+
+  // ── Derived live data ────────────────────────────────────────────────────
   const auction = state?.auction
   const lots = state?.lots ?? []
   const completedLots = lots.filter(l =>
@@ -111,7 +164,7 @@ export default function ResultsPage() {
   const totalSold  = completedLots.filter(l => l.status === "SOLD").length
   const totalValue = completedLots.reduce((sum, l) => sum + (l.hammerPrice ?? 0), 0)
 
-  // Build flat bid list — all completed lots, all bids, newest first
+  // Flat live bid list
   const flatBids: FlatBid[] = []
   for (const lot of [...completedLots].reverse()) {
     const bids = lotBids[lot.id] ?? []
@@ -130,8 +183,14 @@ export default function ResultsPage() {
       })
     })
   }
-  // Sort newest bid first
   flatBids.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+  // ── DB derived data ──────────────────────────────────────────────────────
+  const dbCompleted = dbLots.filter(l => l.status === "SOLD" || l.status === "PASSED" || l.status === "WITHDRAWN")
+  const dbSold      = dbCompleted.filter(l => l.status === "SOLD")
+  const dbTotal     = dbSold.reduce((s, l) => s + (l.hammerPrice ?? 0), 0)
+
+  const isLive = !!auction
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -139,26 +198,59 @@ export default function ResultsPage() {
       {/* ── Header ── */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <div>
-          <h1 className="text-gray-900 font-black text-xl">Live Results</h1>
-          {auction && <p className="text-gray-400 text-sm mt-0.5">{auction.title}</p>}
+          <h1 className="text-gray-900 font-black text-xl">
+            {isLive ? "Live Results" : selectedAuctionId ? dbAuctionName || "Results" : "Auction Results"}
+          </h1>
+          {isLive && auction && <p className="text-gray-400 text-sm mt-0.5">{auction.title}</p>}
+          {!isLive && (
+            <div className="mt-1 flex items-center gap-2">
+              <select
+                value={selectedAuctionId ?? ""}
+                onChange={e => {
+                  setSelectedAuctionId(e.target.value || null)
+                  setDbLots([])
+                }}
+                className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-700 focus:outline-none focus:border-[#32348A]"
+              >
+                <option value="">— Select a past auction —</option>
+                {pastAuctions.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}{a.auctionDate ? ` — ${new Date(a.auctionDate).toLocaleDateString("en-GB")}` : ""}
+                  </option>
+                ))}
+              </select>
+              {isLive === false && (
+                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">No live auction</span>
+              )}
+            </div>
+          )}
         </div>
+
         <div className="flex items-center gap-10">
           <div className="text-center">
-            <p className="text-green-500 font-black text-3xl leading-none">{totalSold}</p>
+            <p className="text-green-500 font-black text-3xl leading-none">
+              {isLive ? totalSold : dbSold.length}
+            </p>
             <p className="text-gray-400 text-[10px] uppercase tracking-widest mt-1">Sold</p>
           </div>
           <div className="text-center">
-            <p className="text-red-500 font-black text-3xl leading-none">{completedLots.length - totalSold}</p>
+            <p className="text-red-500 font-black text-3xl leading-none">
+              {isLive ? completedLots.length - totalSold : dbCompleted.length - dbSold.length}
+            </p>
             <p className="text-gray-400 text-[10px] uppercase tracking-widest mt-1">Unsold</p>
           </div>
           <div className="text-center">
-            <p className="text-[#32348A] font-black text-3xl leading-none">{fmt(totalValue)}</p>
+            <p className="text-[#32348A] font-black text-3xl leading-none">
+              {fmt(isLive ? totalValue : dbTotal)}
+            </p>
             <p className="text-gray-400 text-[10px] uppercase tracking-widest mt-1">Total</p>
           </div>
-          <div className="text-center">
-            <p className="text-gray-700 font-black text-3xl leading-none">{state?.onlineCount ?? 0}</p>
-            <p className="text-gray-400 text-[10px] uppercase tracking-widest mt-1">Online</p>
-          </div>
+          {isLive && (
+            <div className="text-center">
+              <p className="text-gray-700 font-black text-3xl leading-none">{state?.onlineCount ?? 0}</p>
+              <p className="text-gray-400 text-[10px] uppercase tracking-widest mt-1">Online</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -176,87 +268,148 @@ export default function ResultsPage() {
         </div>
       )}
 
-      {!auction && (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-gray-400 text-lg">Waiting for auction to start…</p>
-        </div>
-      )}
+      {/* ── Content ── */}
+      <div className="flex-1 overflow-auto">
 
-      {/* ── Bid table ── */}
-      {auction && (
-        <div className="flex-1 overflow-auto">
-          {flatBids.length === 0 ? (
+        {/* ── LIVE bid table ── */}
+        {isLive && (
+          flatBids.length === 0 ? (
             <p className="text-gray-400 text-center py-20">No bids recorded yet</p>
           ) : (
-            <table className="w-full text-sm border-collapse bg-white">
-              <thead className="sticky top-[73px] z-10 bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest w-20"></th>
-                  <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Customer No.</th>
-                  <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Customer Name</th>
-                  <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Bid Type</th>
-                  <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Bid Amount</th>
-                  <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Status</th>
-                  <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {flatBids.map((bid, i) => (
-                  <tr
-                    key={`${bid.lotId}-${i}`}
-                    className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
-                  >
-                    {/* Lot badge */}
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-[#32348A] text-white font-black text-sm">
-                        {bid.lotNumber}
-                      </span>
-                    </td>
+            <LiveBidTable flatBids={flatBids} />
+          )
+        )}
 
-                    {/* Customer number */}
-                    <td className="px-4 py-3">
-                      <span className="text-[#32348A] font-semibold text-sm">
-                        {bid.bidderId ? `C${bid.bidderId}` : "0"}
-                      </span>
-                    </td>
+        {/* ── DB / historical view ── */}
+        {!isLive && !selectedAuctionId && (
+          <div className="flex flex-col items-center justify-center py-24 gap-3">
+            <p className="text-gray-400 text-lg">No live auction running</p>
+            <p className="text-gray-400 text-sm">Select a past auction above to view results</p>
+          </div>
+        )}
 
-                    {/* Customer name */}
-                    <td className="px-4 py-3 text-gray-700 font-medium">
-                      {bid.bidderName || (bid.type === "Room" ? "Clerk" : "—")}
-                    </td>
+        {!isLive && selectedAuctionId && dbLoading && (
+          <p className="text-gray-400 text-center py-16 animate-pulse">Loading…</p>
+        )}
 
-                    {/* Bid type */}
-                    <td className="px-4 py-3 text-gray-500">
-                      {bidTypeLabel(bid.type)}
-                    </td>
+        {!isLive && selectedAuctionId && !dbLoading && dbLots.length === 0 && (
+          <p className="text-gray-400 text-center py-16">No lots found for this auction</p>
+        )}
 
-                    {/* Bid amount */}
-                    <td className="px-4 py-3">
-                      <span className="text-gray-900 font-bold">{fmt(bid.amount)}</span>
-                    </td>
-
-                    {/* Status */}
-                    <td className="px-4 py-3">
-                      {bid.isWinner ? (
-                        <span className="text-green-600 font-semibold text-xs">
-                          Sold {fmtDatetime(bid.timestamp)}
-                        </span>
-                      ) : bid.lotStatus === "PASSED" || bid.lotStatus === "WITHDRAWN" ? (
-                        <span className="text-red-400 text-xs font-semibold">{bid.lotStatus}</span>
-                      ) : null}
-                    </td>
-
-                    {/* Time */}
-                    <td className="px-4 py-3 text-gray-400 text-xs">
-                      {fmtDatetime(bid.timestamp)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+        {!isLive && selectedAuctionId && !dbLoading && dbLots.length > 0 && (
+          <DbResultsTable lots={dbLots} />
+        )}
+      </div>
     </div>
+  )
+}
+
+// ── Live bid table (socket data) ────────────────────────────────────────────
+function LiveBidTable({ flatBids }: { flatBids: FlatBid[] }) {
+  return (
+    <table className="w-full text-sm border-collapse bg-white">
+      <thead className="sticky top-[73px] z-10 bg-gray-50 border-b border-gray-200">
+        <tr>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest w-20"></th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Customer No.</th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Customer Name</th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Bid Type</th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Bid Amount</th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Status</th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {flatBids.map((bid, i) => (
+          <tr key={`${bid.lotId}-${i}`} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+            <td className="px-4 py-3">
+              <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-[#32348A] text-white font-black text-sm">
+                {bid.lotNumber}
+              </span>
+            </td>
+            <td className="px-4 py-3">
+              <span className="text-[#32348A] font-semibold text-sm">
+                {bid.bidderId ? `C${bid.bidderId}` : "0"}
+              </span>
+            </td>
+            <td className="px-4 py-3 text-gray-700 font-medium">
+              {bid.bidderName || (bid.type === "Room" ? "Clerk" : "—")}
+            </td>
+            <td className="px-4 py-3 text-gray-500">
+              {bidTypeLabel(bid.type)}
+            </td>
+            <td className="px-4 py-3">
+              <span className="text-gray-900 font-bold">{fmt(bid.amount)}</span>
+            </td>
+            <td className="px-4 py-3">
+              {bid.isWinner ? (
+                <span className="text-green-600 font-semibold text-xs">
+                  Sold {fmtDatetime(bid.timestamp)}
+                </span>
+              ) : (bid.lotStatus === "PASSED" || bid.lotStatus === "WITHDRAWN") ? (
+                <span className="text-red-400 text-xs font-semibold">{bid.lotStatus}</span>
+              ) : null}
+            </td>
+            <td className="px-4 py-3 text-gray-400 text-xs">
+              {fmtDatetime(bid.timestamp)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+// ── DB results table (lot-level, no individual bid history) ─────────────────
+function DbResultsTable({ lots }: { lots: DbLot[] }) {
+  return (
+    <table className="w-full text-sm border-collapse bg-white">
+      <thead className="sticky top-[73px] z-10 bg-gray-50 border-b border-gray-200">
+        <tr>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest w-20"></th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Title</th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Estimate</th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Hammer Price</th>
+          <th className="text-left px-4 py-3 text-gray-400 font-bold text-[10px] uppercase tracking-widest">Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lots.map((lot, i) => {
+          const isSold = lot.status === "SOLD"
+          const isPassed = lot.status === "PASSED" || lot.status === "WITHDRAWN"
+          return (
+            <tr key={lot.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${isSold ? "" : "opacity-60"}`}>
+              <td className="px-4 py-3">
+                <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-white font-black text-sm ${
+                  isSold ? "bg-[#32348A]" : isPassed ? "bg-red-400" : "bg-gray-300"
+                }`}>
+                  {lot.lotNumber}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-gray-700 font-medium max-w-xs truncate">{lot.title}</td>
+              <td className="px-4 py-3 text-gray-500 text-xs">
+                {lot.estimateLow || lot.estimateHigh
+                  ? `${fmt(lot.estimateLow)} – ${fmt(lot.estimateHigh)}`
+                  : "—"}
+              </td>
+              <td className="px-4 py-3">
+                <span className={`font-bold ${isSold ? "text-gray-900" : "text-gray-400"}`}>
+                  {fmt(lot.hammerPrice)}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                {isSold ? (
+                  <span className="text-green-600 font-semibold text-xs">SOLD</span>
+                ) : isPassed ? (
+                  <span className="text-red-400 font-semibold text-xs">{lot.status}</span>
+                ) : (
+                  <span className="text-gray-400 text-xs">PENDING</span>
+                )}
+              </td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
   )
 }

@@ -465,7 +465,11 @@ export default function AuctionControllerPage() {
               )}
               {auction?.status === "PAUSED" && (
                 <button
-                  onClick={() => emit("clerk:startAuction")}
+                  onClick={() => {
+                    emit("clerk:resumeAuction")
+                    setActivePauseMessage(null)
+                    setPauseMessageInput("")
+                  }}
                   className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
                 >
                   ▶ Resume
