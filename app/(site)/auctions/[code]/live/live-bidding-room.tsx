@@ -59,6 +59,10 @@ interface Props {
   initialLotIndex: number
   isLive: boolean
   lots: Lot[]
+  isLoggedIn: boolean
+  isRegistered: boolean
+  customerId: string | null
+  customerName: string | null
 }
 
 function fmt(n: number | null | undefined) {
@@ -73,6 +77,7 @@ function fmtTime(iso: string) {
 
 export default function LiveBiddingRoom({
   auctionName, auctionCode, auctionDate, initialLotIndex, lots: initialLots,
+  isLoggedIn, isRegistered, customerId, customerName,
 }: Props) {
   const [state, setState] = useState<AuctionState | null>(null)
   const [fairWarning, setFairWarning] = useState(false)
@@ -82,6 +87,8 @@ export default function LiveBiddingRoom({
   const [autoScroll, setAutoScroll] = useState(true)
   const [imageIndex, setImageIndex] = useState(0)
   const [streamActive, setStreamActive] = useState(false)
+  const [bidPending, setBidPending] = useState(false)
+  const [bidFeedback, setBidFeedback] = useState<{ ok: boolean; msg: string } | null>(null)
   const stripRef = useRef<HTMLDivElement>(null)
 
   const socketRef = useRef<Socket | null>(null)
@@ -91,7 +98,13 @@ export default function LiveBiddingRoom({
   useEffect(() => {
     const socket = ioClient(window.location.origin, { transports: ["websocket", "polling"] })
     socketRef.current = socket
-    socket.on("connect", () => { setConnected(true); socket.emit("bidder:join", { name: "Guest" }) })
+    socket.on("connect", () => {
+      setConnected(true)
+      socket.emit("bidder:join", {
+        name: customerName ?? "Guest",
+        bidderId: customerId ?? undefined,
+      })
+    })
     socket.on("disconnect", () => setConnected(false))
     socket.on("auction:state", (s: AuctionState) => {
       setState(s)
@@ -100,6 +113,16 @@ export default function LiveBiddingRoom({
     })
     socket.on("bid:new", () => { setBidFlash(true); setTimeout(() => setBidFlash(false), 800) })
     socket.on("auction:fairWarning", () => setFairWarning(true))
+    socket.on("bid:accepted", ({ amount }: { amount: number }) => {
+      setBidPending(false)
+      setBidFeedback({ ok: true, msg: `✓ Bid of £${amount.toLocaleString("en-GB")} placed — you are now leading!` })
+      setTimeout(() => setBidFeedback(null), 4000)
+    })
+    socket.on("bid:rejected", ({ reason }: { reason: string }) => {
+      setBidPending(false)
+      setBidFeedback({ ok: false, msg: reason })
+      setTimeout(() => setBidFeedback(null), 4000)
+    })
 
     // ── WebRTC: stream becomes available ───────────────────────────────────
     async function startViewingStream(broadcasterId: string) {
@@ -187,6 +210,9 @@ export default function LiveBiddingRoom({
 
   const lastBid = lot?.bids?.[lot.bids.length - 1]
   const bids = lot?.bids ? [...lot.bids].reverse() : []
+
+  // Is this customer currently the top bidder on the live lot?
+  const isLeading = !!(customerId && lastBid?.bidderId === customerId)
 
   // Lots strip — use socket summary if available, otherwise initial lots
   const stripLots = state?.lots?.length
@@ -343,22 +369,94 @@ export default function LiveBiddingRoom({
             </div>
           )}
 
-          {/* BID button — hover emits signal to auctioneer screen */}
-          <Link
-            href="/portal/register"
-            onMouseEnter={() => socketRef.current?.emit("bidder:hoverBid", { hovering: true })}
-            onMouseLeave={() => socketRef.current?.emit("bidder:hoverBid", { hovering: false })}
-            className="block w-full bg-[#32348A] hover:bg-[#28296e] text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-colors mb-3"
-          >
-            BID {fmt(askingBid)}
-          </Link>
+          {/* You are leading banner */}
+          {isLeading && (
+            <div className="bg-green-50 border-2 border-green-500 text-green-700 text-sm font-black text-center py-3 mb-4 tracking-wide">
+              🏆 YOU ARE CURRENTLY WINNING THIS LOT
+            </div>
+          )}
 
-          <Link
-            href="/portal/register"
-            className="block w-full border-2 border-[#32348A] text-[#32348A] hover:bg-[#32348A] hover:text-white font-bold text-center py-3 text-xs tracking-widest uppercase transition-colors"
-          >
-            APPROVED TO BID LIVE
-          </Link>
+          {/* Bid feedback */}
+          {bidFeedback && (
+            <div className={`text-sm font-semibold text-center py-2.5 px-3 mb-3 border ${
+              bidFeedback.ok
+                ? "bg-green-50 border-green-300 text-green-700"
+                : "bg-red-50 border-red-300 text-red-700"
+            }`}>
+              {bidFeedback.msg}
+            </div>
+          )}
+
+          {/* BID button — smart based on auth state */}
+          {!isLoggedIn ? (
+            // Not logged in → go to login
+            <Link
+              href={`/portal/login?redirect=/auctions/${auctionCode}/live`}
+              className="block w-full bg-[#32348A] hover:bg-[#28296e] text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-colors mb-3"
+            >
+              LOG IN TO BID
+            </Link>
+          ) : !isRegistered ? (
+            // Logged in but not registered for this auction
+            <div className="mb-3">
+              <div className="w-full bg-gray-100 text-gray-400 font-black text-center py-4 text-sm tracking-widest uppercase mb-2 cursor-not-allowed">
+                BID {fmt(askingBid)}
+              </div>
+              <p className="text-center text-xs text-gray-500">
+                You need to{" "}
+                <Link href={`/auctions/${auctionCode}`} className="text-[#32348A] underline font-semibold">
+                  register to bid live
+                </Link>{" "}
+                for this auction
+              </p>
+            </div>
+          ) : isLeading ? (
+            // They are winning — don't let them bid against themselves
+            <div
+              onMouseEnter={() => socketRef.current?.emit("bidder:hoverBid", { hovering: true })}
+              onMouseLeave={() => socketRef.current?.emit("bidder:hoverBid", { hovering: false })}
+              className="w-full bg-green-600 text-white font-black text-center py-4 text-sm tracking-widest uppercase mb-3 cursor-default"
+            >
+              🏆 YOU ARE WINNING — {fmt(currentBid)}
+            </div>
+          ) : (
+            // Logged in + registered + not currently leading → place live bid
+            <button
+              type="button"
+              disabled={bidPending || !lot || lot.status !== "ACTIVE"}
+              onMouseEnter={() => socketRef.current?.emit("bidder:hoverBid", { hovering: true })}
+              onMouseLeave={() => socketRef.current?.emit("bidder:hoverBid", { hovering: false })}
+              onClick={() => {
+                if (!socketRef.current || !lot) return
+                setBidPending(true)
+                setBidFeedback(null)
+                socketRef.current.emit("bid:place", {
+                  amount: askingBid,
+                  bidderId: customerId,
+                  bidderName: customerName ?? "Online Bidder",
+                })
+              }}
+              className="block w-full bg-[#32348A] hover:bg-[#28296e] disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-colors mb-3"
+            >
+              {bidPending ? "PLACING BID…" : `BID ${fmt(askingBid)}`}
+            </button>
+          )}
+
+          {/* Approved to bid live — only shown when registered */}
+          {isLoggedIn && isRegistered && (
+            <div className="w-full border-2 border-[#32348A] text-[#32348A] font-bold text-center py-3 text-xs tracking-widest uppercase">
+              ✓ APPROVED TO BID LIVE
+            </div>
+          )}
+
+          {isLoggedIn && !isRegistered && (
+            <Link
+              href={`/auctions/${auctionCode}`}
+              className="block w-full border-2 border-[#32348A] text-[#32348A] hover:bg-[#32348A] hover:text-white font-bold text-center py-3 text-xs tracking-widest uppercase transition-colors"
+            >
+              REGISTER TO BID LIVE
+            </Link>
+          )}
 
           <div className="mt-auto pt-6 text-center text-xs text-gray-400">
             {state?.onlineCount ?? 0} people watching live

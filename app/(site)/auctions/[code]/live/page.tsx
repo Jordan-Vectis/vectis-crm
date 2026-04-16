@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { lotPhotoUrl } from "@/lib/photo-url"
+import { getCustomerSession } from "@/lib/customer-auth"
 import LiveBiddingRoom from "./live-bidding-room"
 
 export const dynamic = "force-dynamic"
@@ -21,6 +22,23 @@ export default async function LiveAuctionPage({
   })
 
   if (!auction) notFound()
+
+  // Customer session + registration check
+  const session = await getCustomerSession()
+  const isLoggedIn = !!session
+
+  let isRegistered = false
+  if (session) {
+    const reg = await prisma.bidderRegistration.findUnique({
+      where: {
+        auctionId_customerAccountId: {
+          auctionId: auction.id,
+          customerAccountId: session.id,
+        },
+      },
+    })
+    isRegistered = !!reg
+  }
 
   const lots = auction.lots.map(l => ({
     id: l.id,
@@ -43,6 +61,10 @@ export default async function LiveAuctionPage({
       initialLotIndex={auction.liveAuction?.currentLotIndex ?? 0}
       isLive={!!auction.liveAuction && auction.liveAuction.status === "ACTIVE"}
       lots={lots}
+      isLoggedIn={isLoggedIn}
+      isRegistered={isRegistered}
+      customerId={session?.id ?? null}
+      customerName={session ? `${session.firstName ?? ""} ${session.lastName ?? ""}`.trim() || null : null}
     />
   )
 }

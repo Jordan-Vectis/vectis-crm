@@ -93,6 +93,8 @@ export default function AuctionControllerPage() {
   const [onlineBidAlert, setOnlineBidAlert] = useState<{ bidderId: string; bidderName: string; amount: number } | null>(null)
   const [fairWarningFlash, setFairWarningFlash] = useState(false)
   const [hammerFlash, setHammerFlash] = useState(false)
+  const [soldPopup, setSoldPopup] = useState<{ lotNumber: string; title: string; hammerPrice: number } | null>(null)
+  const [soldCountdown, setSoldCountdown] = useState(3)
 
   // ── Camera / WebRTC state ─────────────────────────────────────────────────
   const [isBroadcasting, setIsBroadcasting] = useState(false)
@@ -125,9 +127,21 @@ export default function AuctionControllerPage() {
       setActivePauseMessage(s.auction?.pauseMessage ?? null)
     })
 
-    socket.on("lot:hammer", (d: { lotNumber: string; hammerPrice: number }) => {
+    socket.on("lot:hammer", (d: { lotNumber: string; hammerPrice: number; title?: string }) => {
       setHammerFlash(true)
       setTimeout(() => setHammerFlash(false), 1200)
+      // Show sold popup with 3-second countdown matching server auto-advance
+      setSoldPopup({ lotNumber: d.lotNumber, title: d.title ?? "", hammerPrice: d.hammerPrice })
+      setSoldCountdown(3)
+      let count = 3
+      const interval = setInterval(() => {
+        count--
+        setSoldCountdown(count)
+        if (count <= 0) {
+          clearInterval(interval)
+          setSoldPopup(null)
+        }
+      }, 1000)
     })
 
     socket.on("auction:fairWarning", () => {
@@ -322,7 +336,7 @@ export default function AuctionControllerPage() {
                       auction?.status === "COMPLETE"? "bg-slate-500" : "bg-blue-700"
 
   return (
-    <div className="flex flex-col bg-[#0d1117] text-white" style={{ minHeight: "calc(100vh - 56px)" }}>
+    <div className="relative flex flex-col bg-[#0d1117] text-white" style={{ minHeight: "calc(100vh - 56px)" }}>
 
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#161b2e] border-b border-white/10 shrink-0 gap-3">
@@ -373,6 +387,23 @@ export default function AuctionControllerPage() {
           </button>
         </div>
       </div>
+
+      {/* ── SOLD popup overlay ───────────────────────────────────────────── */}
+      {soldPopup && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 pointer-events-none">
+          <div className="bg-green-600 rounded-2xl px-12 py-10 text-center shadow-2xl border-4 border-green-400 animate-bounce-once">
+            <p className="text-white text-6xl font-black mb-2">🔨 SOLD</p>
+            <p className="text-white/80 text-lg font-bold mb-1">LOT {soldPopup.lotNumber}</p>
+            {soldPopup.title && (
+              <p className="text-white/70 text-sm mb-4 max-w-xs mx-auto line-clamp-2">{soldPopup.title}</p>
+            )}
+            <p className="text-white font-black text-4xl mb-4">
+              £{soldPopup.hammerPrice.toLocaleString("en-GB")}
+            </p>
+            <p className="text-white/60 text-sm">Moving to next lot in {soldCountdown}s…</p>
+          </div>
+        </div>
+      )}
 
       {/* ── Camera preview bar (shown when live) ─────────────────────────── */}
       {isBroadcasting && (
