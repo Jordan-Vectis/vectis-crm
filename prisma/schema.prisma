@@ -112,6 +112,7 @@ model CustomerAccount {
   contact      Contact? @relation(fields: [contactId], references: [id])
   bidderRegistrations BidderRegistration[]
   commissionBids      CommissionBid[]
+  parcels             Parcel[]
 
   // Shipping address
   shippingLine1   String?
@@ -316,6 +317,7 @@ model CatalogueLot {
   auctionId    String
   auction      CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
   commissionBids CommissionBid[]
+  parcelLots   ParcelLot[]
 }
 
 model CommissionBid {
@@ -415,6 +417,57 @@ model WarehouseMovement {
   notes        String?
   movedByName  String?
   movedAt      DateTime           @default(now())
+}
+
+model Parcel {
+  id                  String           @id @default(cuid())
+  reference           String           @unique @default(cuid())
+  status              String           @default("PENDING") // PENDING | LABEL_CREATED | DISPATCHED | CANCELLED
+
+  // Recipient
+  recipientName       String
+  recipientCompany    String?
+  recipientLine1      String
+  recipientLine2      String?
+  recipientCity       String
+  recipientCounty     String?
+  recipientPostcode   String
+  recipientCountry    String           @default("GB")
+  recipientEmail      String?
+  recipientPhone      String?
+
+  // Package
+  weightInGrams       Int              @default(500)
+  packageFormat       String           @default("Parcel")
+  serviceCode         String           @default("TPP48")
+  specialInstructions String?
+  notes               String?
+
+  // Royal Mail Click & Drop
+  rmOrderIdentifier   String?
+  trackingNumber      String?
+  labelPdf            String?          @db.Text
+  manifestId          String?
+  despatchedAt        DateTime?
+
+  // Relations
+  customerAccountId   String?
+  customerAccount     CustomerAccount? @relation(fields: [customerAccountId], references: [id])
+  lots                ParcelLot[]
+
+  createdByName       String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
+
+model ParcelLot {
+  id       String       @id @default(cuid())
+  parcelId String
+  parcel   Parcel       @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  lotId    String
+  lot      CatalogueLot @relation(fields: [lotId], references: [id])
+
+  @@unique([parcelId, lotId])
 }
 
 model HeroSlide {

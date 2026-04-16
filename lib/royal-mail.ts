@@ -1,0 +1,113 @@
+const RM_BASE = "https://api.parcel.royalmail.com/api/v1"
+
+export const RM_SERVICES: Record<string, string> = {
+  CRL1:  "1st Class",
+  CRL2:  "2nd Class",
+  TPP24: "Tracked 24",
+  TPP48: "Tracked 48",
+  STL1:  "Special Delivery (Next Day by 1pm)",
+  STL2:  "Special Delivery (Saturday by 1pm)",
+}
+
+export const RM_FORMATS: Record<string, string> = {
+  Letter:       "Letter",
+  LargeLetter:  "Large Letter",
+  Parcel:       "Parcel",
+}
+
+export interface RmRecipient {
+  address: {
+    fullName:     string
+    companyName?: string
+    addressLine1: string
+    addressLine2?: string
+    city:         string
+    county?:      string
+    postcode:     string
+    countryCode:  string
+  }
+  emailAddress?: string
+  mobilePhone?:  string
+}
+
+export interface RmOrderPayload {
+  orderReference?:      string
+  orderDate:            string
+  plannedDespatchDate?: string
+  subtotal:             number
+  shippingCostCharged:  number
+  total:                number
+  recipient:            RmRecipient
+  packages: {
+    weightInGrams:            number
+    packageFormatIdentifier:  string
+    contents?: {
+      name:              string
+      quantity:          number
+      unitValue:         number
+      unitWeightInGrams: number
+    }[]
+  }[]
+  postageDetails?: {
+    serviceCode:          string
+    sendNotificationsTo?: string
+  }
+  specialInstructions?: string
+}
+
+async function rmFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const key = process.env.ROYAL_MAIL_API_KEY
+  if (!key) throw new Error("ROYAL_MAIL_API_KEY is not set")
+
+  const res = await fetch(`${RM_BASE}${path}`, {
+    ...options,
+    headers: {
+      Authorization:  `Bearer ${key}`,
+      "Content-Type": "application/json",
+      ...(options.headers ?? {}),
+    },
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => `HTTP ${res.status}`)
+    throw new Error(`Royal Mail API ${res.status}: ${text}`)
+  }
+
+  return res
+}
+
+/** Create one or more orders. Returns the RM response JSON. */
+export async function createRmOrders(orders: RmOrderPayload[]) {
+  const res = await rmFetch("/orders", {
+    method: "POST",
+    body: JSON.stringify(orders),
+  })
+  return res.json()
+}
+
+/** Get a PDF label for a given RM order identifier. Returns ArrayBuffer. */
+export async function getRmLabel(orderIdentifier: string): Promise<ArrayBuffer> {
+  const res = await rmFetch(`/orders/${encodeURIComponent(orderIdentifier)}/label`)
+  return res.arrayBuffer()
+}
+
+/** Create an end-of-day manifest. Returns the RM response JSON. */
+export async function createRmManifest() {
+  const res = await rmFetch("/manifests", { method: "POST" })
+  return res.json()
+}
+
+/** Get manifest details. */
+export async function getRmManifest(manifestId: string) {
+  const res = await rmFetch(`/manifests/${encodeURIComponent(manifestId)}`)
+  return res.json()
+}
+
+/** Update order status (e.g. mark as despatched). */
+export async function updateRmOrderStatus(orderIdentifiers: string[], status: string) {
+  const res = await rmFetch("/orders/status", {
+    method: "PUT",
+    body: JSON.stringify({ orderIdentifiers, status }),
+  })
+  return res.json()
+}
