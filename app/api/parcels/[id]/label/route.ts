@@ -41,6 +41,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       packages: [{
         weightInGrams: parcel.weightInGrams,
+        // Express courier services (FEO/FEM/NDA) reject the format field; all others require it
+        ...(!["FEO", "FEM", "NDA"].includes(parcel.serviceCode)
+          ? { packageFormatIdentifier: "SmallParcel" }
+          : {}),
       }],
       billing: {
         address: {
