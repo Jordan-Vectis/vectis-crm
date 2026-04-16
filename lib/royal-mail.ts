@@ -59,7 +59,14 @@ async function rmFetch(path: string, options: RequestInit = {}): Promise<Respons
   const key = process.env.ROYAL_MAIL_API_KEY
   if (!key) throw new Error("ROYAL_MAIL_API_KEY is not set")
 
-  const res = await fetch(`${RM_BASE}${path}`, {
+  const url = `${RM_BASE}${path}`
+
+  if (options.body) {
+    console.log("[RoyalMail] →", options.method ?? "GET", url)
+    console.log("[RoyalMail] payload:", options.body)
+  }
+
+  const res = await fetch(url, {
     ...options,
     headers: {
       Authorization:  `Bearer ${key}`,
@@ -70,7 +77,11 @@ async function rmFetch(path: string, options: RequestInit = {}): Promise<Respons
 
   if (!res.ok) {
     const text = await res.text().catch(() => `HTTP ${res.status}`)
-    throw new Error(`Royal Mail API ${res.status}: ${text}`)
+    console.error("[RoyalMail] ✗", res.status, text)
+    const err: any = new Error(`Royal Mail API ${res.status}: ${text}`)
+    err.status = res.status
+    err.body = text
+    throw err
   }
 
   return res

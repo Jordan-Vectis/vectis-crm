@@ -100,7 +100,11 @@ export default function PackingPage() {
     try {
       const res = await fetch(`/api/parcels/${parcel.id}/label`, { method: "POST" })
       const data = await res.json()
-      if (!res.ok) { setActionErr(data.error || "Failed to generate label"); return }
+      if (!res.ok) {
+        console.error("[label] error response:", data)
+        setActionErr(data.error || "Failed to generate label")
+        return
+      }
       load()
       setSelected({ ...selected, ...data, status: "LABEL_CREATED" })
     } finally { setActionLoading(false) }

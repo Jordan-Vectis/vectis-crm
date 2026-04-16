@@ -52,10 +52,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // Create order in Click & Drop
-    const rmResponse = await createRmOrders([payload])
+    let rmResponse: any
+    try {
+      rmResponse = await createRmOrders([payload])
+    } catch (rmErr: any) {
+      console.error("[label] RM error:", rmErr.message)
+      return NextResponse.json({
+        error:   rmErr.message,
+        payload, // show exactly what was sent
+      }, { status: 502 })
+    }
+
     const createdOrder = rmResponse?.createdOrders?.[0]
     if (!createdOrder?.orderIdentifier) {
-      return NextResponse.json({ error: "Royal Mail did not return an order identifier", detail: rmResponse }, { status: 502 })
+      return NextResponse.json({ error: "Royal Mail did not return an order identifier", detail: rmResponse, payload }, { status: 502 })
     }
 
     // Fetch label PDF
