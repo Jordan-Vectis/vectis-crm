@@ -41,12 +41,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       packages: [{
         weightInGrams: parcel.weightInGrams,
-        ...((() => {
-          const fmt = parcel.serviceCode in RM_SERVICE_FORMATS
-            ? RM_SERVICE_FORMATS[parcel.serviceCode]
-            : (parcel.packageFormat === "Parcel" ? "SmallParcel" : parcel.packageFormat)
-          return fmt ? { packageFormatIdentifier: fmt } : {}
-        })()),
       }],
       billing: {
         address: {

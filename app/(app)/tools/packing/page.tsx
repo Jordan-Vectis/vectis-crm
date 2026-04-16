@@ -2,20 +2,26 @@
 
 import { useEffect, useState, useCallback } from "react"
 
-const RM_SERVICES: Record<string, { label: string; format: string }> = {
-  TPNN: { label: "Tracked 24 — No Signature",          format: "SmallParcel"  },
-  TPNS: { label: "Tracked 24 — Signature",              format: "SmallParcel"  },
-  TPSN: { label: "Tracked 48 — No Signature",           format: "SmallParcel"  },
-  TPSS: { label: "Tracked 48 — Signature",              format: "SmallParcel"  },
-  FEO:  { label: "express48",                           format: "LargeLetter"  },
-  FEM:  { label: "express48 Large",                     format: "LargeLetter"  },
-  NDA:  { label: "express24",                           format: "LargeLetter"  },
-  SD1:  { label: "Special Delivery by 1pm (£750)",      format: "SmallParcel"  },
-  SD2:  { label: "Special Delivery by 1pm (£1000)",     format: "SmallParcel"  },
-  SD3:  { label: "Special Delivery by 1pm (£2500)",     format: "SmallParcel"  },
-  SEB:  { label: "Special Delivery Next Day (£750)",    format: "SmallParcel"  },
-  SEC:  { label: "Special Delivery Next Day (£1000)",   format: "SmallParcel"  },
-  SED:  { label: "Special Delivery Next Day (£2500)",   format: "SmallParcel"  },
+const RM_SERVICES: Record<string, string> = {
+  TPNN: "Tracked 24 — No Signature",
+  TPNS: "Tracked 24 — Signature",
+  TPSN: "Tracked 48 — No Signature",
+  TPSS: "Tracked 48 — Signature",
+  FEO:  "express48",
+  FEM:  "express48 Large",
+  NDA:  "express24",
+  SD1:  "Special Delivery by 1pm (£750)",
+  SD2:  "Special Delivery by 1pm (£1000)",
+  SD3:  "Special Delivery by 1pm (£2500)",
+  SDV:  "Special Delivery Next Day AGE (£750)",
+  SDW:  "Special Delivery Next Day AGE (£1000)",
+  SDX:  "Special Delivery Next Day AGE (£2500)",
+  SDY:  "Special Delivery Next Day ID (£750)",
+  SDZ:  "Special Delivery Next Day ID (£1000)",
+  SEA:  "Special Delivery Next Day ID (£2500)",
+  SEB:  "Special Delivery Next Day (£750)",
+  SEC:  "Special Delivery Next Day (£1000)",
+  SED:  "Special Delivery Next Day (£2500)",
 }
 
 const RM_FORMATS: Record<string, string> = {
@@ -254,7 +260,7 @@ export default function PackingPage() {
                     {p.recipientCompany && <p className="text-xs text-gray-400">{p.recipientCompany}</p>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">{p.recipientPostcode}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{RM_SERVICES[p.serviceCode]?.label ?? p.serviceCode}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{RM_SERVICES[p.serviceCode] ?? p.serviceCode}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{p.weightInGrams}g</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOURS[p.status] ?? "bg-gray-100 text-gray-600"}`}>
@@ -294,7 +300,7 @@ export default function PackingPage() {
               </div>
 
               <div className="border-t pt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
-                <div><span className="font-medium text-gray-700">Service</span><br />{RM_SERVICES[selected.serviceCode]?.label ?? selected.serviceCode}</div>
+                <div><span className="font-medium text-gray-700">Service</span><br />{RM_SERVICES[selected.serviceCode] ?? selected.serviceCode}</div>
                 <div><span className="font-medium text-gray-700">Format</span><br />{selected.packageFormat}</div>
                 <div><span className="font-medium text-gray-700">Weight</span><br />{selected.weightInGrams}g</div>
                 {selected.trackingNumber && <div><span className="font-medium text-gray-700">Tracking</span><br /><span className="font-mono">{selected.trackingNumber}</span></div>}
@@ -430,13 +436,10 @@ export default function PackingPage() {
                     <select
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                       value={form.serviceCode}
-                      onChange={e => {
-                        const svc = RM_SERVICES[e.target.value]
-                        setForm({ ...form, serviceCode: e.target.value, packageFormat: svc?.format ?? form.packageFormat })
-                      }}
+                      onChange={e => setForm({ ...form, serviceCode: e.target.value })}
                     >
-                      {Object.entries(RM_SERVICES).map(([code, svc]) => (
-                        <option key={code} value={code}>{svc.label} ({code})</option>
+                      {Object.entries(RM_SERVICES).map(([code, label]) => (
+                        <option key={code} value={code}>{label} ({code})</option>
                       ))}
                     </select>
                   </div>
