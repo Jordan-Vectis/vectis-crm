@@ -38,11 +38,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ...(parcel.recipientCounty  ? { county: parcel.recipientCounty }       : {}),
         },
         ...(parcel.recipientEmail ? { emailAddress: parcel.recipientEmail } : {}),
-        ...(parcel.recipientPhone ? { mobilePhone:  parcel.recipientPhone  } : {}),
       },
       packages: [{
         weightInGrams:           parcel.weightInGrams,
-        packageFormatIdentifier: parcel.packageFormat,
+        packageFormatIdentifier: parcel.packageFormat === "Parcel" ? "SmallParcel" : parcel.packageFormat,
       }],
       postageDetails: {
         serviceCode: parcel.serviceCode,

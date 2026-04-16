@@ -10,7 +10,12 @@ const RM_SERVICES: Record<string, string> = {
   STL1:  "Special Delivery (Next Day by 1pm)",
 }
 
-const RM_FORMATS = ["Letter", "LargeLetter", "Parcel"]
+const RM_FORMATS: Record<string, string> = {
+  Letter:       "Letter",
+  LargeLetter:  "Large Letter",
+  SmallParcel:  "Small Parcel",
+  MediumParcel: "Medium Parcel",
+}
 
 const STATUS_COLOURS: Record<string, string> = {
   PENDING:       "bg-yellow-100 text-yellow-800",
@@ -30,7 +35,7 @@ const EMPTY_FORM = {
   recipientEmail:     "",
   recipientPhone:     "",
   weightInGrams:      "500",
-  packageFormat:      "Parcel",
+  packageFormat:      "SmallParcel",
   serviceCode:        "TPP48",
   specialInstructions:"",
   notes:              "",
@@ -423,7 +428,9 @@ export default function PackingPage() {
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Package Format</label>
                     <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" value={form.packageFormat} onChange={e => setForm({...form, packageFormat: e.target.value})}>
-                      {RM_FORMATS.map(f => <option key={f} value={f}>{f}</option>)}
+                      {Object.entries(RM_FORMATS).map(([code, label]) => (
+                        <option key={code} value={code}>{label}</option>
+                      ))}
                     </select>
                   </div>
                   <div>

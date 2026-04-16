@@ -12,7 +12,8 @@ export const RM_SERVICES: Record<string, string> = {
 export const RM_FORMATS: Record<string, string> = {
   Letter:       "Letter",
   LargeLetter:  "Large Letter",
-  Parcel:       "Parcel",
+  SmallParcel:  "Small Parcel",
+  MediumParcel: "Medium Parcel",
 }
 
 export interface RmRecipient {
