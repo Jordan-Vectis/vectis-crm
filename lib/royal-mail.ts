@@ -9,15 +9,15 @@ export const RM_SERVICES: Record<string, string> = {
   STL2:  "Special Delivery (Saturday by 1pm)",
 }
 
-/** Maps service code → required packageFormatIdentifier */
-export const RM_SERVICE_FORMATS: Record<string, string> = {
+/** Maps service code → required packageFormatIdentifier. Null = omit the field entirely. */
+export const RM_SERVICE_FORMATS: Record<string, string | null> = {
   TPNN: "SmallParcel",
   TPNS: "SmallParcel",
   TPSN: "SmallParcel",
   TPSS: "SmallParcel",
-  FEO:  "LargeLetter",
-  FEM:  "LargeLetter",
-  NDA:  "LargeLetter",
+  FEO:  null, // courier — no format identifier
+  FEM:  null, // courier — no format identifier
+  NDA:  null, // courier — no format identifier
   SD1:  "SmallParcel",
   SD2:  "SmallParcel",
   SD3:  "SmallParcel",
