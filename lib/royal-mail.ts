@@ -9,6 +9,23 @@ export const RM_SERVICES: Record<string, string> = {
   STL2:  "Special Delivery (Saturday by 1pm)",
 }
 
+/** Maps service code → required packageFormatIdentifier */
+export const RM_SERVICE_FORMATS: Record<string, string> = {
+  TPNN: "SmallParcel",
+  TPNS: "SmallParcel",
+  TPSN: "SmallParcel",
+  TPSS: "SmallParcel",
+  FEO:  "LargeLetter",
+  FEM:  "LargeLetter",
+  NDA:  "LargeLetter",
+  SD1:  "SmallParcel",
+  SD2:  "SmallParcel",
+  SD3:  "SmallParcel",
+  SEB:  "SmallParcel",
+  SEC:  "SmallParcel",
+  SED:  "SmallParcel",
+}
+
 export const RM_FORMATS: Record<string, string> = {
   Letter:       "Letter",
   LargeLetter:  "Large Letter",

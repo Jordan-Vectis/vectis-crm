@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
-import { createRmOrders, getRmLabel, type RmOrderPayload } from "@/lib/royal-mail"
+import { createRmOrders, getRmLabel, RM_SERVICE_FORMATS, type RmOrderPayload } from "@/lib/royal-mail"
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       packages: [{
         weightInGrams:           parcel.weightInGrams,
-        packageFormatIdentifier: parcel.packageFormat === "Parcel" ? "SmallParcel" : parcel.packageFormat,
+        packageFormatIdentifier: RM_SERVICE_FORMATS[parcel.serviceCode] ?? (parcel.packageFormat === "Parcel" ? "SmallParcel" : parcel.packageFormat),
       }],
       billing: {
         address: {
