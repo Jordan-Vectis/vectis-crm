@@ -33,8 +33,8 @@ export interface RmRecipient {
 
 export interface RmOrderPayload {
   orderReference?:      string
-  orderDate:            string
-  plannedDespatchDate?: string
+  orderDate:            string  // "YYYY-MM-DD"
+  plannedDespatchDate?: string  // "YYYY-MM-DD"
   subtotal:             number
   shippingCostCharged:  number
   total:                number

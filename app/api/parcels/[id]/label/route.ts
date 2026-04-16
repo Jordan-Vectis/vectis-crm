@@ -18,11 +18,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const shortRef = parcel.reference.slice(0, 8).toUpperCase()
     const todayDate = new Date().toISOString().split("T")[0] // "YYYY-MM-DD"
-    const orderDate = new Date().toISOString()               // full ISO for orderDate
 
     const payload: RmOrderPayload = {
       orderReference:      `VEC-${shortRef}`,
-      orderDate,
+      orderDate:           todayDate,
       subtotal:            0,
       shippingCostCharged: 0,
       total:               0,
@@ -46,7 +45,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       postageDetails: {
         serviceCode: parcel.serviceCode,
       },
-      plannedDespatchDate: todayDate,
       ...(parcel.specialInstructions ? { specialInstructions: parcel.specialInstructions } : {}),
     }
 
