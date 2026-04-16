@@ -128,7 +128,7 @@ export async function createRmOrders(orders: RmOrderPayload[]) {
 
 /** Get a PDF label for a given RM order identifier. Returns ArrayBuffer. */
 export async function getRmLabel(orderIdentifier: string): Promise<ArrayBuffer> {
-  const res = await rmFetch(`/orders/${encodeURIComponent(orderIdentifier)}/label?documentType=postageLabel`)
+  const res = await rmFetch(`/orders/${encodeURIComponent(orderIdentifier)}/label?documentType=postageLabel&includeReturnsLabel=false`)
   return res.arrayBuffer()
 }
 

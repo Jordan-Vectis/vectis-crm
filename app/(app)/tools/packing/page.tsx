@@ -147,6 +147,16 @@ export default function PackingPage() {
     } finally { setActionLoading(false) }
   }
 
+  async function deleteParcel(parcel: any) {
+    if (!confirm("Permanently delete this parcel? This cannot be undone.")) return
+    setActionLoading(true)
+    try {
+      await fetch(`/api/parcels/${parcel.id}`, { method: "DELETE" })
+      load()
+      if (selected?.id === parcel.id) setSelected(null)
+    } finally { setActionLoading(false) }
+  }
+
   async function doManifest() {
     if (!confirm(`Create end-of-day manifest for all ${readyCount} labelled parcel(s)? This will mark them as dispatched.`)) return
     setActionLoading(true); setManifestMsg("")
@@ -364,6 +374,15 @@ export default function PackingPage() {
                     className="w-full border border-red-200 text-red-600 text-sm font-medium py-2 rounded-lg hover:bg-red-50 disabled:opacity-50"
                   >
                     Cancel Parcel
+                  </button>
+                )}
+                {selected.status === "CANCELLED" && (
+                  <button
+                    onClick={() => deleteParcel(selected)}
+                    disabled={actionLoading}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-2 rounded-lg disabled:opacity-50"
+                  >
+                    🗑 Delete Permanently
                   </button>
                 )}
               </div>
