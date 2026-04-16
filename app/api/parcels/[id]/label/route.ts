@@ -39,14 +39,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ...(parcel.recipientEmail ? { emailAddress:  parcel.recipientEmail } : {}),
         ...(parcel.recipientPhone ? { phoneNumber:   parcel.recipientPhone } : {}),
       },
-      packages: [(() => {
-        const fmt = parcel.serviceCode in RM_SERVICE_FORMATS
-          ? RM_SERVICE_FORMATS[parcel.serviceCode]
-          : (parcel.packageFormat === "Parcel" ? "SmallParcel" : parcel.packageFormat)
-        const pkg: Record<string, unknown> = { weightInGrams: parcel.weightInGrams }
-        if (fmt) pkg.packageFormatIdentifier = fmt
-        return pkg
-      })()],
+      packages: [{
+        weightInGrams: parcel.weightInGrams,
+        ...((() => {
+          const fmt = parcel.serviceCode in RM_SERVICE_FORMATS
+            ? RM_SERVICE_FORMATS[parcel.serviceCode]
+            : (parcel.packageFormat === "Parcel" ? "SmallParcel" : parcel.packageFormat)
+          return fmt ? { packageFormatIdentifier: fmt } : {}
+        })()),
+      }],
       billing: {
         address: {
           fullName:     parcel.recipientName,

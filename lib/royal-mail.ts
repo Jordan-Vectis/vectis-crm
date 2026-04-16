@@ -69,8 +69,8 @@ export interface RmOrderPayload {
     }
   }
   packages: {
-    weightInGrams:            number
-    packageFormatIdentifier:  string
+    weightInGrams:             number
+    packageFormatIdentifier?:  string
     contents?: {
       name:              string
       quantity:          number
