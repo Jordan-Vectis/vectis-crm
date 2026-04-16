@@ -26,9 +26,11 @@ export default function ContactsPage() {
   // Detail overlay
   const [overlay, setOverlay]       = useState<any>(null)
   const [editForm, setEditForm]     = useState<any>(null)
-  const [overlayTab, setOverlayTab] = useState<"details" | "seller" | "buyer">("details")
+  const [overlayTab, setOverlayTab] = useState<"details" | "seller" | "buyer" | "documents">("details")
   const [receipts, setReceipts]     = useState<any[]>([])
   const [submissions, setSubmissions] = useState<any[]>([])
+  const [auctions, setAuctions]     = useState<any[]>([])
+  const [selectedAuctionId, setSelectedAuctionId] = useState("")
   const [detailLoading, setDetailLoading] = useState(false)
   const [saveMsg, setSaveMsg]       = useState("")
 
@@ -70,12 +72,14 @@ export default function ContactsPage() {
     setSaveMsg("")
     setDetailLoading(true)
     try {
-      const [rRes, sRes] = await Promise.all([
+      const [rRes, sRes, aRes] = await Promise.all([
         fetch(`/api/warehouse/receipts?customer_id=${c.id}`),
         fetch(`/api/submissions?contact_id=${c.id}`),
+        fetch(`/api/warehouse/customers/${c.id}/auctions`),
       ])
       setReceipts(rRes.ok ? await rRes.json() : [])
       setSubmissions(sRes.ok ? await sRes.json() : [])
+      setAuctions(aRes.ok ? await aRes.json() : [])
     } finally {
       setDetailLoading(false)
     }
@@ -86,7 +90,17 @@ export default function ContactsPage() {
     setEditForm(null)
     setReceipts([])
     setSubmissions([])
+    setAuctions([])
+    setSelectedAuctionId("")
   }
+
+  function openDoc(url: string) {
+    window.open(url, "_blank")
+  }
+
+  const fmtDate = (d: string | null) => d
+    ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+    : ""
 
   async function doSave() {
     setDetailLoading(true)
@@ -300,7 +314,7 @@ export default function ContactsPage() {
 
             {/* Tabs */}
             <div className="flex border-b border-gray-100 px-6 shrink-0">
-              {(["details", "seller", "buyer"] as const).map(t => (
+              {(["details", "seller", "buyer", "documents"] as const).map(t => (
                 <button
                   key={t}
                   onClick={() => setOverlayTab(t)}
@@ -308,7 +322,7 @@ export default function ContactsPage() {
                     overlayTab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  {t === "seller" ? `Seller — Warehouse (${receipts.length})` : t === "buyer" ? `Buyer — CRM (${submissions.length})` : "Details"}
+                  {t === "seller" ? `Seller — Warehouse (${receipts.length})` : t === "buyer" ? `Buyer — CRM (${submissions.length})` : t === "documents" ? "📄 Documents" : "Details"}
                 </button>
               ))}
             </div>
@@ -434,6 +448,90 @@ export default function ContactsPage() {
                       </tbody>
                     </table>
                   )}
+                </div>
+              )}
+
+              {overlayTab === "documents" && (
+                <div className="max-w-2xl space-y-6">
+
+                  {/* Receipt documents */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Receipts</h3>
+                    {detailLoading ? (
+                      <p className="text-sm text-gray-400">Loading…</p>
+                    ) : receipts.length === 0 ? (
+                      <p className="text-sm text-gray-400">No warehouse receipts found.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {receipts.map((r: any) => (
+                          <div key={r.id} className="flex items-center justify-between px-4 py-2 rounded-lg border border-gray-200 bg-gray-50">
+                            <div>
+                              <span className="font-mono text-sm font-semibold text-gray-800">{r.id}</span>
+                              <span className={`ml-3 px-2 py-0.5 rounded-full text-xs font-medium ${r.status === "open" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>{r.status}</span>
+                              <span className="ml-3 text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString("en-GB")}</span>
+                            </div>
+                            <button
+                              className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 hover:border-blue-400 px-3 py-1 rounded-lg transition-colors"
+                              onClick={() => openDoc(`/api/warehouse/documents/receipt?receiptId=${r.id}`)}
+                            >
+                              Print Receipt
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Auction documents */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Auction Documents</h3>
+                    {detailLoading ? (
+                      <p className="text-sm text-gray-400">Loading…</p>
+                    ) : auctions.length === 0 ? (
+                      <p className="text-sm text-gray-400">No auction lots found for this customer.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        <select
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          value={selectedAuctionId}
+                          onChange={e => setSelectedAuctionId(e.target.value)}
+                        >
+                          <option value="">Select an auction…</option>
+                          {auctions.map((a: any) => (
+                            <option key={a.id} value={a.id}>
+                              {a.code} — {a.name}{a.auctionDate ? ` (${fmtDate(a.auctionDate)})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedAuctionId && (
+                          <div className="grid grid-cols-3 gap-2">
+                            <button
+                              className="flex flex-col items-center gap-1 px-3 py-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-sm font-medium text-gray-700"
+                              onClick={() => openDoc(`/api/warehouse/documents/pre-sale?customerId=${overlay.id}&auctionId=${selectedAuctionId}`)}
+                            >
+                              <span className="text-lg">📋</span>
+                              Pre-Sale Advice
+                            </button>
+                            <button
+                              className="flex flex-col items-center gap-1 px-3 py-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-sm font-medium text-gray-700"
+                              onClick={() => openDoc(`/api/warehouse/documents/post-sale?customerId=${overlay.id}&auctionId=${selectedAuctionId}`)}
+                            >
+                              <span className="text-lg">📋</span>
+                              Post-Sale Advice
+                            </button>
+                            <button
+                              className="flex flex-col items-center gap-1 px-3 py-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-sm font-medium text-gray-700"
+                              onClick={() => openDoc(`/api/warehouse/documents/vendor-statement?customerId=${overlay.id}&auctionId=${selectedAuctionId}`)}
+                            >
+                              <span className="text-lg">💰</span>
+                              Vendor Statement
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                 </div>
               )}
 
