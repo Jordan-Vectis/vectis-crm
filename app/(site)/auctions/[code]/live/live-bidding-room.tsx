@@ -44,7 +44,7 @@ interface LiveLot {
 interface AuctionState {
   auction: {
     title: string; status: string; currentLotIndex: number
-    fairWarning: boolean; totalLots: number
+    fairWarning: boolean; pauseMessage: string | null; totalLots: number
   } | null
   currentLot: LiveLot | null
   lots: { id: string; lotNumber: string; status: string; hammerPrice: number | null; currentBid: number }[]
@@ -81,9 +81,12 @@ export default function LiveBiddingRoom({
   const [descOpen, setDescOpen] = useState(false)
   const [autoScroll, setAutoScroll] = useState(true)
   const [imageIndex, setImageIndex] = useState(0)
+  const [streamActive, setStreamActive] = useState(false)
   const stripRef = useRef<HTMLDivElement>(null)
 
   const socketRef = useRef<Socket | null>(null)
+  const remoteVideoRef = useRef<HTMLVideoElement>(null)
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
 
   useEffect(() => {
     const socket = ioClient(window.location.origin, { transports: ["websocket", "polling"] })
@@ -97,7 +100,64 @@ export default function LiveBiddingRoom({
     })
     socket.on("bid:new", () => { setBidFlash(true); setTimeout(() => setBidFlash(false), 800) })
     socket.on("auction:fairWarning", () => setFairWarning(true))
-    return () => { socket.disconnect() }
+
+    // ── WebRTC: stream becomes available ───────────────────────────────────
+    async function startViewingStream(broadcasterId: string) {
+      // Close any existing connection
+      peerConnectionRef.current?.close()
+
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] })
+      peerConnectionRef.current = pc
+
+      pc.ontrack = (e) => {
+        if (remoteVideoRef.current && e.streams[0]) {
+          remoteVideoRef.current.srcObject = e.streams[0]
+          setStreamActive(true)
+        }
+      }
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) socket.emit("webrtc:ice", { targetId: broadcasterId, candidate: e.candidate })
+      }
+
+      try {
+        const offer = await pc.createOffer({ offerToReceiveVideo: true, offerToReceiveAudio: true })
+        await pc.setLocalDescription(offer)
+        socket.emit("webrtc:offer", { targetId: broadcasterId, offer })
+      } catch (err) {
+        console.warn("WebRTC offer error:", err)
+      }
+    }
+
+    socket.on("webrtc:streamAvailable", ({ broadcasterId }: { broadcasterId: string }) => {
+      startViewingStream(broadcasterId)
+    })
+
+    socket.on("webrtc:answer", async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
+      try {
+        await peerConnectionRef.current?.setRemoteDescription(new RTCSessionDescription(answer))
+      } catch (err) {
+        console.warn("WebRTC answer error:", err)
+      }
+    })
+
+    socket.on("webrtc:ice", async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
+      try {
+        await peerConnectionRef.current?.addIceCandidate(new RTCIceCandidate(candidate))
+      } catch {}
+    })
+
+    socket.on("webrtc:streamEnded", () => {
+      peerConnectionRef.current?.close()
+      peerConnectionRef.current = null
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
+      setStreamActive(false)
+    })
+
+    return () => {
+      socket.disconnect()
+      peerConnectionRef.current?.close()
+    }
   }, [])
 
   // Auto-scroll lot strip to active lot
@@ -159,6 +219,20 @@ export default function LiveBiddingRoom({
           )}
         </div>
       </div>
+
+      {/* ── Pause message overlay ── */}
+      {state?.auction?.pauseMessage && (
+        <div className="bg-[#32348A] border-b border-[#32348A]/50 px-6 py-10 flex flex-col items-center justify-center text-center">
+          <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center mb-4">
+            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p className="text-white font-black text-2xl uppercase tracking-wide mb-2">Sale Paused</p>
+          <p className="text-white/80 text-base">{state.auction.pauseMessage}</p>
+          <p className="text-white/40 text-xs mt-4">The auction will resume shortly — please do not leave this page</p>
+        </div>
+      )}
 
       {/* ── Main 3-column grid ── */}
       <div className="grid grid-cols-[380px_1fr_320px] gap-0 border-b border-gray-200" style={{ minHeight: "480px" }}>
@@ -269,9 +343,11 @@ export default function LiveBiddingRoom({
             </div>
           )}
 
-          {/* BID button */}
+          {/* BID button — hover emits signal to auctioneer screen */}
           <Link
             href="/portal/register"
+            onMouseEnter={() => socketRef.current?.emit("bidder:hoverBid", { hovering: true })}
+            onMouseLeave={() => socketRef.current?.emit("bidder:hoverBid", { hovering: false })}
             className="block w-full bg-[#32348A] hover:bg-[#28296e] text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-colors mb-3"
           >
             BID {fmt(askingBid)}
@@ -293,16 +369,25 @@ export default function LiveBiddingRoom({
         <div className="flex flex-col">
           {/* Video stream */}
           <div className="relative bg-black" style={{ aspectRatio: "16/9" }}>
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-              <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-white/20 border-2 border-white flex items-center justify-center mx-auto mb-2">
-                  <svg className="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z"/>
-                  </svg>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className={`w-full h-full object-cover ${streamActive ? "block" : "hidden"}`}
+            />
+            {!streamActive && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+                <div className="text-center">
+                  <div className="w-12 h-12 rounded-full bg-white/20 border-2 border-white flex items-center justify-center mx-auto mb-2">
+                    <svg className="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  </div>
+                  <p className="text-white/60 text-xs">Waiting for stream…</p>
                 </div>
-                <p className="text-white/60 text-xs">Live stream</p>
               </div>
-            </div>
+            )}
             <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded tracking-widest">
               LIVE
             </div>
