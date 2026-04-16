@@ -3,11 +3,19 @@
 import { useEffect, useState, useCallback } from "react"
 
 const RM_SERVICES: Record<string, string> = {
-  TPP24: "Tracked 24",
-  TPP48: "Tracked 48",
-  CRL1:  "1st Class",
-  CRL2:  "2nd Class",
-  STL1:  "Special Delivery (Next Day by 1pm)",
+  TPNN: "Tracked 24 (No Signature)",
+  TPNS: "Tracked 24 (Signature)",
+  TPSN: "Tracked 48 (No Signature)",
+  TPSS: "Tracked 48 (Signature)",
+  FEO:  "express48",
+  FEM:  "express48 Large",
+  NDA:  "express24",
+  SD1:  "Special Delivery by 1pm (£750)",
+  SD2:  "Special Delivery by 1pm (£1000)",
+  SD3:  "Special Delivery by 1pm (£2500)",
+  SEB:  "Special Delivery Next Day (£750)",
+  SEC:  "Special Delivery Next Day (£1000)",
+  SED:  "Special Delivery Next Day (£2500)",
 }
 
 const RM_FORMATS: Record<string, string> = {
@@ -36,7 +44,7 @@ const EMPTY_FORM = {
   recipientPhone:     "",
   weightInGrams:      "500",
   packageFormat:      "SmallParcel",
-  serviceCode:        "TPP48",
+  serviceCode:        "TPSN",
   specialInstructions:"",
   notes:              "",
 }
@@ -246,7 +254,7 @@ export default function PackingPage() {
                     {p.recipientCompany && <p className="text-xs text-gray-400">{p.recipientCompany}</p>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">{p.recipientPostcode}</td>
-                  <td className="px-4 py-3 text-sm font-mono text-gray-500">{p.serviceCode}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{RM_SERVICES[p.serviceCode] ?? p.serviceCode}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{p.weightInGrams}g</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOURS[p.status] ?? "bg-gray-100 text-gray-600"}`}>
@@ -286,7 +294,7 @@ export default function PackingPage() {
               </div>
 
               <div className="border-t pt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
-                <div><span className="font-medium text-gray-700">Service</span><br /><span className="font-mono">{selected.serviceCode}</span></div>
+                <div><span className="font-medium text-gray-700">Service</span><br />{RM_SERVICES[selected.serviceCode] ?? selected.serviceCode}</div>
                 <div><span className="font-medium text-gray-700">Format</span><br />{selected.packageFormat}</div>
                 <div><span className="font-medium text-gray-700">Weight</span><br />{selected.weightInGrams}g</div>
                 {selected.trackingNumber && <div><span className="font-medium text-gray-700">Tracking</span><br /><span className="font-mono">{selected.trackingNumber}</span></div>}
@@ -418,14 +426,12 @@ export default function PackingPage() {
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Package &amp; Service</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">RM Service Code</label>
-                    <input
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase font-mono"
-                      placeholder="e.g. STL1, CRL2, TPN1"
-                      value={form.serviceCode}
-                      onChange={e => setForm({...form, serviceCode: e.target.value.toUpperCase()})}
-                    />
-                    <p className="text-xs text-gray-400 mt-1">Find codes in your Click &amp; Drop account under Settings → Services</p>
+                    <label className="block text-xs text-gray-500 mb-1">RM Service</label>
+                    <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" value={form.serviceCode} onChange={e => setForm({...form, serviceCode: e.target.value})}>
+                      {Object.entries(RM_SERVICES).map(([code, label]) => (
+                        <option key={code} value={code}>{label} ({code})</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Package Format</label>
