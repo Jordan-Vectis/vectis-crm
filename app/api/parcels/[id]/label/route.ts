@@ -43,6 +43,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         weightInGrams:           parcel.weightInGrams,
         packageFormatIdentifier: parcel.packageFormat === "Parcel" ? "SmallParcel" : parcel.packageFormat,
       }],
+      billing: {
+        address: {
+          fullName:     parcel.recipientName,
+          addressLine1: parcel.recipientLine1,
+          city:         parcel.recipientCity,
+          postcode:     parcel.recipientPostcode,
+          countryCode:  parcel.recipientCountry,
+          ...(parcel.recipientCompany ? { companyName: parcel.recipientCompany } : {}),
+          ...(parcel.recipientLine2   ? { addressLine2: parcel.recipientLine2 }  : {}),
+          ...(parcel.recipientCounty  ? { county: parcel.recipientCounty }       : {}),
+        },
+      },
       postageDetails: {
         serviceCode: parcel.serviceCode,
       },
