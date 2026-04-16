@@ -233,23 +233,31 @@ export default function LiveBiddingRoom({
     <div className="bg-white min-h-screen">
 
       {/* ── Page header ── */}
-      <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-[#32348A] font-black text-xl">{auctionName}</h1>
-          <Link href={`/auctions/${auctionCode}`} className="text-[#32348A] text-xs font-bold uppercase tracking-widest underline hover:no-underline">
-            VIEW CATALOGUE
+          <h1 className="text-[#32348A] font-black text-xl leading-tight">{auctionName}</h1>
+          <Link
+            href={`/auctions/${auctionCode}`}
+            className="text-[#32348A] text-xs font-bold uppercase tracking-widest underline hover:no-underline mt-0.5 inline-block"
+          >
+            View Catalogue
           </Link>
         </div>
-        <div className="text-right">
+        <div className="flex items-center gap-3">
           {connected ? (
-            <span className="text-[#32348A] text-sm font-semibold">
-              LIVE
+            <>
+              <span className="inline-flex items-center gap-1.5 bg-red-600 text-white text-xs font-black px-3 py-1 rounded tracking-widest">
+                <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping inline-block" />
+                LIVE
+              </span>
               {auctionDate && (
-                <span className="text-gray-500 font-normal ml-2">
-                  {format(new Date(auctionDate), "d MMMM yyyy")} | {format(new Date(auctionDate), "HH:mm")}
+                <span className="text-gray-500 text-sm">
+                  {format(new Date(auctionDate), "d MMMM yyyy")}
+                  <span className="mx-1 text-gray-300">|</span>
+                  {format(new Date(auctionDate), "HH:mm")}
                 </span>
               )}
-            </span>
+            </>
           ) : (
             <span className="text-gray-400 text-sm animate-pulse">Connecting…</span>
           )}
@@ -258,9 +266,9 @@ export default function LiveBiddingRoom({
 
       {/* ── Pause message overlay ── */}
       {state?.auction?.pauseMessage && (
-        <div className="bg-[#32348A] border-b border-[#32348A]/50 px-6 py-10 flex flex-col items-center justify-center text-center">
-          <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center mb-4">
-            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-[#32348A] px-6 py-10 flex flex-col items-center justify-center text-center">
+          <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mb-4">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
@@ -270,42 +278,47 @@ export default function LiveBiddingRoom({
         </div>
       )}
 
-      {/* ── Main 3-column grid ── */}
-      <div className="grid grid-cols-[380px_1fr_320px] gap-0 border-b border-gray-200" style={{ height: "520px" }}>
+      {/* ── Fair warning banner ── */}
+      {fairWarning && (
+        <div className="bg-amber-400 text-amber-900 text-sm font-black text-center py-2.5 tracking-widest animate-pulse">
+          ⚠️ FAIR WARNING — SELLING NOW
+        </div>
+      )}
 
-        {/* COL 1 — lot image */}
+      {/* ── Main 3-column grid ── */}
+      <div className="grid grid-cols-[420px_1fr_340px] border-b border-gray-200" style={{ height: "580px" }}>
+
+        {/* ── COL 1 — Lot image ── */}
         <div className="border-r border-gray-200 flex flex-col overflow-hidden">
-          <div className="relative bg-gray-100 flex-1" style={{ minHeight: "360px" }}>
+
+          {/* Main image */}
+          <div className="relative flex-1 bg-gray-50">
             {displayImg ? (
               <Image
                 src={displayImg}
                 alt={displayTitle}
                 fill
-                className="object-contain p-4"
-               
+                className="object-contain p-6"
                 priority
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-gray-300">
-                <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <svg className="w-16 h-16 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
             )}
-            {fairWarning && (
-              <div className="absolute inset-0 border-4 border-amber-400 animate-pulse pointer-events-none" />
-            )}
           </div>
 
-          {/* Image thumbnails + zoom link */}
-          <div className="p-3 border-t border-gray-100">
+          {/* Thumbnails + zoom link */}
+          <div className="border-t border-gray-100 px-4 py-3 bg-white">
             {displayImages.length > 1 && (
-              <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
+              <div className="flex gap-2 mb-3 overflow-x-auto">
                 {displayImages.map((img, i) => (
                   <button
                     key={i}
                     onClick={() => setImageIndex(i)}
-                    className={`relative w-12 h-12 shrink-0 border-2 rounded overflow-hidden transition-colors ${
+                    className={`relative w-14 h-14 shrink-0 border-2 overflow-hidden transition-colors ${
                       i === imageIndex ? "border-[#32348A]" : "border-gray-200 hover:border-gray-400"
                     }`}
                   >
@@ -314,24 +327,27 @@ export default function LiveBiddingRoom({
                 ))}
               </div>
             )}
-            <button className="flex items-center gap-1.5 text-[#32348A] text-xs font-semibold hover:underline">
+            <button className="flex items-center gap-1.5 text-[#32348A] text-xs font-semibold hover:underline uppercase tracking-wide">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
               </svg>
-              VIEW ZOOM/ADDITIONAL IMAGES
+              View Zoom/Additional Images
             </button>
           </div>
 
-          {/* Lot number + description accordion */}
-          <div className="border-t border-gray-200 px-4 py-3">
-            <p className="text-[#32348A] text-xs font-black uppercase tracking-widest mb-1">LOT {displayLotNum}</p>
+          {/* Lot no + description accordion */}
+          <div className="border-t border-gray-200 px-4 py-3 bg-white">
+            <p className="text-[#32348A] text-[10px] font-black uppercase tracking-widest mb-1">LOT {displayLotNum}</p>
             <button
               onClick={() => setDescOpen(v => !v)}
-              className="flex items-center justify-between w-full text-left"
+              className="flex items-center justify-between w-full text-left group"
             >
-              <span className="text-[#32348A] font-bold text-sm">Show Full Lot Description</span>
-              <svg className={`w-4 h-4 text-gray-400 transition-transform ${descOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              <span className="text-[#32348A] font-bold text-sm group-hover:underline">Show Full Lot Description</span>
+              <svg
+                className={`w-4 h-4 text-gray-400 transition-transform ${descOpen ? "rotate-180" : ""}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
             {descOpen && displayDesc && (
@@ -340,143 +356,139 @@ export default function LiveBiddingRoom({
           </div>
         </div>
 
-        {/* COL 2 — lot info + bidding */}
-        <div className="p-6 border-r border-gray-200 flex flex-col overflow-y-auto">
-          <p className="text-[#32348A] text-xs font-black uppercase tracking-widest mb-2">LOT {displayLotNum}</p>
-          <h2 className="text-gray-800 font-semibold text-base leading-snug mb-6">{displayTitle}</h2>
+        {/* ── COL 2 — Lot info + bidding ── */}
+        <div className="border-r border-gray-200 flex flex-col overflow-y-auto">
+          <div className="px-8 py-6 flex flex-col flex-1">
 
-          {/* Estimate */}
-          <div className="flex items-center justify-between border-t border-gray-200 py-3">
-            <span className="text-gray-500 text-xs font-bold uppercase tracking-widest">ESTIMATE</span>
-            <span className="text-gray-700 font-semibold text-sm">
-              {fmt(estimateLow)} – {fmt(estimateHigh)}
-            </span>
-          </div>
+            <p className="text-[#32348A] text-[10px] font-black uppercase tracking-widest mb-2">LOT {displayLotNum}</p>
+            <h2 className="text-gray-800 font-semibold text-base leading-snug mb-6">{displayTitle}</h2>
 
-          {/* Current bid */}
-          <div className="flex items-center justify-between border-t border-gray-200 py-3">
-            <span className="text-gray-500 text-xs font-bold uppercase tracking-widest">CURRENT BID:</span>
-            <div className="flex items-center gap-4">
-              {lastBid && (
-                <span className="text-gray-500 text-xs">{bidTypeLabel(lastBid.type)}</span>
-              )}
-              <span className={`font-black text-xl transition-colors ${bidFlash ? "text-green-600" : "text-[#32348A]"}`}>
-                {fmt(currentBid)}
+            {/* Estimate */}
+            <div className="flex items-center justify-between border-t border-gray-200 py-3.5">
+              <span className="text-gray-500 text-xs font-semibold uppercase tracking-widest">Estimate</span>
+              <span className="text-gray-700 text-sm font-semibold">
+                {fmt(estimateLow)} – {fmt(estimateHigh)}
               </span>
             </div>
-          </div>
 
-          {/* Asking bid */}
-          <div className="flex items-center justify-between border-t border-b border-gray-200 py-3 mb-6">
-            <span className="text-gray-500 text-xs font-bold uppercase tracking-widest">ASKING BID:</span>
-            <span className="text-gray-700 font-bold text-base">{fmt(askingBid)}</span>
-          </div>
-
-          {/* Fair warning */}
-          {fairWarning && (
-            <div className="bg-amber-50 border-2 border-amber-400 text-amber-700 text-sm font-black text-center py-3 mb-4 tracking-widest animate-pulse">
-              ⚠️ FAIR WARNING
-            </div>
-          )}
-
-          {/* You are leading banner */}
-          {isLeading && (
-            <div className="bg-green-50 border-2 border-green-500 text-green-700 text-sm font-black text-center py-3 mb-4 tracking-wide">
-              🏆 YOU ARE CURRENTLY WINNING THIS LOT
-            </div>
-          )}
-
-          {/* Bid feedback */}
-          {bidFeedback && (
-            <div className={`text-sm font-semibold text-center py-2.5 px-3 mb-3 border ${
-              bidFeedback.ok
-                ? "bg-green-50 border-green-300 text-green-700"
-                : "bg-red-50 border-red-300 text-red-700"
-            }`}>
-              {bidFeedback.msg}
-            </div>
-          )}
-
-          {/* BID button — smart based on auth state */}
-          {!isLoggedIn ? (
-            // Not logged in → go to login
-            <Link
-              href={`/portal/login?redirect=/auctions/${auctionCode}/live`}
-              className="block w-full bg-[#32348A] hover:bg-[#28296e] text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-colors mb-3"
-            >
-              LOG IN TO BID
-            </Link>
-          ) : !isRegistered ? (
-            // Logged in but not registered for this auction
-            <div className="mb-3">
-              <div className="w-full bg-gray-100 text-gray-400 font-black text-center py-4 text-sm tracking-widest uppercase mb-2 cursor-not-allowed">
-                BID {fmt(askingBid)}
+            {/* Current bid */}
+            <div className="flex items-center justify-between border-t border-gray-200 py-3.5">
+              <span className="text-gray-500 text-xs font-semibold uppercase tracking-widest">Current Bid:</span>
+              <div className="flex items-center gap-3">
+                {lastBid && (
+                  <span className="text-gray-400 text-xs uppercase tracking-wide font-medium">
+                    {bidTypeLabel(lastBid.type)}
+                  </span>
+                )}
+                <span className={`font-black text-2xl transition-colors duration-300 ${
+                  bidFlash ? "text-green-500" : "text-[#32348A]"
+                }`}>
+                  {fmt(currentBid)}
+                </span>
               </div>
-              <p className="text-center text-xs text-gray-500">
-                You need to{" "}
-                <Link href={`/auctions/${auctionCode}`} className="text-[#32348A] underline font-semibold">
-                  register to bid live
-                </Link>{" "}
-                for this auction
-              </p>
             </div>
-          ) : isLeading ? (
-            // They are winning — don't let them bid against themselves
-            <div
-              onMouseEnter={() => socketRef.current?.emit("bidder:hoverBid", { hovering: true })}
-              onMouseLeave={() => socketRef.current?.emit("bidder:hoverBid", { hovering: false })}
-              className="w-full bg-green-600 text-white font-black text-center py-4 text-sm tracking-widest uppercase mb-3 cursor-default"
-            >
-              🏆 YOU ARE WINNING — {fmt(currentBid)}
+
+            {/* Asking bid */}
+            <div className="flex items-center justify-between border-t border-b border-gray-200 py-3.5 mb-6">
+              <span className="text-gray-500 text-xs font-semibold uppercase tracking-widest">Asking Bid:</span>
+              <span className="text-gray-800 font-bold text-base">{fmt(askingBid)}</span>
             </div>
-          ) : (
-            // Logged in + registered + not currently leading → place live bid
-            <button
-              type="button"
-              disabled={bidPending || !lot || lot.status !== "ACTIVE"}
-              onMouseEnter={() => socketRef.current?.emit("bidder:hoverBid", { hovering: true })}
-              onMouseLeave={() => socketRef.current?.emit("bidder:hoverBid", { hovering: false })}
-              onClick={() => {
-                if (!socketRef.current || !lot) return
-                setBidPending(true)
-                setBidFeedback(null)
-                socketRef.current.emit("bid:place", {
-                  amount: askingBid,
-                  bidderId: customerId,
-                  bidderName: customerName ?? "Online Bidder",
-                })
-              }}
-              className="block w-full bg-[#32348A] hover:bg-[#28296e] disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-colors mb-3"
-            >
-              {bidPending ? "PLACING BID…" : `BID ${fmt(askingBid)}`}
-            </button>
-          )}
 
-          {/* Approved to bid live — only shown when registered */}
-          {isLoggedIn && isRegistered && (
-            <div className="w-full border-2 border-[#32348A] text-[#32348A] font-bold text-center py-3 text-xs tracking-widest uppercase">
-              ✓ APPROVED TO BID LIVE
+            {/* Leading banner */}
+            {isLeading && (
+              <div className="border border-green-300 bg-green-50 text-green-700 text-xs font-black text-center py-3 mb-4 tracking-wide uppercase">
+                🏆 You Are Currently Winning This Lot
+              </div>
+            )}
+
+            {/* Bid feedback */}
+            {bidFeedback && (
+              <div className={`text-sm font-semibold text-center py-2.5 px-3 mb-4 border ${
+                bidFeedback.ok
+                  ? "bg-green-50 border-green-300 text-green-700"
+                  : "bg-red-50 border-red-300 text-red-700"
+              }`}>
+                {bidFeedback.msg}
+              </div>
+            )}
+
+            {/* ── BID BUTTON — smart states ── */}
+            {!isLoggedIn ? (
+              <Link
+                href={`/portal/login?redirect=/auctions/${auctionCode}/live`}
+                className="block w-full bg-[#32348A] hover:bg-[#28296e] text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-colors mb-3"
+              >
+                Login to Bid
+              </Link>
+            ) : !isRegistered ? (
+              <div className="mb-3">
+                <div className="w-full bg-gray-100 text-gray-400 font-black text-center py-4 text-sm tracking-widest uppercase mb-2 cursor-not-allowed">
+                  BID {fmt(askingBid)}
+                </div>
+                <p className="text-center text-xs text-gray-500">
+                  You need to{" "}
+                  <Link href={`/auctions/${auctionCode}`} className="text-[#32348A] underline font-semibold">
+                    register to bid live
+                  </Link>{" "}
+                  for this auction
+                </p>
+              </div>
+            ) : isLeading ? (
+              <div
+                onMouseEnter={() => socketRef.current?.emit("bidder:hoverBid", { hovering: true })}
+                onMouseLeave={() => socketRef.current?.emit("bidder:hoverBid", { hovering: false })}
+                className="w-full bg-green-600 text-white font-black text-center py-4 text-sm tracking-widest uppercase mb-3 cursor-default"
+              >
+                🏆 You Are Winning — {fmt(currentBid)}
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={bidPending || !lot || lot.status !== "ACTIVE"}
+                onMouseEnter={() => socketRef.current?.emit("bidder:hoverBid", { hovering: true })}
+                onMouseLeave={() => socketRef.current?.emit("bidder:hoverBid", { hovering: false })}
+                onClick={() => {
+                  if (!socketRef.current || !lot) return
+                  setBidPending(true)
+                  setBidFeedback(null)
+                  socketRef.current.emit("bid:place", {
+                    amount: askingBid,
+                    bidderId: customerId,
+                    bidderName: customerName ?? "Online Bidder",
+                  })
+                }}
+                className="block w-full bg-[#32348A] hover:bg-[#28296e] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-center py-4 text-sm tracking-widest uppercase transition-all mb-3"
+              >
+                {bidPending ? "Placing Bid…" : `BID ${fmt(askingBid)}`}
+              </button>
+            )}
+
+            {/* Secondary actions */}
+            {isLoggedIn && isRegistered && (
+              <div className="w-full border border-[#32348A] text-[#32348A] font-bold text-center py-2.5 text-xs tracking-widest uppercase">
+                ✓ Approved to Bid Live
+              </div>
+            )}
+            {isLoggedIn && !isRegistered && (
+              <Link
+                href={`/auctions/${auctionCode}`}
+                className="block w-full border border-[#32348A] text-[#32348A] hover:bg-[#32348A] hover:text-white font-bold text-center py-2.5 text-xs tracking-widest uppercase transition-colors"
+              >
+                Register to Bid Live
+              </Link>
+            )}
+
+            <div className="mt-auto pt-6 text-center text-xs text-gray-400">
+              {state?.onlineCount ?? 0} people watching live
             </div>
-          )}
-
-          {isLoggedIn && !isRegistered && (
-            <Link
-              href={`/auctions/${auctionCode}`}
-              className="block w-full border-2 border-[#32348A] text-[#32348A] hover:bg-[#32348A] hover:text-white font-bold text-center py-3 text-xs tracking-widest uppercase transition-colors"
-            >
-              REGISTER TO BID LIVE
-            </Link>
-          )}
-
-          <div className="mt-auto pt-6 text-center text-xs text-gray-400">
-            {state?.onlineCount ?? 0} people watching live
           </div>
         </div>
 
-        {/* COL 3 — video + bid history */}
-        <div className="flex flex-col overflow-hidden">
-          {/* Video stream */}
-          <div className="relative bg-black" style={{ aspectRatio: "16/9" }}>
+        {/* ── COL 3 — Video + Bid history ── */}
+        <div className="flex flex-col overflow-hidden bg-white">
+
+          {/* Video */}
+          <div className="relative bg-gray-900 shrink-0" style={{ aspectRatio: "16/9" }}>
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <video
               ref={remoteVideoRef}
@@ -485,46 +497,55 @@ export default function LiveBiddingRoom({
               className={`w-full h-full object-cover ${streamActive ? "block" : "hidden"}`}
             />
             {!streamActive && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-                <div className="text-center">
-                  <div className="w-12 h-12 rounded-full bg-white/20 border-2 border-white flex items-center justify-center mx-auto mb-2">
-                    <svg className="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  </div>
-                  <p className="text-white/60 text-xs">Waiting for stream…</p>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-white/10 border border-white/30 flex items-center justify-center mb-2">
+                  <svg className="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
                 </div>
+                <p className="text-white/50 text-xs">Waiting for stream…</p>
               </div>
             )}
-            <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded tracking-widest">
+            <span className="absolute top-2 right-2 bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded tracking-widest">
               LIVE
-            </div>
+            </span>
           </div>
 
-          {/* Bid history table */}
-          <div className="flex-1 overflow-y-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+          {/* Bid history */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <table className="w-full text-xs border-collapse">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
-                  <th className="text-left px-3 py-2 text-gray-500 font-bold uppercase tracking-wider">LOT NO | TIME</th>
-                  <th className="text-right px-3 py-2 text-gray-500 font-bold uppercase tracking-wider">BID AMOUNT</th>
-                  <th className="text-right px-3 py-2 text-gray-500 font-bold uppercase tracking-wider">BID TYPE</th>
+                  <th className="text-left px-3 py-2 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
+                    LOT NO | TIME
+                  </th>
+                  <th className="text-right px-3 py-2 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
+                    BID AMOUNT
+                  </th>
+                  <th className="text-right px-3 py-2 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
+                    BID TYPE
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {bids.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="text-center text-gray-400 py-6">No bids yet</td>
+                    <td colSpan={3} className="text-center text-gray-400 py-8 text-xs">No bids yet</td>
                   </tr>
                 ) : (
                   bids.map((b, i) => (
-                    <tr key={i} className={`border-b border-gray-100 ${i === 0 ? "bg-[#eef2f9]" : "hover:bg-gray-50"}`}>
+                    <tr
+                      key={i}
+                      className={`border-b border-gray-100 ${
+                        i === 0 ? "bg-[#eef2f9]" : i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                      } hover:bg-blue-50/30`}
+                    >
                       <td className="px-3 py-2.5">
-                        <span className="text-[#32348A] font-bold">LOT {displayLotNum}</span>
-                        <span className="text-gray-400 ml-1">| {fmtTime(b.timestamp)}</span>
+                        <span className="text-[#32348A] font-bold text-[11px]">LOT {displayLotNum}</span>
+                        <span className="text-gray-400 text-[10px] ml-1">| {fmtTime(b.timestamp)}</span>
                       </td>
                       <td className="px-3 py-2.5 text-right font-bold text-gray-800">{fmt(b.amount)}</td>
-                      <td className="px-3 py-2.5 text-right text-gray-600">{bidTypeLabel(b.type)}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-500 text-[10px]">{bidTypeLabel(b.type)}</td>
                     </tr>
                   ))
                 )}
@@ -535,20 +556,21 @@ export default function LiveBiddingRoom({
       </div>
 
       {/* ── Lot strip ── */}
-      <div className="border-b border-gray-200 bg-white px-4 py-3">
-        <div className="flex items-center gap-3 mb-2">
-          <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 select-none">
+      <div className="bg-white border-b border-gray-200 px-4 pt-3 pb-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest">All Lots</p>
+          <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-500 select-none">
             <div
               onClick={() => setAutoScroll(v => !v)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${autoScroll ? "bg-[#32348A]" : "bg-gray-300"}`}
+              className={`relative w-9 h-5 rounded-full transition-colors ${autoScroll ? "bg-[#32348A]" : "bg-gray-300"}`}
             >
-              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${autoScroll ? "translate-x-5" : "translate-x-0.5"}`} />
+              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${autoScroll ? "translate-x-4" : "translate-x-0.5"}`} />
             </div>
-            Disable Auto Scroll
+            {autoScroll ? "Auto Scroll On" : "Auto Scroll Off"}
           </label>
         </div>
 
-        <div ref={stripRef} className="flex gap-2 overflow-x-auto pb-2">
+        <div ref={stripRef} className="flex gap-2 overflow-x-auto pb-1">
           {stripLots.map((l, i) => {
             const staticL = initialLots.find(il => il.lotNumber === l.lotNumber)
             const thumb = staticL?.imageUrls[0] ?? null
@@ -559,11 +581,14 @@ export default function LiveBiddingRoom({
             return (
               <div
                 key={l.id}
-                className={`shrink-0 w-44 border-2 rounded overflow-hidden cursor-pointer transition-colors ${
-                  isActive ? "border-[#32348A]" :
-                  isSold ? "border-green-400" :
-                  isPassed ? "border-red-300" :
-                  "border-gray-200 hover:border-gray-400"
+                className={`shrink-0 w-36 border-2 overflow-hidden transition-all ${
+                  isActive
+                    ? "border-[#32348A] shadow-md"
+                    : isSold
+                    ? "border-green-400 opacity-80"
+                    : isPassed
+                    ? "border-red-300 opacity-70"
+                    : "border-gray-200 hover:border-gray-400"
                 }`}
               >
                 <div className="relative bg-gray-100" style={{ aspectRatio: "4/3" }}>
@@ -573,19 +598,27 @@ export default function LiveBiddingRoom({
                     <div className="absolute inset-0 bg-gray-100" />
                   )}
                   {isSold && (
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                      <span className="text-white text-xs font-black">SOLD {fmt(l.hammerPrice)}</span>
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <div className="text-center">
+                        <p className="text-white text-[9px] font-black uppercase">SOLD</p>
+                        <p className="text-green-300 text-[10px] font-black">{fmt(l.hammerPrice)}</p>
+                      </div>
                     </div>
                   )}
                   {isPassed && (
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                      <span className="text-white text-xs font-black">PASSED</span>
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <span className="text-white text-[9px] font-black uppercase">PASSED</span>
+                    </div>
+                  )}
+                  {isActive && (
+                    <div className="absolute top-1 left-1">
+                      <span className="bg-[#32348A] text-white text-[8px] font-black px-1.5 py-0.5 rounded tracking-wider">NOW</span>
                     </div>
                   )}
                 </div>
                 <div className="px-2 py-1.5 bg-white">
-                  <p className="text-[#32348A] text-[10px] font-black uppercase">LOT {l.lotNumber}</p>
-                  <p className="text-gray-600 text-[10px] leading-tight line-clamp-2">{staticL?.title ?? ""}</p>
+                  <p className="text-[#32348A] text-[9px] font-black uppercase tracking-wide">LOT {l.lotNumber}</p>
+                  <p className="text-gray-500 text-[9px] leading-tight line-clamp-2">{staticL?.title ?? ""}</p>
                 </div>
               </div>
             )
