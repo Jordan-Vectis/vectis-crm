@@ -87,9 +87,9 @@ export default async function AuctionsPage({
   }
 
   // Calendar sidebar data
-  const auctionDates = allPublished
-    .map(a => a.auctionDate?.toISOString())
-    .filter(Boolean) as string[]
+  const auctionEntries = allPublished
+    .filter(a => a.auctionDate)
+    .map(a => ({ date: a.auctionDate!.toISOString(), code: a.code }))
 
   const auctionTypes = [...new Set(
     allPublished.map(a => TYPE_LABELS[a.auctionType] ?? a.auctionType)
@@ -191,7 +191,7 @@ export default async function AuctionsPage({
 
         {/* Sidebar */}
         <AuctionCalendarSidebar
-          auctionDates={auctionDates}
+          auctionEntries={auctionEntries}
           auctionTypes={auctionTypes}
           selectedType={type ?? ""}
         />
