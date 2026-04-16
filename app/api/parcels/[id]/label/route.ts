@@ -16,35 +16,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parcel) return NextResponse.json({ error: "Not found" }, { status: 404 })
     if (parcel.status === "DISPATCHED") return NextResponse.json({ error: "Already dispatched" }, { status: 400 })
 
-    const now = new Date().toISOString()
     const shortRef = parcel.reference.slice(0, 8).toUpperCase()
-
-    const contents = parcel.lots.length > 0
-      ? parcel.lots.map(pl => ({
-          name:              `${pl.lot.lotNumber} – ${pl.lot.title}`.slice(0, 100),
-          quantity:          1,
-          unitValue:         pl.lot.hammerPrice ?? 0,
-          unitWeightInGrams: Math.floor(parcel.weightInGrams / parcel.lots.length),
-        }))
-      : [{ name: "Auction goods", quantity: 1, unitValue: 0, unitWeightInGrams: parcel.weightInGrams }]
+    const todayDate = new Date().toISOString().split("T")[0] // "YYYY-MM-DD"
+    const orderDate = new Date().toISOString()               // full ISO for orderDate
 
     const payload: RmOrderPayload = {
       orderReference:      `VEC-${shortRef}`,
-      orderDate:           now,
-      plannedDespatchDate: now,
+      orderDate,
       subtotal:            0,
       shippingCostCharged: 0,
       total:               0,
       recipient: {
         address: {
           fullName:     parcel.recipientName,
-          ...(parcel.recipientCompany ? { companyName: parcel.recipientCompany } : {}),
           addressLine1: parcel.recipientLine1,
-          ...(parcel.recipientLine2 ? { addressLine2: parcel.recipientLine2 } : {}),
           city:         parcel.recipientCity,
-          ...(parcel.recipientCounty ? { county: parcel.recipientCounty } : {}),
           postcode:     parcel.recipientPostcode,
           countryCode:  parcel.recipientCountry,
+          ...(parcel.recipientCompany ? { companyName: parcel.recipientCompany } : {}),
+          ...(parcel.recipientLine2   ? { addressLine2: parcel.recipientLine2 }  : {}),
+          ...(parcel.recipientCounty  ? { county: parcel.recipientCounty }       : {}),
         },
         ...(parcel.recipientEmail ? { emailAddress: parcel.recipientEmail } : {}),
         ...(parcel.recipientPhone ? { mobilePhone:  parcel.recipientPhone  } : {}),
@@ -52,12 +43,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       packages: [{
         weightInGrams:           parcel.weightInGrams,
         packageFormatIdentifier: parcel.packageFormat,
-        contents,
       }],
       postageDetails: {
-        serviceCode:          parcel.serviceCode,
-        sendNotificationsTo:  parcel.recipientEmail ? "recipient" : "sender",
+        serviceCode: parcel.serviceCode,
       },
+      plannedDespatchDate: todayDate,
       ...(parcel.specialInstructions ? { specialInstructions: parcel.specialInstructions } : {}),
     }
 
