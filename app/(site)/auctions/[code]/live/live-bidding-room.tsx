@@ -75,6 +75,16 @@ function fmtTime(iso: string) {
   catch { return iso }
 }
 
+function bidTypeLabel(type: string): string {
+  switch (type) {
+    case "Online":    return "Vectis Live"
+    case "Auto":      return "Vectis Auto"
+    case "Telephone": return "Vectis Telephone"
+    case "Room":      return "Sale Room"
+    default:          return type ?? "—"
+  }
+}
+
 export default function LiveBiddingRoom({
   auctionName, auctionCode, auctionDate, initialLotIndex, lots: initialLots,
   isLoggedIn, isRegistered, customerId, customerName,
@@ -261,10 +271,10 @@ export default function LiveBiddingRoom({
       )}
 
       {/* ── Main 3-column grid ── */}
-      <div className="grid grid-cols-[380px_1fr_320px] gap-0 border-b border-gray-200" style={{ minHeight: "480px" }}>
+      <div className="grid grid-cols-[380px_1fr_320px] gap-0 border-b border-gray-200" style={{ height: "520px" }}>
 
         {/* COL 1 — lot image */}
-        <div className="border-r border-gray-200 flex flex-col">
+        <div className="border-r border-gray-200 flex flex-col overflow-hidden">
           <div className="relative bg-gray-100 flex-1" style={{ minHeight: "360px" }}>
             {displayImg ? (
               <Image
@@ -331,7 +341,7 @@ export default function LiveBiddingRoom({
         </div>
 
         {/* COL 2 — lot info + bidding */}
-        <div className="p-6 border-r border-gray-200 flex flex-col">
+        <div className="p-6 border-r border-gray-200 flex flex-col overflow-y-auto">
           <p className="text-[#32348A] text-xs font-black uppercase tracking-widest mb-2">LOT {displayLotNum}</p>
           <h2 className="text-gray-800 font-semibold text-base leading-snug mb-6">{displayTitle}</h2>
 
@@ -348,7 +358,7 @@ export default function LiveBiddingRoom({
             <span className="text-gray-500 text-xs font-bold uppercase tracking-widest">CURRENT BID:</span>
             <div className="flex items-center gap-4">
               {lastBid && (
-                <span className="text-gray-500 text-xs">{lastBid.bidderName ?? lastBid.type ?? "—"}</span>
+                <span className="text-gray-500 text-xs">{bidTypeLabel(lastBid.type)}</span>
               )}
               <span className={`font-black text-xl transition-colors ${bidFlash ? "text-green-600" : "text-[#32348A]"}`}>
                 {fmt(currentBid)}
@@ -464,7 +474,7 @@ export default function LiveBiddingRoom({
         </div>
 
         {/* COL 3 — video + bid history */}
-        <div className="flex flex-col">
+        <div className="flex flex-col overflow-hidden">
           {/* Video stream */}
           <div className="relative bg-black" style={{ aspectRatio: "16/9" }}>
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
@@ -514,7 +524,7 @@ export default function LiveBiddingRoom({
                         <span className="text-gray-400 ml-1">| {fmtTime(b.timestamp)}</span>
                       </td>
                       <td className="px-3 py-2.5 text-right font-bold text-gray-800">{fmt(b.amount)}</td>
-                      <td className="px-3 py-2.5 text-right text-gray-600">{b.bidderName ?? b.type}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-600">{bidTypeLabel(b.type)}</td>
                     </tr>
                   ))
                 )}
