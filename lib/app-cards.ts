@@ -127,16 +127,15 @@ export const APP_CARD_DEFS: AppCardDef[] = [
   },
   {
     key:                "PACKING_DISPATCH",
-    href:               "#",
+    href:               "/tools/packing",
     defaultLabel:       "Packing / Dispatch",
-    defaultDescription: "Manage packing lists and dispatch for outgoing lots.",
+    defaultDescription: "Create Royal Mail shipping labels and manage end-of-day manifests.",
     icon:               "📦",
     border:             "border-orange-500",
     iconBg:             "text-orange-400",
     btnBg:              "bg-orange-600 hover:bg-orange-500",
     glow:               "hover:shadow-orange-900/40",
     allUsers:           true,
-    comingSoon:         true,
   },
   {
     key:                "SALEROOM_TRAINER",
