@@ -99,6 +99,10 @@ export default function LiveBiddingRoom({
   const [streamActive, setStreamActive] = useState(false)
   const [bidPending, setBidPending] = useState(false)
   const [bidFeedback, setBidFeedback] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [commissionModal, setCommissionModal] = useState<{ lotId: string; lotNumber: string; title: string; estimateLow: number | null; estimateHigh: number | null; imageUrl: string | null; status: string } | null>(null)
+  const [commissionAmount, setCommissionAmount] = useState("")
+  const [commissionPending, setCommissionPending] = useState(false)
+  const [commissionFeedback, setCommissionFeedback] = useState<{ ok: boolean; msg: string } | null>(null)
   const stripRef = useRef<HTMLDivElement>(null)
 
   const socketRef = useRef<Socket | null>(null)
@@ -132,6 +136,19 @@ export default function LiveBiddingRoom({
       setBidPending(false)
       setBidFeedback({ ok: false, msg: reason })
       setTimeout(() => setBidFeedback(null), 4000)
+    })
+
+    socket.on("bid:commission:accepted", ({ lotNumber, maxAmount }: { lotId: string; lotNumber: string; maxAmount: number }) => {
+      setCommissionPending(false)
+      setCommissionFeedback({ ok: true, msg: `✓ Commission bid of £${maxAmount.toLocaleString("en-GB")} placed on Lot ${lotNumber}` })
+      setCommissionAmount("")
+      setTimeout(() => { setCommissionFeedback(null); setCommissionModal(null) }, 2500)
+    })
+
+    socket.on("bid:commission:rejected", ({ reason }: { reason: string }) => {
+      setCommissionPending(false)
+      setCommissionFeedback({ ok: false, msg: reason })
+      setTimeout(() => setCommissionFeedback(null), 4000)
     })
 
     // ── WebRTC: stream becomes available ───────────────────────────────────
@@ -577,10 +594,25 @@ export default function LiveBiddingRoom({
             const isActive = i === lotIndex
             const isSold = l.status === "SOLD"
             const isPassed = l.status === "PASSED" || l.status === "WITHDRAWN"
+            const isClickable = !isSold && !isPassed && isLoggedIn && isRegistered
 
             return (
               <div
                 key={l.id}
+                onClick={() => {
+                  if (!isClickable) return
+                  setCommissionModal({
+                    lotId: l.id,
+                    lotNumber: l.lotNumber,
+                    title: staticL?.title ?? l.lotNumber,
+                    estimateLow: staticL?.estimateLow ?? null,
+                    estimateHigh: staticL?.estimateHigh ?? null,
+                    imageUrl: thumb,
+                    status: l.status,
+                  })
+                  setCommissionAmount("")
+                  setCommissionFeedback(null)
+                }}
                 className={`shrink-0 w-36 border-2 overflow-hidden transition-all ${
                   isActive
                     ? "border-[#32348A] shadow-md"
@@ -588,7 +620,9 @@ export default function LiveBiddingRoom({
                     ? "border-green-400 opacity-80"
                     : isPassed
                     ? "border-red-300 opacity-70"
-                    : "border-gray-200 hover:border-gray-400"
+                    : isClickable
+                    ? "border-gray-200 hover:border-[#32348A] cursor-pointer"
+                    : "border-gray-200"
                 }`}
               >
                 <div className="relative bg-gray-100" style={{ aspectRatio: "4/3" }}>
@@ -625,6 +659,104 @@ export default function LiveBiddingRoom({
           })}
         </div>
       </div>
+
+      {/* ── Commission bid modal ── */}
+      {commissionModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={(e) => { if (e.target === e.currentTarget) { setCommissionModal(null); setCommissionFeedback(null) } }}
+        >
+          <div className="bg-white w-full max-w-lg shadow-2xl">
+
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <p className="text-[#32348A] text-xs font-black uppercase tracking-widest">
+                LOT {commissionModal.lotNumber}
+              </p>
+              <button
+                onClick={() => { setCommissionModal(null); setCommissionFeedback(null) }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Lot info */}
+            <div className="flex gap-4 px-5 pt-4 pb-3">
+              {commissionModal.imageUrl && (
+                <div className="relative w-20 h-20 shrink-0 bg-gray-50 border border-gray-100">
+                  <Image src={commissionModal.imageUrl} alt="" fill className="object-contain p-1" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-800 font-semibold text-sm leading-snug line-clamp-3">
+                  {commissionModal.title}
+                </p>
+                {(commissionModal.estimateLow || commissionModal.estimateHigh) && (
+                  <p className="text-gray-500 text-xs mt-1">
+                    Estimate: {fmt(commissionModal.estimateLow)} – {fmt(commissionModal.estimateHigh)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Bid input */}
+            <div className="px-5 pb-5">
+              <p className="text-gray-700 text-sm font-semibold mb-3">Type your auto bid:</p>
+
+              {/* Feedback */}
+              {commissionFeedback && (
+                <div className={`text-sm font-semibold text-center py-2.5 px-3 mb-3 border ${
+                  commissionFeedback.ok
+                    ? "bg-green-50 border-green-300 text-green-700"
+                    : "bg-red-50 border-red-300 text-red-700"
+                }`}>
+                  {commissionFeedback.msg}
+                </div>
+              )}
+
+              <div className="flex gap-0">
+                <span className="inline-flex items-center px-3 bg-gray-100 border border-r-0 border-gray-300 text-gray-500 text-sm font-semibold">
+                  £
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={commissionAmount}
+                  onChange={e => setCommissionAmount(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") document.getElementById("commission-place-btn")?.click() }}
+                  placeholder="Type your bid..."
+                  className="flex-1 border border-gray-300 px-3 py-3 text-sm focus:outline-none focus:border-[#32348A] focus:ring-1 focus:ring-[#32348A]"
+                />
+                <button
+                  id="commission-place-btn"
+                  disabled={commissionPending || !commissionAmount || Number(commissionAmount) <= 0}
+                  onClick={() => {
+                    if (!socketRef.current || !commissionAmount) return
+                    setCommissionPending(true)
+                    setCommissionFeedback(null)
+                    socketRef.current.emit("bid:commission", {
+                      lotId: commissionModal.lotId,
+                      maxAmount: Number(commissionAmount),
+                      bidderId: customerId,
+                      bidderName: customerName ?? "Online Bidder",
+                    })
+                  }}
+                  className="bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black px-6 py-3 text-sm tracking-widest uppercase transition-colors"
+                >
+                  {commissionPending ? "…" : "PLACE"}
+                </button>
+              </div>
+              <p className="text-gray-400 text-xs mt-2">
+                We will bid on your behalf up to your maximum. Your bid stays confidential.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
