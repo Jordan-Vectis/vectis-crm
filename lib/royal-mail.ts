@@ -92,7 +92,7 @@ async function rmFetch(path: string, options: RequestInit = {}): Promise<Respons
 export async function createRmOrders(orders: RmOrderPayload[]) {
   const res = await rmFetch("/orders", {
     method: "POST",
-    body: JSON.stringify(orders),
+    body: JSON.stringify({ items: orders }), // RM requires { items: [...] } wrapper
   })
   return res.json()
 }

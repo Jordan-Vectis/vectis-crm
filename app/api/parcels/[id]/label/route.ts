@@ -36,7 +36,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ...(parcel.recipientLine2   ? { addressLine2: parcel.recipientLine2 }  : {}),
           ...(parcel.recipientCounty  ? { county: parcel.recipientCounty }       : {}),
         },
-        ...(parcel.recipientEmail ? { emailAddress: parcel.recipientEmail } : {}),
+        ...(parcel.recipientEmail ? { emailAddress:  parcel.recipientEmail } : {}),
+        ...(parcel.recipientPhone ? { phoneNumber:   parcel.recipientPhone } : {}),
       },
       packages: [{
         weightInGrams:           parcel.weightInGrams,
