@@ -39,6 +39,18 @@ export interface RmOrderPayload {
   shippingCostCharged:  number
   total:                number
   recipient:            RmRecipient
+  billing?: {
+    address: {
+      fullName?:    string
+      companyName?: string
+      addressLine1: string
+      addressLine2?: string
+      city:         string
+      county?:      string
+      postcode:     string
+      countryCode?: string
+    }
+  }
   packages: {
     weightInGrams:            number
     packageFormatIdentifier:  string
