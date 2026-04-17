@@ -52,14 +52,15 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               <ul className="space-y-2 text-xs text-gray-400">
                 <li><a href="/portal/register" className="hover:text-white transition-colors">Register to Bid</a></li>
                 <li><a href="/portal/login" className="hover:text-white transition-colors">Online Bidding</a></li>
-                <li><a href="/auctions" className="hover:text-white transition-colors">How to Bid</a></li>
+                <li><a href="/how-to-bid" className="hover:text-white transition-colors">How to Bid</a></li>
+                <li><a href="/faq" className="hover:text-white transition-colors">FAQ</a></li>
               </ul>
             </div>
             <div>
               <h4 className="text-[10px] font-black tracking-[0.25em] uppercase mb-4 text-[#DB0606]">Selling</h4>
               <ul className="space-y-2 text-xs text-gray-400">
-                <li><a href="/submit" className="hover:text-white transition-colors">Sell With Us</a></li>
-                <li><a href="/submit" className="hover:text-white transition-colors">Free Valuation</a></li>
+                <li><a href="/sell-with-us" className="hover:text-white transition-colors">Sell With Us</a></li>
+                <li><a href="/sell-with-us" className="hover:text-white transition-colors">Free Valuation</a></li>
                 <li><a href="/account/sales" className="hover:text-white transition-colors">My Consignments</a></li>
               </ul>
             </div>
@@ -69,6 +70,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
                 <li><a href="/account" className="hover:text-white transition-colors">My Details</a></li>
                 <li><a href="/account/bids" className="hover:text-white transition-colors">My Bids</a></li>
                 <li><a href="/account/sales" className="hover:text-white transition-colors">My Sales</a></li>
+                <li><a href="/careers" className="hover:text-white transition-colors">Careers</a></li>
               </ul>
             </div>
           </div>
@@ -88,6 +90,13 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             <div className="text-center sm:text-right space-y-1">
               <p>&copy; {new Date().getFullYear()} Vectis Auctions Ltd. All rights reserved.</p>
               <p className="text-gray-600 text-[10px]">Stockton-on-Tees, United Kingdom</p>
+              <p className="text-[10px] space-x-2">
+                <a href="/terms" className="hover:text-white transition-colors">Terms &amp; Conditions</a>
+                <span className="text-gray-700">·</span>
+                <a href="/faq" className="hover:text-white transition-colors">FAQ</a>
+                <span className="text-gray-700">·</span>
+                <a href="/careers" className="hover:text-white transition-colors">Careers</a>
+              </p>
             </div>
           </div>
         </div>

@@ -57,6 +57,7 @@ interface AuctionState {
     status: string
     currentLotIndex: number
     fairWarning: boolean
+    pauseMessage: string | null
     totalLots: number
   } | null
   currentLot: LiveLot | null
@@ -92,6 +93,19 @@ export default function AuctionControllerPage() {
   const [onlineBidAlert, setOnlineBidAlert] = useState<{ bidderId: string; bidderName: string; amount: number } | null>(null)
   const [fairWarningFlash, setFairWarningFlash] = useState(false)
   const [hammerFlash, setHammerFlash] = useState(false)
+  const [soldPopup, setSoldPopup] = useState<{ lotNumber: string; title: string; hammerPrice: number } | null>(null)
+  const [soldCountdown, setSoldCountdown] = useState(3)
+
+  // ── Camera / WebRTC state ─────────────────────────────────────────────────
+  const [isBroadcasting, setIsBroadcasting] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
+  const localVideoRef = useRef<HTMLVideoElement>(null)
+  const localStreamRef = useRef<MediaStream | null>(null)
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
+
+  // ── Pause message state ────────────────────────────────────────────────────
+  const [pauseMessageInput, setPauseMessageInput] = useState("")
+  const [activePauseMessage, setActivePauseMessage] = useState<string | null>(null)
 
   // ── Socket setup ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -110,11 +124,24 @@ export default function AuctionControllerPage() {
     socket.on("auction:state", (s: AuctionState) => {
       setState(s)
       setFairWarningFlash(s.auction?.fairWarning ?? false)
+      setActivePauseMessage(s.auction?.pauseMessage ?? null)
     })
 
-    socket.on("lot:hammer", (d: { lotNumber: string; hammerPrice: number }) => {
+    socket.on("lot:hammer", (d: { lotNumber: string; hammerPrice: number; title?: string }) => {
       setHammerFlash(true)
       setTimeout(() => setHammerFlash(false), 1200)
+      // Show sold popup with 3-second countdown matching server auto-advance
+      setSoldPopup({ lotNumber: d.lotNumber, title: d.title ?? "", hammerPrice: d.hammerPrice })
+      setSoldCountdown(3)
+      let count = 3
+      const interval = setInterval(() => {
+        count--
+        setSoldCountdown(count)
+        if (count <= 0) {
+          clearInterval(interval)
+          setSoldPopup(null)
+        }
+      }, 1000)
     })
 
     socket.on("auction:fairWarning", () => {
@@ -125,7 +152,42 @@ export default function AuctionControllerPage() {
       setOnlineBidAlert(d)
     })
 
-    return () => { socket.disconnect() }
+    // ── WebRTC: a viewer is sending us an offer ───────────────────────────
+    socket.on("webrtc:offer", async (d: { offer: RTCSessionDescriptionInit; from: string }) => {
+      if (!localStreamRef.current) return
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] })
+      peerConnectionsRef.current.set(d.from, pc)
+
+      localStreamRef.current.getTracks().forEach(track =>
+        pc.addTrack(track, localStreamRef.current!)
+      )
+
+      pc.onicecandidate = e => {
+        if (e.candidate) socket.emit("webrtc:ice", { targetId: d.from, candidate: e.candidate })
+      }
+
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(d.offer))
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        socket.emit("webrtc:answer", { targetId: d.from, answer })
+      } catch (err) {
+        console.warn("WebRTC offer handling error:", err)
+      }
+    })
+
+    // ── WebRTC: incoming ICE candidate from a viewer ──────────────────────
+    socket.on("webrtc:ice", (d: { candidate: RTCIceCandidateInit; from: string }) => {
+      const pc = peerConnectionsRef.current.get(d.from)
+      if (pc) pc.addIceCandidate(new RTCIceCandidate(d.candidate)).catch(() => {})
+    })
+
+    return () => {
+      socket.disconnect()
+      // Clean up any active stream on unmount
+      localStreamRef.current?.getTracks().forEach(t => t.stop())
+      peerConnectionsRef.current.forEach(pc => pc.close())
+    }
   }, [])
 
   // Keep recent results list updated
@@ -174,41 +236,97 @@ export default function AuctionControllerPage() {
   // ── Auction selector ──────────────────────────────────────────────────────
   if (phase === "select") {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0d1117]">
-        <div className="bg-[#161b2e] border border-white/10 rounded-2xl w-[560px] max-w-[95vw] max-h-[85vh] overflow-y-auto shadow-2xl">
-          <div className="p-6 border-b border-white/7">
-            <h2 className="text-white font-extrabold text-lg">🔨 Select Auction to Operate</h2>
-            <p className="text-slate-500 text-sm mt-1">Choose which auction to clerk</p>
+      <div className="min-h-screen bg-[#0d1117] p-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="mb-6">
+            <h2 className="text-white font-extrabold text-xl">🔨 Auction Control Centre</h2>
+            <p className="text-slate-500 text-sm mt-1">Select an auction to operate or view</p>
           </div>
-          <div className="p-4 flex flex-col gap-3">
+
+          {/* Column headers */}
+          <div className="grid grid-cols-[1fr_180px_90px_auto] gap-4 px-4 mb-2">
+            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Auction Name</span>
+            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Date/Time</span>
+            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Lots</span>
+            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Controls</span>
+          </div>
+
+          <div className="flex flex-col gap-2">
             {auctions.length === 0 && (
-              <p className="text-center text-slate-500 py-5 text-sm">No auctions found</p>
+              <p className="text-center text-slate-500 py-8 text-sm">No auctions found</p>
             )}
             {auctions.map(a => (
               <div
                 key={a.id}
-                className="bg-[#0d1117] border-2 border-white/7 hover:border-blue-500 rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-colors group"
-                onClick={() => emit("clerk:selectAuction", { auctionId: a.id })}
+                className="bg-[#161b2e] border border-white/10 rounded-xl p-4 grid grid-cols-[1fr_180px_90px_auto] gap-4 items-center"
               >
-                <div className="flex-1">
+                <div>
                   <div className="text-white font-bold text-sm">{a.name}</div>
-                  <div className="text-slate-400 text-xs mt-0.5">
-                    {a.code} · {a.auctionDate ? new Date(a.auctionDate).toLocaleDateString("en-GB") : "No date"}
-                  </div>
+                  <div className="text-slate-500 text-xs mt-0.5">{a.code}</div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="bg-[#1e293b] text-slate-400 text-xs px-2 py-0.5 rounded-full">{a.lotCount} lots</span>
-                  {a.published && <span className="bg-green-900/60 text-green-400 text-xs px-2 py-0.5 rounded-full font-bold">Live</span>}
+                <div className="text-slate-400 text-xs">
+                  {a.auctionDate
+                    ? new Date(a.auctionDate).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }) +
+                      " " + new Date(a.auctionDate).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+                    : "No date"}
                 </div>
-                <button className="bg-blue-600 group-hover:bg-blue-500 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors">
-                  Operate
-                </button>
+                <div className="text-slate-400 text-xs">{a.lotCount} Lots</div>
+
+                {/* Action buttons */}
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => emit("clerk:selectAuction", { auctionId: a.id })}
+                    className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    Operate
+                  </button>
+                  <button
+                    onClick={() => window.open(`/auction-controller/auctioneer`, "_blank")}
+                    className="bg-slate-600 hover:bg-slate-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    Auctioneer
+                  </button>
+                  <button
+                    onClick={() => window.open(`/auction-controller/results`, "_blank")}
+                    className="bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    Results
+                  </button>
+                </div>
               </div>
             ))}
           </div>
+
+          <p className="text-slate-600 text-xs mt-4">
+            Tip: Open Auctioneer and Results screens on separate monitors before pressing Operate.
+          </p>
         </div>
       </div>
     )
+  }
+
+  // ── Camera stream functions ───────────────────────────────────────────────
+  async function startBroadcast() {
+    setCameraError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      localStreamRef.current = stream
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream
+      setIsBroadcasting(true)
+      emit("webrtc:ready")
+    } catch {
+      setCameraError("Could not access camera — check browser permissions.")
+    }
+  }
+
+  function stopBroadcast() {
+    localStreamRef.current?.getTracks().forEach(t => t.stop())
+    localStreamRef.current = null
+    if (localVideoRef.current) localVideoRef.current.srcObject = null
+    peerConnectionsRef.current.forEach(pc => pc.close())
+    peerConnectionsRef.current.clear()
+    setIsBroadcasting(false)
+    emit("webrtc:stop")
   }
 
   // ── Main clerk control panel ───────────────────────────────────────────────
@@ -218,29 +336,88 @@ export default function AuctionControllerPage() {
                       auction?.status === "COMPLETE"? "bg-slate-500" : "bg-blue-700"
 
   return (
-    <div className="flex flex-col bg-[#0d1117] text-white" style={{ minHeight: "calc(100vh - 56px)" }}>
+    <div className="relative flex flex-col bg-[#0d1117] text-white" style={{ minHeight: "calc(100vh - 56px)" }}>
 
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[#161b2e] border-b border-white/10 shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-white font-extrabold text-sm">🔨 Bidstream Controller</span>
-          {auction && <span className="text-blue-300 font-semibold text-sm">{auction.title}</span>}
+      <div className="flex items-center justify-between px-4 py-2 bg-[#161b2e] border-b border-white/10 shrink-0 gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-white font-extrabold text-sm shrink-0">🔨 Controller</span>
+          {auction && <span className="text-blue-300 font-semibold text-sm truncate">{auction.title}</span>}
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Pause message indicator */}
+          {activePauseMessage && (
+            <span className="bg-amber-600 text-white text-[10px] font-bold px-2 py-1 rounded animate-pulse">
+              📢 PAUSED: {activePauseMessage.slice(0, 30)}{activePauseMessage.length > 30 ? "…" : ""}
+            </span>
+          )}
+
           {auction && (
             <span className={`${statusColor} text-white text-xs font-bold px-3 py-1 rounded-full`}>
               {auction.status}
             </span>
           )}
-          <span className="text-slate-400 text-xs">🌐 {onlineCount} online</span>
+          <span className="text-slate-400 text-xs">🌐 {onlineCount}</span>
+
+          {/* Camera stream button — prominent in top bar */}
+          {isBroadcasting ? (
+            <button
+              onClick={stopBroadcast}
+              className="flex items-center gap-1.5 bg-red-700 hover:bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+              LIVE — Stop Camera
+            </button>
+          ) : (
+            <button
+              onClick={startBroadcast}
+              className="flex items-center gap-1.5 bg-slate-700 hover:bg-red-700 text-slate-300 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+            >
+              📹 Start Camera
+            </button>
+          )}
+          {cameraError && <span className="text-red-400 text-[10px]">⚠ {cameraError}</span>}
+
           <button
             onClick={() => { setPhase("select"); emit("clerk:loadAuctions") }}
             className="text-xs text-blue-400 hover:text-white border border-blue-900 hover:border-blue-500 px-3 py-1 rounded transition-colors"
           >
-            🔀 Switch Auction
+            🔀 Switch
           </button>
         </div>
       </div>
+
+      {/* ── SOLD popup overlay ───────────────────────────────────────────── */}
+      {soldPopup && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 pointer-events-none">
+          <div className="bg-green-600 rounded-2xl px-12 py-10 text-center shadow-2xl border-4 border-green-400 animate-bounce-once">
+            <p className="text-white text-6xl font-black mb-2">🔨 SOLD</p>
+            <p className="text-white/80 text-lg font-bold mb-1">LOT {soldPopup.lotNumber}</p>
+            {soldPopup.title && (
+              <p className="text-white/70 text-sm mb-4 max-w-xs mx-auto line-clamp-2">{soldPopup.title}</p>
+            )}
+            <p className="text-white font-black text-4xl mb-4">
+              £{soldPopup.hammerPrice.toLocaleString("en-GB")}
+            </p>
+            <p className="text-white/60 text-sm">Moving to next lot in {soldCountdown}s…</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Camera preview bar (shown when live) ─────────────────────────── */}
+      {isBroadcasting && (
+        <div className="shrink-0 bg-black border-b border-red-900 flex items-center gap-3 px-4 py-1.5">
+          <div className="relative rounded overflow-hidden bg-black" style={{ width: 160, height: 90 }}>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
+          </div>
+          <div>
+            <p className="text-red-400 text-xs font-black animate-pulse">🔴 CAMERA LIVE</p>
+            <p className="text-slate-500 text-[10px]">Viewers can see your camera stream</p>
+          </div>
+        </div>
+      )}
 
       {/* ── Main grid ───────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
@@ -288,7 +465,11 @@ export default function AuctionControllerPage() {
               )}
               {auction?.status === "PAUSED" && (
                 <button
-                  onClick={() => emit("clerk:startAuction")}
+                  onClick={() => {
+                    emit("clerk:resumeAuction")
+                    setActivePauseMessage(null)
+                    setPauseMessageInput("")
+                  }}
                   className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
                 >
                   ▶ Resume
@@ -494,6 +675,53 @@ export default function AuctionControllerPage() {
                 className="bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold px-4 py-1.5 rounded-lg"
               >Add</button>
             </div>
+          </div>
+
+          {/* Pause & Message */}
+          <div className={`rounded-xl p-3 border ${activePauseMessage ? "bg-amber-900/30 border-amber-600" : "bg-[#161b2e] border-white/10"}`}>
+            <div className="text-slate-400 text-xs font-semibold mb-2">📢 Pause & Show Message to Viewers</div>
+            <div className="flex gap-2 mb-2">
+              <input
+                type="text"
+                className="flex-1 bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm outline-none placeholder:text-slate-600"
+                placeholder="e.g. Back in 15 minutes, comfort break…"
+                value={pauseMessageInput}
+                onChange={e => setPauseMessageInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && pauseMessageInput.trim()) {
+                    emit("clerk:setPauseMessage", { message: pauseMessageInput.trim() })
+                    setActivePauseMessage(pauseMessageInput.trim())
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (!pauseMessageInput.trim()) return
+                  emit("clerk:setPauseMessage", { message: pauseMessageInput.trim() })
+                  setActivePauseMessage(pauseMessageInput.trim())
+                }}
+                className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+              >
+                Set & Pause
+              </button>
+              {activePauseMessage && (
+                <button
+                  onClick={() => {
+                    emit("clerk:setPauseMessage", { message: "" })
+                    setActivePauseMessage(null)
+                    setPauseMessageInput("")
+                  }}
+                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {activePauseMessage && (
+              <p className="text-amber-400 text-[10px]">
+                ⚠️ Viewers are currently seeing: &quot;{activePauseMessage}&quot;
+              </p>
+            )}
           </div>
 
           {/* Lot navigation strip */}

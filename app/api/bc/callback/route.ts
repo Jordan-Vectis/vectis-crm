@@ -3,7 +3,7 @@ import { auth } from "@/auth"
 import { cookies } from "next/headers"
 import { prisma } from "@/lib/prisma"
 
-const APP_URL = process.env.NEXTAUTH_URL ?? "https://vectis-crm-production.up.railway.app"
+const APP_URL = process.env.NEXTAUTH_URL ?? "https://vectis-production.up.railway.app"
 
 export async function GET(req: NextRequest) {
   const session = await auth()

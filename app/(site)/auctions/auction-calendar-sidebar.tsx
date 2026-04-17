@@ -3,8 +3,13 @@
 import { useState } from "react"
 import Link from "next/link"
 
+interface AuctionEntry {
+  date: string   // ISO date string
+  code: string   // auction code for URL
+}
+
 interface Props {
-  auctionDates: string[]   // ISO date strings of published auctions
+  auctionEntries: AuctionEntry[]
   auctionTypes: string[]
   selectedType: string
 }
@@ -13,19 +18,22 @@ const DAYS   = ["Su","Mo","Tu","We","Th","Fr","Sa"]
 const MONTHS = ["January","February","March","April","May","June",
                 "July","August","September","October","November","December"]
 
-export default function AuctionCalendarSidebar({ auctionDates, auctionTypes, selectedType }: Props) {
+export default function AuctionCalendarSidebar({ auctionEntries, auctionTypes, selectedType }: Props) {
   const today = new Date()
   const [year,  setYear]  = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
 
-  const auctionDateSet = new Set(
-    auctionDates.map(d => {
-      const dt = new Date(d)
-      return `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`
-    })
-  )
+  // Build a map of "year-month-day" → first auction code on that date
+  const auctionDateMap = new Map<string, string>()
+  for (const entry of auctionEntries) {
+    const dt = new Date(entry.date)
+    const key = `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`
+    if (!auctionDateMap.has(key)) {
+      auctionDateMap.set(key, entry.code)
+    }
+  }
 
-  const firstDay   = new Date(year, month, 1).getDay()
+  const firstDay    = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
 
   function prevMonth() {
@@ -45,7 +53,8 @@ export default function AuctionCalendarSidebar({ auctionDates, auctionTypes, sel
   const isToday = (d: number) =>
     d === today.getDate() && month === today.getMonth() && year === today.getFullYear()
 
-  const hasAuction = (d: number) => auctionDateSet.has(`${year}-${month}-${d}`)
+  const getAuctionCode = (d: number) =>
+    auctionDateMap.get(`${year}-${month}-${d}`) ?? null
 
   return (
     <aside className="w-60 shrink-0">
@@ -80,23 +89,34 @@ export default function AuctionCalendarSidebar({ auctionDates, auctionTypes, sel
         <div className="grid grid-cols-7 px-2 pb-3 gap-y-0.5">
           {cells.map((d, i) => {
             if (!d) return <div key={`e-${i}`} />
-            const auction = hasAuction(d)
-            const today   = isToday(d)
+            const code    = getAuctionCode(d)
+            const todayEl = isToday(d)
+
+            if (code) {
+              // Clickable — has an auction on this date
+              return (
+                <Link
+                  key={d}
+                  href={`/auctions/${code}`}
+                  title="View auction"
+                  className="relative flex items-center justify-center rounded-full w-7 h-7 mx-auto text-xs font-bold bg-[#32348A] text-white hover:bg-[#28296e] transition-colors cursor-pointer"
+                >
+                  {d}
+                  <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#2AB4A6]" />
+                </Link>
+              )
+            }
+
             return (
               <div
                 key={d}
                 className={`relative flex items-center justify-center rounded-full w-7 h-7 mx-auto text-xs font-medium cursor-default transition-colors ${
-                  auction
-                    ? "bg-[#32348A] text-white font-bold cursor-pointer"
-                    : today
+                  todayEl
                     ? "bg-[#2AB4A6]/20 text-[#32348A] font-bold"
                     : "text-gray-600"
                 }`}
               >
                 {d}
-                {auction && (
-                  <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#2AB4A6]" />
-                )}
               </div>
             )
           })}

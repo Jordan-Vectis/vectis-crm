@@ -3,7 +3,6 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { hasAppAccess } from "@/lib/apps"
 import { APP_CARD_DEFS } from "@/lib/app-cards"
-import Logo from "@/components/logo"
 import UserMenu from "./user-menu"
 
 export default async function HubPage() {
@@ -48,13 +47,6 @@ export default async function HubPage() {
   return (
     <div className="relative min-h-screen bg-[#111318] flex flex-col items-center px-6 py-16">
       <UserMenu name={fullName} />
-
-      <div className="flex flex-col items-center mb-14 gap-4">
-        <Logo variant="full" />
-        <p className="text-gray-400 text-base">
-          Welcome back, {name} — select an app to get started
-        </p>
-      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 w-full max-w-6xl">
         {cards.map((app) => (
