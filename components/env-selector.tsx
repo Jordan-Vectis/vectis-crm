@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 
 const ENVIRONMENTS = [
-  { name: "Production", url: "https://vectis-crm-production.up.railway.app" },
+  { name: "Production", url: "https://vectis-production.up.railway.app" },
   { name: "Staging",    url: "https://vectis-staging.up.railway.app" },
 ]
 
