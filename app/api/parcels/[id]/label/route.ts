@@ -89,7 +89,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const updated = await prisma.parcel.update({
       where: { id },
       data: {
-        rmOrderIdentifier: createdOrder.orderIdentifier,
+        rmOrderIdentifier: String(createdOrder.orderIdentifier),
         trackingNumber:    createdOrder.trackingNumber ?? null,
         labelPdf:          base64Pdf,
         status:            "LABEL_CREATED",
