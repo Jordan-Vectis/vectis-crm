@@ -26,6 +26,17 @@ body {
   font-size: 1.125rem;
 }
 
+/* Prevent iOS from treating button/link taps as scroll or zoom gestures */
+button,
+a,
+[role="button"],
+input,
+select,
+textarea,
+label {
+  touch-action: manipulation;
+}
+
 /* ─── Warehouse app utility classes ─────────────────────────────────────── */
 
 .wh-card {
