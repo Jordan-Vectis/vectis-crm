@@ -3,7 +3,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 const links = [
-  { href: "/tools/cataloguing/auctions", label: "Auction Manager", icon: "🏷" },
+  { href: "/tools/cataloguing/auctions",        label: "Auction Manager",      icon: "🏷" },
+  { href: "/tools/cataloguing/tablet/auctions", label: "Tablet Cataloguing",   icon: "📱" },
 ]
 
 interface Props {

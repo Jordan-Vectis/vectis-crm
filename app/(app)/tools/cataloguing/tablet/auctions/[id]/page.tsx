@@ -1,0 +1,55 @@
+import { notFound } from "next/navigation"
+import { prisma } from "@/lib/prisma"
+import { auth } from "@/auth"
+import { redirect } from "next/navigation"
+import TabletTabs from "./tablet-tabs"
+
+export default async function TabletAuctionDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const session = await auth()
+  if (!session) redirect("/login")
+  if (!["ADMIN", "CATALOGUER"].includes(session.user.role)) redirect("/submissions")
+
+  const { id } = await params
+
+  const auction = await prisma.catalogueAuction.findUnique({
+    where: { id },
+    include: {
+      lots: { orderBy: { lotNumber: "asc" } },
+    },
+  })
+
+  if (!auction) notFound()
+
+  return (
+    <TabletTabs
+      auction={{
+        id: auction.id,
+        code: auction.code,
+        name: auction.name,
+      }}
+      lots={auction.lots.map(l => ({
+        id: l.id,
+        lotNumber: l.lotNumber,
+        barcode: l.barcode,
+        title: l.title,
+        description: l.description,
+        estimateLow: l.estimateLow,
+        estimateHigh: l.estimateHigh,
+        condition: l.condition,
+        vendor: l.vendor,
+        tote: l.tote,
+        receipt: l.receipt,
+        category: l.category,
+        subCategory: l.subCategory,
+        brand: l.brand,
+        notes: l.notes,
+        status: l.status,
+        imageUrls: l.imageUrls,
+      }))}
+    />
+  )
+}
