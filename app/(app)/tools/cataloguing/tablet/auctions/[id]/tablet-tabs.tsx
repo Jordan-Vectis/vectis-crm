@@ -71,7 +71,16 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
   const editingLot = lots.find(l => l.id === editingLotId) ?? null
 
   return (
-    <div className="flex flex-col min-h-0" style={{ touchAction: "manipulation" }}>
+    <div
+      className="flex flex-col bg-[#141416]"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        touchAction: "manipulation",
+        WebkitOverflowScrolling: "touch",
+      }}
+    >
 
       {/* Header bar */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-[#1C1C1E]">
@@ -112,7 +121,7 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
         {/* Manage Lots */}
         {tab === "manage" && (
           editingLotId
