@@ -1,11 +1,11 @@
-import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { getWarehouseRole } from "@/lib/apps"
 import WarehouseSidebar from "@/components/warehouse-sidebar"
+import { getEffectiveSession } from "@/lib/impersonation"
 
 export default async function WarehouseLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth()
+  const session = await getEffectiveSession()
   if (!session) redirect("/login")
 
   let whRole: string | null = null

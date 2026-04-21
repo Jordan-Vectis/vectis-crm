@@ -1,17 +1,17 @@
 import Link from "next/link"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { hasAppAccess } from "@/lib/apps"
 import { APP_CARD_DEFS } from "@/lib/app-cards"
 import UserMenu from "./user-menu"
+import { getEffectiveSession } from "@/lib/impersonation"
 
 export default async function HubPage() {
-  const session = await auth()
-  const name     = session?.user?.name?.split(" ")[0] ?? "there"
-  const fullName = session?.user?.name ?? name
+  const effective = await getEffectiveSession()
+  const name     = effective?.user?.name?.split(" ")[0] ?? "there"
+  const fullName = effective?.user?.name ?? name
 
-  const dbUser = session?.user?.id
-    ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { allowedApps: true, role: true } })
+  const dbUser = effective?.user?.id
+    ? await prisma.user.findUnique({ where: { id: effective.user.id }, select: { allowedApps: true, role: true } })
     : null
 
   const dbCards = await prisma.appCard.findMany()

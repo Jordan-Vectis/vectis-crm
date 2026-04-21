@@ -29,9 +29,21 @@ export default async function EditUserPage({
           <h1 className="text-2xl font-bold text-gray-900">{user.name}</h1>
           <p className="text-sm text-gray-500">{user.email}</p>
         </div>
-        {session.user.id !== user.id && (
-          <DeleteUserButton id={user.id} name={user.name} redirectAfter="/admin/users" />
-        )}
+        <div className="flex items-center gap-3">
+          {session.user.id !== user.id && user.role !== "ADMIN" && (
+            <form action={`/api/admin/impersonate/${user.id}`} method="POST">
+              <button
+                type="submit"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                👁 Login as {user.name.split(" ")[0]}
+              </button>
+            </form>
+          )}
+          {session.user.id !== user.id && (
+            <DeleteUserButton id={user.id} name={user.name} redirectAfter="/admin/users" />
+          )}
+        </div>
       </div>
 
       <EditUserForm
