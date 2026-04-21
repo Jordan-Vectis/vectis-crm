@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateUser } from "@/lib/actions/admin"
+import { updateUser, changePassword } from "@/lib/actions/admin"
 import { ALL_APPS, WAREHOUSE_ROLES, APP_SECTIONS } from "@/lib/apps"
 import type { AppKey, WarehouseRole } from "@/lib/apps"
 import { APP_CARD_DEFS } from "@/lib/app-cards"
@@ -114,14 +114,12 @@ export default function EditUserForm({ userId, name, email, username, role, depa
     if (password !== confirm) { setPwdError("Passwords do not match."); return }
     if (password.length < 8)  { setPwdError("Password must be at least 8 characters."); return }
     setPwdError(null)
-    const fd = new FormData()
-    fd.set("name", name)
-    fd.set("password", password)
     startPwdTransition(async () => {
-      await updateUser(userId, fd)
+      await changePassword(userId, password)
       setPwdOpen(false)
       setPassword("")
       setConfirm("")
+      setShowPwd(false)
     })
   }
 
