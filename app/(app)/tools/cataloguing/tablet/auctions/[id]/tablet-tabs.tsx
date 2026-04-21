@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import {
   updateLot,
@@ -67,18 +68,20 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
   const router = useRouter()
   const [tab, setTab] = useState<Tab>("manage")
   const [editingLotId, setEditingLotId] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   const editingLot = lots.find(l => l.id === editingLotId) ?? null
 
-  return (
+  const ui = (
     <div
       className="flex flex-col bg-[#141416]"
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 50,
+        zIndex: 9999,
         touchAction: "manipulation",
-        WebkitOverflowScrolling: "touch",
+        WebkitOverflowScrolling: "touch" as any,
       }}
     >
 
@@ -162,6 +165,9 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
       </div>
     </div>
   )
+
+  if (!mounted) return null
+  return createPortal(ui, document.body)
 }
 
 // ─── Manage lots — card list ──────────────────────────────────────────────────
