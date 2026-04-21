@@ -40,7 +40,8 @@ export default function EditUserForm({ userId, name, email, username, role, depa
   const ALL_USER_CARD_KEYS = APP_CARD_DEFS.filter(c => c.allUsers).map(c => c.key)
   const storedHubCards = (appPermissions as any)?.HUB_CARDS?.visible as string[] | undefined
   const [hubCards, setHubCards] = useState<string[]>(
-    storedHubCards ?? ALL_USER_CARD_KEYS
+    // Default to all visible if never configured or empty (treats [] as "not yet set")
+    storedHubCards && storedHubCards.length > 0 ? storedHubCards : ALL_USER_CARD_KEYS
   )
 
   function toggleHubCard(key: string) {
@@ -174,12 +175,14 @@ export default function EditUserForm({ userId, name, email, username, role, depa
       {/* ── App access ── */}
       <section className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="font-semibold text-gray-800 mb-1">App Access & Permissions</h2>
-        <p className="text-sm text-gray-500 mb-4">Choose which apps this user can access, and set their role within each app.</p>
+        <p className="text-sm text-gray-500 mb-4">Choose which apps and hub cards this user can access.</p>
         {role === "ADMIN" ? (
           <p className="text-sm text-gray-500 italic">Admin users have access to all apps with full permissions.</p>
         ) : (
           <>
             <div className="flex flex-col gap-4 mb-5">
+
+              {/* ── Tool apps ── */}
               {ALL_APPS.map(app => (
                 <div key={app.key}>
                   <label className="flex items-center gap-3 cursor-pointer group">
@@ -243,40 +246,37 @@ export default function EditUserForm({ userId, name, email, username, role, depa
                           )
                         })}
                       </div>
-                      <p className="text-xs text-gray-400 mt-2">Controls which sections this user can access.</p>
                     </div>
                   )}
                 </div>
               ))}
-            </div>
-            {/* Hub card visibility */}
-            <div className="border-t border-gray-100 pt-4 mt-2">
-              <h3 className="text-sm font-semibold text-gray-700 mb-1">Hub Card Visibility</h3>
-              <p className="text-xs text-gray-400 mb-3">Choose which hub cards this user can see. Cards linked to app access above are controlled separately.</p>
-              <div className="flex flex-col gap-2">
-                {APP_CARD_DEFS.filter(c => c.allUsers).map(card => {
-                  const checked = hubCards.includes(card.key)
-                  return (
-                    <label key={card.key} className="flex items-center gap-3 cursor-pointer group">
-                      <div
-                        onClick={() => toggleHubCard(card.key)}
-                        className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors cursor-pointer ${
-                          checked ? "bg-blue-600 border-blue-600" : "border-gray-300 group-hover:border-blue-400"
-                        }`}
-                      >
-                        {checked && (
-                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
-                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
-                      </div>
-                      <span className="text-sm text-gray-700 group-hover:text-gray-900">
-                        {card.icon} {card.defaultLabel}
-                      </span>
-                    </label>
-                  )
-                })}
+
+              {/* ── Hub cards divider ── */}
+              <div className="flex items-center gap-3 pt-1">
+                <div className="flex-1 h-px bg-gray-100" />
+                <span className="text-xs text-gray-400 font-medium">Hub cards always shown to all users</span>
+                <div className="flex-1 h-px bg-gray-100" />
               </div>
+
+              {/* ── Hub-only cards ── */}
+              {APP_CARD_DEFS.filter(c => c.allUsers).map(card => (
+                <div key={card.key}>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div onClick={() => toggleHubCard(card.key)}
+                      className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                        hubCards.includes(card.key) ? "bg-blue-600 border-blue-600" : "border-gray-300 group-hover:border-blue-400"
+                      }`}>
+                      {hubCards.includes(card.key) && (
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
+                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-sm text-gray-700 group-hover:text-gray-900 font-medium">{card.icon} {card.defaultLabel}</span>
+                  </label>
+                </div>
+              ))}
+
             </div>
 
             <div className="flex items-center gap-3">
