@@ -1344,6 +1344,23 @@ export default function AuctionAIPage() {
   const [tab,       setTab]       = useState<Tab>("chat")
   const [model,     setModel]     = useState(DEFAULT_MODEL)
   const [modelList, setModelList] = useState<string[]>([DEFAULT_MODEL])
+  const [allowedSections, setAllowedSections] = useState<string[] | null>(null)
+  const [sectionsLoaded,  setSectionsLoaded]  = useState(false)
+
+  useEffect(() => {
+    fetch("/api/user/section-access/AUCTION_AI")
+      .then(r => r.json())
+      .then(({ allowed }: { allowed: string[] | null }) => {
+        setAllowedSections(allowed)
+        setSectionsLoaded(true)
+        // If current tab is not allowed, switch to first allowed
+        if (allowed && !allowed.includes(tab)) {
+          setTab((allowed[0] as Tab) ?? "chat")
+        }
+      })
+      .catch(() => setSectionsLoaded(true))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -1367,7 +1384,7 @@ export default function AuctionAIPage() {
           <p className="text-[#C8A96E] text-xs mt-0.5 tracking-widest uppercase">Vectis</p>
         </div>
         <div className="flex-1 px-3 py-4 space-y-0.5">
-          {TABS.map((t) => {
+          {TABS.filter(t => !allowedSections || allowedSections.includes(t.id)).map((t) => {
             const accent = t.accent ?? "#C8A96E"
             const active = tab === t.id
             return (

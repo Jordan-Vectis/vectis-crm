@@ -18,7 +18,7 @@ export default async function ImpersonationBanner() {
   if (!target) return null
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-between gap-4 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950 shadow-lg">
+    <div className="flex items-center justify-between gap-4 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950 shadow-md flex-shrink-0">
       <div className="flex items-center gap-2">
         <span>👁</span>
         <span>

@@ -764,6 +764,20 @@ export default function BCReportsPage() {
   const [bcError, setBcError]           = useState<string | null>(null)
   const [debugReason, setDebugReason]   = useState<string | null>(null)
   const [refreshKey, setRefreshKey]     = useState(0)
+  const [allowedSections, setAllowedSections] = useState<string[] | null>(null)
+
+  useEffect(() => {
+    fetch("/api/user/section-access/BC_REPORTS")
+      .then(r => r.json())
+      .then(({ allowed }: { allowed: string[] | null }) => {
+        setAllowedSections(allowed)
+        if (allowed && !allowed.includes(activeReport)) {
+          setActiveReport((allowed[0] as Report) ?? "cataloguing")
+        }
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -792,7 +806,7 @@ export default function BCReportsPage() {
         <div className="flex-1 px-3 py-4">
           <p className="text-gray-600 text-xs uppercase tracking-wider mb-2 px-1">Reports</p>
           <div className="space-y-0.5">
-            {reports.map((r) => (
+            {reports.filter(r => !allowedSections || allowedSections.includes(r.id)).map((r) => (
               <button
                 key={r.id}
                 onClick={() => setActiveReport(r.id)}

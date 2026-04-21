@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updateUser } from "@/lib/actions/admin"
-import { ALL_APPS, WAREHOUSE_ROLES, CATALOGUING_SIDEBAR_ITEMS } from "@/lib/apps"
+import { ALL_APPS, WAREHOUSE_ROLES, APP_SECTIONS } from "@/lib/apps"
 import type { AppKey, WarehouseRole } from "@/lib/apps"
 
 interface Props {
@@ -26,9 +26,26 @@ export default function EditUserForm({ userId, name, email, username, role, depa
   const [warehouseRole, setWarehouseRole] = useState<WarehouseRole>(
     (appPermissions?.WAREHOUSE?.role as WarehouseRole) || "warehouse"
   )
-  const [cataloguingItems, setCataloguingItems] = useState<string[]>(
-    appPermissions?.CATALOGUING?.sidebarItems ?? CATALOGUING_SIDEBAR_ITEMS.map(i => i.key)
-  )
+  // Per-app section visibility — keyed by AppKey
+  const [appSections, setAppSections] = useState<Record<string, string[]>>(() => {
+    const initial: Record<string, string[]> = {}
+    for (const [key, sections] of Object.entries(APP_SECTIONS)) {
+      initial[key] = appPermissions?.[key]?.sidebarItems ?? sections!.map(s => s.key)
+    }
+    return initial
+  })
+
+  function toggleAppSection(appKey: string, sectionKey: string) {
+    setAppSections(prev => {
+      const current = prev[appKey] ?? []
+      return {
+        ...prev,
+        [appKey]: current.includes(sectionKey)
+          ? current.filter(k => k !== sectionKey)
+          : [...current, sectionKey],
+      }
+    })
+  }
   const [appsPending, startAppsTransition] = useTransition()
   const [appsMsg, setAppsMsg] = useState<string | null>(null)
   const [pwdOpen, setPwdOpen] = useState(false)
@@ -50,20 +67,20 @@ export default function EditUserForm({ userId, name, email, username, role, depa
     })
   }
 
-  function toggleCataloguingItem(key: string) {
-    setCataloguingItems(prev =>
-      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
-    )
-  }
-
   function saveApps() {
     setAppsMsg(null)
     const newAppPermissions: Record<string, any> = {}
     if (selectedApps.includes("WAREHOUSE")) {
       newAppPermissions.WAREHOUSE = { role: warehouseRole }
     }
-    if (selectedApps.includes("CATALOGUING")) {
-      newAppPermissions.CATALOGUING = { sidebarItems: cataloguingItems }
+    // Save section visibility for all apps that have sections
+    for (const appKey of Object.keys(APP_SECTIONS)) {
+      if (selectedApps.includes(appKey)) {
+        newAppPermissions[appKey] = {
+          ...(newAppPermissions[appKey] ?? {}),
+          sidebarItems: appSections[appKey] ?? [],
+        }
+      }
     }
     startAppsTransition(async () => {
       const res = await fetch(`/api/admin/users/${userId}/apps`, {
@@ -186,30 +203,33 @@ export default function EditUserForm({ userId, name, email, username, role, depa
                     </div>
                   )}
 
-                  {/* Cataloguing sidebar items sub-option */}
-                  {app.key === "CATALOGUING" && selectedApps.includes("CATALOGUING") && (
+                  {/* Visible Sections — shown for any app that has defined sections */}
+                  {APP_SECTIONS[app.key as AppKey] && selectedApps.includes(app.key) && (
                     <div className="ml-8 mt-2">
                       <label className="block text-xs font-medium text-gray-600 mb-2">Visible Sections</label>
                       <div className="flex flex-col gap-2">
-                        {CATALOGUING_SIDEBAR_ITEMS.map(item => (
-                          <label key={item.key} className="flex items-center gap-2 cursor-pointer group">
-                            <div
-                              onClick={() => toggleCataloguingItem(item.key)}
-                              className={`w-4 h-4 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors cursor-pointer ${
-                                cataloguingItems.includes(item.key) ? "bg-blue-600 border-blue-600" : "border-gray-300 group-hover:border-blue-400"
-                              }`}
-                            >
-                              {cataloguingItems.includes(item.key) && (
-                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12">
-                                  <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                            </div>
-                            <span className="text-xs text-gray-600 group-hover:text-gray-900">{item.label}</span>
-                          </label>
-                        ))}
+                        {APP_SECTIONS[app.key as AppKey]!.map(section => {
+                          const checked = (appSections[app.key] ?? []).includes(section.key)
+                          return (
+                            <label key={section.key} className="flex items-center gap-2 cursor-pointer group">
+                              <div
+                                onClick={() => toggleAppSection(app.key, section.key)}
+                                className={`w-4 h-4 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                                  checked ? "bg-blue-600 border-blue-600" : "border-gray-300 group-hover:border-blue-400"
+                                }`}
+                              >
+                                {checked && (
+                                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12">
+                                    <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                )}
+                              </div>
+                              <span className="text-xs text-gray-600 group-hover:text-gray-900">{section.label}</span>
+                            </label>
+                          )
+                        })}
                       </div>
-                      <p className="text-xs text-gray-400 mt-2">Controls which items appear in the cataloguing sidebar.</p>
+                      <p className="text-xs text-gray-400 mt-2">Controls which sections this user can access.</p>
                     </div>
                   )}
                 </div>

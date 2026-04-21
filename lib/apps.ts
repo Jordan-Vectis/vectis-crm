@@ -37,21 +37,55 @@ export function canAccessWarehouseRoute(whRole: WarehouseRole | null, minRole: W
   return order.indexOf(whRole) >= order.indexOf(minRole)
 }
 
-// ─── Cataloguing sidebar items ────────────────────────────────────────────────
+// ─── Per-app section definitions ─────────────────────────────────────────────
 
-export const CATALOGUING_SIDEBAR_ITEMS: { key: string; label: string }[] = [
-  { key: "AUCTION_MANAGER",    label: "Auction Manager" },
-  { key: "TABLET_CATALOGUING", label: "Tablet Cataloguing" },
-]
+export const APP_SECTIONS: Partial<Record<AppKey, { key: string; label: string }[]>> = {
+  CATALOGUING: [
+    { key: "AUCTION_MANAGER",    label: "Auction Manager" },
+    { key: "TABLET_CATALOGUING", label: "Tablet Cataloguing" },
+  ],
+  AUCTION_AI: [
+    { key: "chat",         label: "Chat Window" },
+    { key: "batch",        label: "Batch Run" },
+    { key: "runs",         label: "Saved Runs" },
+    { key: "barcode",      label: "Barcode Sorter" },
+    { key: "copier",       label: "Description Copier" },
+    { key: "instructions", label: "Instructions" },
+  ],
+  BC_REPORTS: [
+    { key: "cataloguing", label: "Cataloguing" },
+    { key: "packing",     label: "Packing" },
+    { key: "warehouse",   label: "Warehouse" },
+    { key: "explorer",    label: "Data Explorer" },
+    { key: "location",    label: "Location History" },
+  ],
+}
 
-/** Returns the list of allowed cataloguing sidebar item keys for a user.
- *  ADMIN users get everything. If no restriction is stored, all items are returned. */
+/**
+ * Returns the list of allowed section keys for a given app and user.
+ * Returns null when there is no restriction (show everything).
+ */
+export function getAllowedSections(
+  role: string,
+  appPermissions: Record<string, any> | null | undefined,
+  appKey: AppKey
+): string[] | null {
+  const sections = APP_SECTIONS[appKey]
+  if (!sections) return null              // app has no sections — no restriction
+  if (role === "ADMIN") return null       // admins always see everything
+  const stored = appPermissions?.[appKey]?.sidebarItems as string[] | undefined
+  if (!stored || stored.length === 0) return null  // not configured — show all
+  return stored
+}
+
+// ─── Cataloguing helpers (kept for backwards compat) ─────────────────────────
+
+export const CATALOGUING_SIDEBAR_ITEMS = APP_SECTIONS.CATALOGUING!
+
 export function getCataloguingSidebarItems(
   role: string,
   appPermissions: Record<string, any> | null | undefined
 ): string[] {
-  if (role === "ADMIN") return CATALOGUING_SIDEBAR_ITEMS.map(i => i.key)
-  const stored = appPermissions?.CATALOGUING?.sidebarItems as string[] | undefined
-  if (!stored || stored.length === 0) return CATALOGUING_SIDEBAR_ITEMS.map(i => i.key)
-  return stored
+  return getAllowedSections(role, appPermissions, "CATALOGUING") ??
+    CATALOGUING_SIDEBAR_ITEMS.map(i => i.key)
 }
