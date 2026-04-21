@@ -1,13 +1,20 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
-import { hasAppAccess } from "@/lib/apps"
+import { hasAppAccess, getCataloguingSidebarItems } from "@/lib/apps"
 import CataloguingShell from "@/components/cataloguing-shell"
 
 export default async function CataloguingLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   if (!session) redirect("/login")
-  const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { allowedApps: true, role: true } })
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { allowedApps: true, role: true, appPermissions: true },
+  })
   if (!hasAppAccess(dbUser?.role ?? "", dbUser?.allowedApps ?? [], "CATALOGUING")) redirect("/hub")
-  return <CataloguingShell>{children}</CataloguingShell>
+  const allowedSidebarItems = getCataloguingSidebarItems(
+    dbUser?.role ?? "",
+    dbUser?.appPermissions as Record<string, any> | null
+  )
+  return <CataloguingShell allowedSidebarItems={allowedSidebarItems}>{children}</CataloguingShell>
 }

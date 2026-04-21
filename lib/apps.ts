@@ -36,3 +36,22 @@ export function canAccessWarehouseRoute(whRole: WarehouseRole | null, minRole: W
   const order: WarehouseRole[] = ["warehouse", "manager", "admin"]
   return order.indexOf(whRole) >= order.indexOf(minRole)
 }
+
+// ─── Cataloguing sidebar items ────────────────────────────────────────────────
+
+export const CATALOGUING_SIDEBAR_ITEMS: { key: string; label: string }[] = [
+  { key: "AUCTION_MANAGER",    label: "Auction Manager" },
+  { key: "TABLET_CATALOGUING", label: "Tablet Cataloguing" },
+]
+
+/** Returns the list of allowed cataloguing sidebar item keys for a user.
+ *  ADMIN users get everything. If no restriction is stored, all items are returned. */
+export function getCataloguingSidebarItems(
+  role: string,
+  appPermissions: Record<string, any> | null | undefined
+): string[] {
+  if (role === "ADMIN") return CATALOGUING_SIDEBAR_ITEMS.map(i => i.key)
+  const stored = appPermissions?.CATALOGUING?.sidebarItems as string[] | undefined
+  if (!stored || stored.length === 0) return CATALOGUING_SIDEBAR_ITEMS.map(i => i.key)
+  return stored
+}

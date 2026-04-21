@@ -3,14 +3,14 @@
 import { useState } from "react"
 import CataloguingSidebar from "@/components/cataloguing-sidebar"
 
-export default function CataloguingShell({ children }: { children: React.ReactNode }) {
+export default function CataloguingShell({ children, allowedSidebarItems }: { children: React.ReactNode; allowedSidebarItems?: string[] }) {
   const [open, setOpen] = useState(false)
 
   return (
     <div className="flex h-full">
       {/* Desktop sidebar */}
       <div className="hidden md:block flex-shrink-0">
-        <CataloguingSidebar />
+        <CataloguingSidebar allowedItems={allowedSidebarItems} />
       </div>
 
       {/* Mobile overlay */}
@@ -21,7 +21,7 @@ export default function CataloguingShell({ children }: { children: React.ReactNo
             onClick={() => setOpen(false)}
           />
           <div className="md:hidden fixed inset-y-0 left-0 z-50 w-56">
-            <CataloguingSidebar onClose={() => setOpen(false)} />
+            <CataloguingSidebar allowedItems={allowedSidebarItems} onClose={() => setOpen(false)} />
           </div>
         </>
       )}

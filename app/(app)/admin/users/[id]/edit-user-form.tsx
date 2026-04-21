@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updateUser } from "@/lib/actions/admin"
-import { ALL_APPS, WAREHOUSE_ROLES } from "@/lib/apps"
+import { ALL_APPS, WAREHOUSE_ROLES, CATALOGUING_SIDEBAR_ITEMS } from "@/lib/apps"
 import type { AppKey, WarehouseRole } from "@/lib/apps"
 
 interface Props {
@@ -14,7 +14,7 @@ interface Props {
   role: string
   departmentId: string | null
   allowedApps: string[]
-  appPermissions: Record<string, { role: string }> | null
+  appPermissions: Record<string, any> | null
   departments: { id: string; name: string }[]
   isSelf: boolean
 }
@@ -25,6 +25,9 @@ export default function EditUserForm({ userId, name, email, username, role, depa
   const [selectedApps, setSelectedApps] = useState<string[]>(allowedApps)
   const [warehouseRole, setWarehouseRole] = useState<WarehouseRole>(
     (appPermissions?.WAREHOUSE?.role as WarehouseRole) || "warehouse"
+  )
+  const [cataloguingItems, setCataloguingItems] = useState<string[]>(
+    appPermissions?.CATALOGUING?.sidebarItems ?? CATALOGUING_SIDEBAR_ITEMS.map(i => i.key)
   )
   const [appsPending, startAppsTransition] = useTransition()
   const [appsMsg, setAppsMsg] = useState<string | null>(null)
@@ -47,11 +50,20 @@ export default function EditUserForm({ userId, name, email, username, role, depa
     })
   }
 
+  function toggleCataloguingItem(key: string) {
+    setCataloguingItems(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    )
+  }
+
   function saveApps() {
     setAppsMsg(null)
-    const newAppPermissions: Record<string, { role: string }> = {}
+    const newAppPermissions: Record<string, any> = {}
     if (selectedApps.includes("WAREHOUSE")) {
       newAppPermissions.WAREHOUSE = { role: warehouseRole }
+    }
+    if (selectedApps.includes("CATALOGUING")) {
+      newAppPermissions.CATALOGUING = { sidebarItems: cataloguingItems }
     }
     startAppsTransition(async () => {
       const res = await fetch(`/api/admin/users/${userId}/apps`, {
@@ -171,6 +183,33 @@ export default function EditUserForm({ userId, name, email, username, role, depa
                         {warehouseRole === "manager" && "Can also view Customers, Receipts, and History."}
                         {warehouseRole === "admin" && "Full access including Reports."}
                       </p>
+                    </div>
+                  )}
+
+                  {/* Cataloguing sidebar items sub-option */}
+                  {app.key === "CATALOGUING" && selectedApps.includes("CATALOGUING") && (
+                    <div className="ml-8 mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-2">Visible Sections</label>
+                      <div className="flex flex-col gap-2">
+                        {CATALOGUING_SIDEBAR_ITEMS.map(item => (
+                          <label key={item.key} className="flex items-center gap-2 cursor-pointer group">
+                            <div
+                              onClick={() => toggleCataloguingItem(item.key)}
+                              className={`w-4 h-4 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                                cataloguingItems.includes(item.key) ? "bg-blue-600 border-blue-600" : "border-gray-300 group-hover:border-blue-400"
+                              }`}
+                            >
+                              {cataloguingItems.includes(item.key) && (
+                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12">
+                                  <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </div>
+                            <span className="text-xs text-gray-600 group-hover:text-gray-900">{item.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2">Controls which items appear in the cataloguing sidebar.</p>
                     </div>
                   )}
                 </div>

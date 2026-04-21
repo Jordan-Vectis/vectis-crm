@@ -3,17 +3,23 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 const links = [
-  { href: "/tools/cataloguing/auctions",        label: "Auction Manager",      icon: "🏷" },
-  { href: "/tools/cataloguing/tablet/auctions", label: "Tablet Cataloguing",   icon: "📱" },
+  { key: "AUCTION_MANAGER",    href: "/tools/cataloguing/auctions",        label: "Auction Manager",    icon: "🏷" },
+  { key: "TABLET_CATALOGUING", href: "/tools/cataloguing/tablet/auctions", label: "Tablet Cataloguing", icon: "📱" },
 ]
 
 interface Props {
   onClose?: () => void
+  allowedItems?: string[]
 }
 
-export default function CataloguingSidebar({ onClose }: Props = {}) {
+export default function CataloguingSidebar({ onClose, allowedItems }: Props = {}) {
   const pathname = usePathname()
   if (!pathname.startsWith("/tools/cataloguing")) return null
+
+  const visible = allowedItems
+    ? links.filter(l => allowedItems.includes(l.key))
+    : links
+
   return (
     <aside className="w-48 h-full bg-[#1C1C1E] border-r border-gray-800 flex flex-col py-4">
       <div className="flex items-center justify-between px-4 mb-3">
@@ -25,7 +31,7 @@ export default function CataloguingSidebar({ onClose }: Props = {}) {
         )}
       </div>
       <nav className="flex flex-col gap-0.5 px-2">
-        {links.map(({ href, label, icon }) => {
+        {visible.map(({ href, label, icon }) => {
           const active = pathname.startsWith(href)
           return (
             <Link key={href} href={href} onClick={onClose}
