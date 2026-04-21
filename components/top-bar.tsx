@@ -2,9 +2,9 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { signOut } from "next-auth/react"
 import EnvSelector from "@/components/env-selector"
 import Logo from "@/components/logo"
+import { signOutAction } from "@/lib/actions/auth"
 
 interface TopBarProps {
   userName: string
@@ -44,12 +44,11 @@ export default function TopBar({ userName }: TopBarProps) {
       <div className="flex items-center gap-4">
         <EnvSelector />
         <span className="text-gray-400 text-xs hidden sm:block">{userName}</span>
-        <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="text-gray-400 hover:text-white text-sm transition-colors"
-        >
-          Sign out
-        </button>
+        <form action={signOutAction}>
+          <button type="submit" className="text-gray-400 hover:text-white text-sm transition-colors">
+            Sign out
+          </button>
+        </form>
       </div>
     </header>
   )
