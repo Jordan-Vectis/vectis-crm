@@ -11,8 +11,14 @@ export default async function HubPage() {
   const fullName = effective?.user?.name ?? name
 
   const dbUser = effective?.user?.id
-    ? await prisma.user.findUnique({ where: { id: effective.user.id }, select: { allowedApps: true, role: true } })
+    ? await prisma.user.findUnique({ where: { id: effective.user.id }, select: { allowedApps: true, role: true, appPermissions: true } })
     : null
+
+  // Per-user hub card visibility override (stored in appPermissions.HUB_CARDS.visible)
+  const hubCardsVisible: string[] | null =
+    dbUser?.role === "ADMIN"
+      ? null  // admins always see everything
+      : (dbUser?.appPermissions as any)?.HUB_CARDS?.visible ?? null
 
   const dbCards = await prisma.appCard.findMany()
   const dbMap   = Object.fromEntries(dbCards.map(c => [c.key, c]))
@@ -39,7 +45,11 @@ export default async function HubPage() {
     .filter(c => c.visible)
     // Filter by access
     .filter(c => {
-      if (c.allUsers) return true
+      if (c.allUsers) {
+        // Respect per-user hub card overrides if configured
+        if (hubCardsVisible !== null) return hubCardsVisible.includes(c.key)
+        return true
+      }
       if (!c.appKey) return dbUser?.role === "ADMIN"
       return hasAppAccess(dbUser?.role ?? "", dbUser?.allowedApps ?? [], c.appKey)
     })

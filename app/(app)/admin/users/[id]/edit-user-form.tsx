@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { updateUser } from "@/lib/actions/admin"
 import { ALL_APPS, WAREHOUSE_ROLES, APP_SECTIONS } from "@/lib/apps"
 import type { AppKey, WarehouseRole } from "@/lib/apps"
+import { APP_CARD_DEFS } from "@/lib/app-cards"
 
 interface Props {
   userId: string
@@ -34,6 +35,17 @@ export default function EditUserForm({ userId, name, email, username, role, depa
     }
     return initial
   })
+
+  // Hub card visibility — only applies to allUsers cards
+  const ALL_USER_CARD_KEYS = APP_CARD_DEFS.filter(c => c.allUsers).map(c => c.key)
+  const storedHubCards = (appPermissions as any)?.HUB_CARDS?.visible as string[] | undefined
+  const [hubCards, setHubCards] = useState<string[]>(
+    storedHubCards ?? ALL_USER_CARD_KEYS
+  )
+
+  function toggleHubCard(key: string) {
+    setHubCards(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+  }
 
   function toggleAppSection(appKey: string, sectionKey: string) {
     setAppSections(prev => {
@@ -82,6 +94,9 @@ export default function EditUserForm({ userId, name, email, username, role, depa
         }
       }
     }
+    // Save hub card visibility overrides (only if not all cards are visible — saves space)
+    newAppPermissions.HUB_CARDS = { visible: hubCards }
+
     startAppsTransition(async () => {
       const res = await fetch(`/api/admin/users/${userId}/apps`, {
         method: "PUT",
@@ -235,6 +250,36 @@ export default function EditUserForm({ userId, name, email, username, role, depa
                 </div>
               ))}
             </div>
+            {/* Hub card visibility */}
+            <div className="border-t border-gray-100 pt-4 mt-2">
+              <h3 className="text-sm font-semibold text-gray-700 mb-1">Hub Card Visibility</h3>
+              <p className="text-xs text-gray-400 mb-3">Choose which hub cards this user can see. Cards linked to app access above are controlled separately.</p>
+              <div className="flex flex-col gap-2">
+                {APP_CARD_DEFS.filter(c => c.allUsers).map(card => {
+                  const checked = hubCards.includes(card.key)
+                  return (
+                    <label key={card.key} className="flex items-center gap-3 cursor-pointer group">
+                      <div
+                        onClick={() => toggleHubCard(card.key)}
+                        className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                          checked ? "bg-blue-600 border-blue-600" : "border-gray-300 group-hover:border-blue-400"
+                        }`}
+                      >
+                        {checked && (
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                      <span className="text-sm text-gray-700 group-hover:text-gray-900">
+                        {card.icon} {card.defaultLabel}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
             <div className="flex items-center gap-3">
               <button onClick={saveApps} disabled={appsPending}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">
