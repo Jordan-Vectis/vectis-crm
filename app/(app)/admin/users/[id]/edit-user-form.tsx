@@ -65,6 +65,7 @@ export default function EditUserForm({ userId, name, email, username, role, depa
   const [confirm, setConfirm]   = useState("")
   const [pwdError, setPwdError] = useState<string | null>(null)
   const [pwdPending, startPwdTransition] = useTransition()
+  const [showPwd, setShowPwd] = useState(false)
 
   function toggleApp(key: AppKey) {
     setSelectedApps(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
@@ -302,19 +303,27 @@ export default function EditUserForm({ userId, name, email, username, role, depa
           </button>
         ) : (
           <form onSubmit={savePassword} className="flex flex-col gap-3 max-w-sm">
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="New password" minLength={8} required
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
-              placeholder="Confirm password" required
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <div className="relative">
+              <input type={showPwd ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="New password" minLength={8} required
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <button type="button" onClick={() => setShowPwd(v => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs px-1">
+                {showPwd ? "Hide" : "Show"}
+              </button>
+            </div>
+            <div className="relative">
+              <input type={showPwd ? "text" : "password"} value={confirm} onChange={e => setConfirm(e.target.value)}
+                placeholder="Confirm password" required
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
             {pwdError && <p className="text-xs text-red-500">{pwdError}</p>}
             <div className="flex gap-2">
               <button type="submit" disabled={pwdPending}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">
                 {pwdPending ? "Saving…" : "Update Password"}
               </button>
-              <button type="button" onClick={() => { setPwdOpen(false); setPwdError(null) }}
+              <button type="button" onClick={() => { setPwdOpen(false); setPwdError(null); setShowPwd(false) }}
                 className="px-4 py-2 border border-gray-300 text-gray-600 text-sm rounded-lg hover:border-gray-400 transition-colors">
                 Cancel
               </button>
