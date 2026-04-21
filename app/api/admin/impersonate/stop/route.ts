@@ -8,7 +8,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  const res = NextResponse.redirect(new URL("/admin/users", req.url))
+  const base = req.headers.get("x-forwarded-host")
+    ? `${req.headers.get("x-forwarded-proto") ?? "https"}://${req.headers.get("x-forwarded-host")}`
+    : new URL(req.url).origin
+
+  const res = NextResponse.redirect(`${base}/admin/users`)
   res.cookies.delete(IMPERSONATE_COOKIE)
   return res
 }

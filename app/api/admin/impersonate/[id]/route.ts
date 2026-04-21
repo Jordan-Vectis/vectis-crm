@@ -26,12 +26,15 @@ export async function POST(
     return NextResponse.json({ error: "Cannot impersonate another admin" }, { status: 400 })
   }
 
-  const res = NextResponse.redirect(new URL("/hub", _req.url))
+  const base = _req.headers.get("x-forwarded-host")
+    ? `${_req.headers.get("x-forwarded-proto") ?? "https"}://${_req.headers.get("x-forwarded-host")}`
+    : new URL(_req.url).origin
+
+  const res = NextResponse.redirect(`${base}/hub`)
   res.cookies.set(IMPERSONATE_COOKIE, id, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    // No explicit maxAge — session cookie (cleared on browser close or by stop endpoint)
   })
   return res
 }
