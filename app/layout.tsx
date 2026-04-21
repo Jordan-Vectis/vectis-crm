@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,7 +25,36 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
-      <body className="h-full bg-gray-50">{children}</body>
+      <body className="h-full bg-gray-50">
+        {/* Polyfills for older iPads (iOS < 17.4) — React 19 requires these */}
+        <Script id="polyfills" strategy="beforeInteractive">{`
+          if (!Promise.withResolvers) {
+            Promise.withResolvers = function() {
+              var resolve, reject;
+              var p = new Promise(function(res, rej) { resolve = res; reject = rej; });
+              return { promise: p, resolve: resolve, reject: reject };
+            };
+          }
+          if (!Array.prototype.toSorted) {
+            Array.prototype.toSorted = function(fn) { return [...this].sort(fn); };
+          }
+          if (!Array.prototype.toReversed) {
+            Array.prototype.toReversed = function() { return [...this].reverse(); };
+          }
+          if (!Array.prototype.toSpliced) {
+            Array.prototype.toSpliced = function(start, deleteCount) {
+              var a = [...this]; a.splice(start, deleteCount); return a;
+            };
+          }
+          if (!Array.prototype.with) {
+            Array.prototype.with = function(i, v) { var a = [...this]; a[i] = v; return a; };
+          }
+          if (!Object.hasOwn) {
+            Object.hasOwn = function(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); };
+          }
+        `}</Script>
+        {children}
+      </body>
     </html>
   );
 }
