@@ -71,13 +71,14 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
   const editingLot = lots.find(l => l.id === editingLotId) ?? null
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col min-h-0" style={{ touchAction: "manipulation" }}>
 
       {/* Header bar */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-[#1C1C1E]">
         <button
           onClick={() => router.push("/tools/cataloguing/tablet/auctions")}
-          className="text-[#2AB4A6] text-sm font-medium"
+          className="text-[#2AB4A6] text-sm font-medium p-2 -ml-2"
+          style={{ touchAction: "manipulation" }}
         >
           ←
         </button>
@@ -98,6 +99,7 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
           <button
             key={t.id}
             onClick={() => { setTab(t.id); setEditingLotId(null) }}
+            style={{ touchAction: "manipulation" }}
             className={`flex-1 py-4 text-sm font-semibold border-b-2 transition-colors ${
               tab === t.id
                 ? "border-[#2AB4A6] text-[#2AB4A6]"
@@ -220,6 +222,7 @@ function TabletManageLots({ lots, auctionId, onEdit, onDelete }: {
           {/* Tap area */}
           <button
             className="w-full text-left px-4 pt-4 pb-3 active:bg-[#2C2C2E] transition-colors"
+            style={{ touchAction: "manipulation" }}
             onClick={() => onEdit(lot.id)}
           >
             <div className="flex items-start gap-3 mb-2">
@@ -253,7 +256,8 @@ function TabletManageLots({ lots, auctionId, onEdit, onDelete }: {
             <button
               onClick={() => handleDelete(lot)}
               disabled={deleting === lot.id || pending}
-              className="text-xs text-red-500 hover:text-red-400 py-1 px-2 disabled:opacity-40"
+              style={{ touchAction: "manipulation" }}
+              className="text-xs text-red-500 hover:text-red-400 py-2 px-3 disabled:opacity-40"
             >
               {deleting === lot.id ? "Deleting…" : "Delete"}
             </button>
@@ -359,7 +363,8 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
       {/* Back */}
       <button
         onClick={onDone}
-        className="flex items-center gap-2 text-[#2AB4A6] text-sm font-medium mb-5"
+        style={{ touchAction: "manipulation" }}
+        className="flex items-center gap-2 text-[#2AB4A6] text-sm font-medium mb-5 p-1 -ml-1"
       >
         ← Back to lots
       </button>
@@ -379,6 +384,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
           type="button"
           onClick={() => photoRef.current?.click()}
           disabled={uploadingPhoto}
+          style={{ touchAction: "manipulation" }}
           className="w-full py-4 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
         >
           <span className="text-2xl">📷</span>
@@ -402,6 +408,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
                 )}
                 <button
                   onClick={() => handlePhotoDelete(key)}
+                  style={{ touchAction: "manipulation" }}
                   className="absolute -top-1.5 -right-1.5 w-7 h-7 bg-red-600 rounded-full text-white text-sm flex items-center justify-center"
                 >
                   ✕
@@ -547,7 +554,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
                 type="button"
                 onClick={() => setParcel(v => v === opt ? "" : opt)}
                 className="px-4 py-3 rounded-xl text-sm font-medium transition-colors"
-                style={{
+                style={{ touchAction: "manipulation",
                   background: parcel === opt ? ACCENT : "#2C2C2E",
                   color: parcel === opt ? "#1C1C1E" : "#d1d5db",
                   border: `1px solid ${parcel === opt ? ACCENT : "#374151"}`,
@@ -573,7 +580,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
             type="submit"
             disabled={pending}
             className="w-full py-4 rounded-xl font-bold text-base transition-colors disabled:opacity-50"
-            style={{ background: ACCENT, color: "#1C1C1E" }}
+            style={{ background: ACCENT, color: "#1C1C1E", touchAction: "manipulation" }}
           >
             {pending ? "Saving…" : saved ? "✓ Saved" : "Save Changes"}
           </button>
@@ -584,6 +591,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
             <button
               type="button"
               onClick={onDone}
+              style={{ touchAction: "manipulation" }}
               className="flex-1 py-3 rounded-xl border border-gray-700 text-gray-300 text-sm font-medium"
             >
               ← Back to lots
