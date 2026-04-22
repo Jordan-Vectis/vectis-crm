@@ -35,3 +35,53 @@ export function canAccessWarehouseRoute(whRole: WarehouseRole | null, minRole: W
   const order: WarehouseRole[] = ["warehouse", "manager", "admin"]
   return order.indexOf(whRole) >= order.indexOf(minRole)
 }
+
+// ─── Per-app section definitions ─────────────────────────────────────────────
+
+export const APP_SECTIONS: Partial<Record<AppKey, { key: string; label: string }[]>> = {
+  CATALOGUING: [
+    { key: "AUCTION_MANAGER",    label: "Auction Manager" },
+    { key: "TABLET_CATALOGUING", label: "Tablet Cataloguing" },
+  ],
+  AUCTION_AI: [
+    { key: "chat",         label: "Chat Window" },
+    { key: "batch",        label: "Batch Run" },
+    { key: "runs",         label: "Saved Runs" },
+    { key: "barcode",      label: "Barcode Sorter" },
+    { key: "copier",       label: "Description Copier" },
+    { key: "instructions", label: "Instructions" },
+  ],
+  BC_REPORTS: [
+    { key: "cataloguing", label: "Cataloguing" },
+    { key: "packing",     label: "Packing" },
+    { key: "warehouse",   label: "Warehouse" },
+    { key: "explorer",    label: "Data Explorer" },
+    { key: "location",    label: "Location History" },
+    { key: "shipping",    label: "Shipping" },
+  ],
+}
+
+export function getAllowedSections(
+  role: string,
+  appPermissions: Record<string, any> | null | undefined,
+  appKey: AppKey
+): string[] | null {
+  const sections = APP_SECTIONS[appKey]
+  if (!sections) return null
+  if (role === "ADMIN") return null
+  const stored = appPermissions?.[appKey]?.sidebarItems as string[] | undefined
+  if (!stored || stored.length === 0) return null
+  return stored
+}
+
+// ─── Cataloguing helpers (kept for backwards compat) ─────────────────────────
+
+export const CATALOGUING_SIDEBAR_ITEMS = APP_SECTIONS.CATALOGUING!
+
+export function getCataloguingSidebarItems(
+  role: string,
+  appPermissions: Record<string, any> | null | undefined
+): string[] {
+  return getAllowedSections(role, appPermissions, "CATALOGUING") ??
+    CATALOGUING_SIDEBAR_ITEMS.map(i => i.key)
+}
