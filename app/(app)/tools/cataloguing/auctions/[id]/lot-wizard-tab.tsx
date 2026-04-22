@@ -322,7 +322,7 @@ export const BRANDS_LIST: string[] = [
 const CAT_ACCENT     = "#2AB4A6"
 const CONDITIONS     = ["Mint", "Near Mint", "Excellent", "Good Plus", "Good", "Fair", "Poor"]
 const PARCEL_OPTIONS = ["Small", "Medium", "Large", "Contact", "Collection Only"]
-const QUICK_RANGES   = [[20,40],[40,60],[60,80],[80,100],[100,140],[140,180],[180,220],[220,260],[260,300]]
+const ESTIMATE_VALUES = [5,10,15,20,25,30,35,40,45,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]
 const STEP_LABELS    = ["Vendor & Tote", "Barcode", "Key Points", "Categories", "Estimate", "Condition", "Parcel Size", "Photos"]
 
 // ─── Autocomplete ─────────────────────────────────────────────────────────────
@@ -772,21 +772,25 @@ export default function LotWizardTab({
                   <input value={estHigh} onChange={e => setEstHigh(e.target.value)} className={inpFocus} placeholder="e.g. 60" />
                 </div>
               </div>
-              <div className="bg-[#2C2C2E] rounded-lg p-3 border border-gray-700">
-                <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 text-center">Quick Select</p>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {QUICK_RANGES.map(([lo, hi], i) => (
-                    <button key={i} type="button" onClick={() => { setEstLow(String(lo)); setEstHigh(String(hi)) }}
-                      className="px-2 py-1.5 text-xs rounded transition-colors whitespace-nowrap"
-                      style={{
-                        background: estLow === String(lo) && estHigh === String(hi) ? CAT_ACCENT : "#1C1C1E",
-                        color: estLow === String(lo) && estHigh === String(hi) ? "#1C1C1E" : "#d1d5db",
-                        border: `1px solid ${estLow === String(lo) && estHigh === String(hi) ? CAT_ACCENT : "#374151"}`,
-                      }}>
-                      £{lo}–£{hi}
-                    </button>
-                  ))}
-                </div>
+              <div className="grid grid-cols-2 gap-2">
+                {([["Low", estLow, setEstLow], ["High", estHigh, setEstHigh]] as const).map(([label, val, setter]) => (
+                  <div key={label} className="bg-[#2C2C2E] rounded-lg p-3 border border-gray-700">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 text-center">{label}</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      {ESTIMATE_VALUES.map(v => (
+                        <button key={v} type="button" onClick={() => setter(String(v))}
+                          className="px-1 py-1.5 text-xs rounded transition-colors"
+                          style={{
+                            background: val === String(v) ? CAT_ACCENT : "#1C1C1E",
+                            color:      val === String(v) ? "#1C1C1E" : "#d1d5db",
+                            border:     `1px solid ${val === String(v) ? CAT_ACCENT : "#374151"}`,
+                          }}>
+                          £{v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
