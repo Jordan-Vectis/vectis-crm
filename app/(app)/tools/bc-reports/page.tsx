@@ -7,6 +7,7 @@ import {
 } from "recharts"
 import * as XLSX from "xlsx"
 import { COUNTRY_NAMES } from "@/lib/country-names"
+import { WorldMap, UKMap } from "./ShipMaps"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,9 @@ function startOfMonth() {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0]
 }
 function startOfYear() { return new Date(new Date().getFullYear(), 0, 1).toISOString().split("T")[0] }
+function last12Months() {
+  const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().split("T")[0]
+}
 function lastMonthRange(): [string, string] {
   const d = new Date()
   const end   = new Date(d.getFullYear(), d.getMonth(), 0)
@@ -107,7 +111,8 @@ function DateRange({ from, to, onChange, onPreset }: {
     { label: "Last 30 days", from: daysAgo(29),         to: today() },
     { label: "This month",   from: startOfMonth(),       to: today() },
     { label: "Last month",   from: lastMonthRange()[0],  to: lastMonthRange()[1] },
-    { label: "This year",    from: startOfYear(),         to: today() },
+    { label: "Last 12 months", from: last12Months(),        to: today() },
+    { label: "This year",      from: startOfYear(),         to: today() },
   ]
   return (
     <div className="space-y-3 mb-4">
@@ -815,7 +820,7 @@ function ShippingTab() {
             </div>
           </div>
           <MetaBar text={`${from} — ${to}  ·  ${data.meta.total.toLocaleString()} shipments`} />
-          <SubTabs tabs={["By Country", "By City"]} active={subTab} onChange={setSubTab} />
+          <SubTabs tabs={["By Country", "By City", "World Map", "UK Map"]} active={subTab} onChange={setSubTab} />
           {subTab === "By Country" && (
             <>
               <div className="overflow-x-auto rounded border border-gray-800 mb-3" style={{ maxHeight: 520 }}>
@@ -890,6 +895,12 @@ function ShippingTab() {
                 "shipping_by_city"
               )} />
             </>
+          )}
+          {subTab === "World Map" && (
+            <WorldMap byCountry={data.byCountry} total={data.meta.total} />
+          )}
+          {subTab === "UK Map" && (
+            <UKMap byCity={data.byCity} total={data.meta.total} />
           )}
         </div>
       )}
