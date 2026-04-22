@@ -412,6 +412,14 @@ export default function LotWizardTab({
   const [timerActive, setTimerActive] = useState(false)
   const [timerSecs,   setTimerSecs]   = useState(0)
 
+  // Step must be declared before the useEffect that depends on it
+  const [step,        setStep]        = useState(1)
+
+  const [vendor,      setVendor]      = useState("")
+  const [tote,        setTote]        = useState("")
+  const [receipt,     setReceipt]     = useState("")
+  const [barcode,     setBarcode]     = useState("")
+
   useEffect(() => {
     if (!timerActive) return
     const id = setInterval(() => {
@@ -429,12 +437,6 @@ export default function LotWizardTab({
       keyPointsEnteredAt.current = null
     }
   }, [step])
-
-  const [vendor,      setVendor]      = useState("")
-  const [tote,        setTote]        = useState("")
-  const [receipt,     setReceipt]     = useState("")
-  const [step,        setStep]        = useState(1)
-  const [barcode, setBarcode] = useState("")
 
   const LAST_BARCODE_KEY = "vectis_last_barcode"
   function getLastBarcode() {
