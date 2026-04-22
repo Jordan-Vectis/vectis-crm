@@ -58,6 +58,7 @@ export const APP_SECTIONS: Partial<Record<AppKey, { key: string; label: string }
     { key: "warehouse",   label: "Warehouse" },
     { key: "explorer",    label: "Data Explorer" },
     { key: "location",    label: "Location History" },
+    { key: "shipping",    label: "Shipping" },
   ],
 }
 
