@@ -428,8 +428,6 @@ export default function LotWizardTab({
     return () => clearInterval(id)
   }, [timerActive])
 
-  const [step,        setStep]        = useState(1)
-
   // Track time spent on Key Points (step 3)
   useEffect(() => {
     if (step === 3) {
