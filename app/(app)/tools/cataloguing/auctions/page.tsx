@@ -3,11 +3,19 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import NewAuctionButton from "./new-auction-button"
+import { getCataloguingSidebarItems } from "@/lib/apps"
 
 export default async function AuctionsPage() {
   const session = await auth()
   if (!session) redirect("/login")
   if (!["ADMIN", "CATALOGUER"].includes(session.user.role)) redirect("/submissions")
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true, appPermissions: true },
+  })
+  const allowed = getCataloguingSidebarItems(dbUser?.role ?? "", dbUser?.appPermissions as any)
+  if (!allowed.includes("AUCTION_MANAGER")) redirect("/tools/cataloguing/tablet/auctions")
 
   const auctions = await prisma.catalogueAuction.findMany({
     orderBy: { createdAt: "desc" },
