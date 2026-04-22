@@ -627,7 +627,7 @@ export default function LotWizardTab({
       {validErr && <p className="text-red-400 text-sm mb-3">{validErr}</p>}
 
       {/* Top nav */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 sticky top-0 z-10 bg-[#141416] py-2 -mx-1 px-1 border-b border-gray-800/50">
         <button onClick={goBack} disabled={step === 1}
           className="px-4 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 text-sm rounded transition-colors disabled:opacity-30 hover:border-gray-500">
           ← Back
