@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { geoNaturalEarth1, geoMercator, geoPath } from "d3-geo"
 import { feature } from "topojson-client"
 import type { FeatureCollection } from "geojson"
-import { COUNTRY_NAMES, ISO_NUMERIC } from "@/lib/country-names"
+import { COUNTRY_NAMES, ISO_NUMERIC, NAME_TO_ALPHA2 } from "@/lib/country-names"
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json"
 
@@ -49,7 +49,9 @@ export function WorldMap({
 
   const countByGeoId: Record<string, number> = {}
   for (const r of byCountry) {
-    const num = ISO_NUMERIC[r.country]
+    // Try direct alpha-2 lookup, then fall back to full-name lookup
+    const a2  = ISO_NUMERIC[r.country] ? r.country : (NAME_TO_ALPHA2[r.country.toLowerCase()] ?? null)
+    const num = a2 ? ISO_NUMERIC[a2] : null
     if (num) countByGeoId[num] = (countByGeoId[num] ?? 0) + r.count
   }
   const max = Math.max(...Object.values(countByGeoId), 1)
@@ -182,15 +184,15 @@ export function UKMap({
   const missed = ukRows.filter(r => !UK_COORDS[r.city])
   const max    = Math.max(...mapped.map(r => r.count), 1)
 
-  const W = 420, H = 460
-  const projection = geoMercator().center([-2, 54.2]).scale(2700).translate([W / 2, H / 2])
+  const W = 380, H = 420
+  const projection = geoMercator().center([-2, 54.8]).scale(2100).translate([W / 2, H / 2])
   const pathGen    = geoPath(projection)
 
   return (
     <div className="relative rounded border border-gray-800 bg-[#080a14]">
       {!topo && <p className="text-gray-500 text-sm py-8 text-center">Loading map…</p>}
       {topo && (
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 420 }}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 380 }}>
           {(feature(topo, topo.objects.countries) as unknown as FeatureCollection).features
             .filter((f: any) => String(f.id) === "826" || String(f.id) === "372")
             .map((feat: any) => (

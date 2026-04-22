@@ -73,3 +73,10 @@ export const COUNTRY_NAMES: Record<string, string> = {
   US: "United States",
   ZA: "South Africa",
 }
+
+// Reverse map: lowercase full name → alpha-2 (for BC data that sends full names)
+export const NAME_TO_ALPHA2: Record<string, string> = Object.fromEntries(
+  Object.entries(COUNTRY_NAMES)
+    .filter(([k]) => k !== "UK") // dedupe UK/GB — GB wins
+    .map(([a2, name]) => [name.toLowerCase(), a2])
+)
