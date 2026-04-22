@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useRef } from "react"
+import { useState, useTransition, useRef, useEffect } from "react"
 import { createLot } from "@/lib/actions/catalogue"
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -404,7 +404,31 @@ export default function LotWizardTab({
 }) {
   const [pending, start] = useTransition()
 
-  const barcodeStartedAt = useRef<number | null>(null)
+  const barcodeStartedAt   = useRef<number | null>(null)
+  const keyPointsEnteredAt = useRef<number | null>(null)
+  const keyPointsAccumMs   = useRef<number>(0)
+
+  // Live timer display
+  const [timerActive, setTimerActive] = useState(false)
+  const [timerSecs,   setTimerSecs]   = useState(0)
+
+  useEffect(() => {
+    if (!timerActive) return
+    const id = setInterval(() => {
+      setTimerSecs(barcodeStartedAt.current ? Math.floor((Date.now() - barcodeStartedAt.current) / 1000) : 0)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [timerActive])
+
+  // Track time spent on Key Points (step 3)
+  useEffect(() => {
+    if (step === 3) {
+      keyPointsEnteredAt.current = Date.now()
+    } else if (keyPointsEnteredAt.current !== null) {
+      keyPointsAccumMs.current += Date.now() - keyPointsEnteredAt.current
+      keyPointsEnteredAt.current = null
+    }
+  }, [step])
 
   const [vendor,      setVendor]      = useState("")
   const [tote,        setTote]        = useState("")
@@ -497,7 +521,7 @@ export default function LotWizardTab({
     if (!src) return
     const m = src.match(/(\d+)$/)
     if (!m) return
-    if (!barcodeStartedAt.current) barcodeStartedAt.current = Date.now()
+    if (!barcodeStartedAt.current) { barcodeStartedAt.current = Date.now(); setTimerActive(true) }
     setBarcode(src.slice(0, m.index) + String(parseInt(m[1]) + 1).padStart(m[1].length, "0"))
   }
 
@@ -527,12 +551,22 @@ export default function LotWizardTab({
     fd.append("brand",        brand)
     fd.append("notes",        parcel)
     fd.append("status",       "ENTERED")
+    // Flush key points time if still on that step (shouldn't be, but safety net)
+    if (keyPointsEnteredAt.current !== null) {
+      keyPointsAccumMs.current += Date.now() - keyPointsEnteredAt.current
+      keyPointsEnteredAt.current = null
+    }
     fd.append("durationMs",   String(barcodeStartedAt.current ? Date.now() - barcodeStartedAt.current : 0))
+    fd.append("keyPointsMs",  String(keyPointsAccumMs.current))
     photoFiles.forEach(p => fd.append("photo", p.file))
 
     start(async () => {
       await createLot(auctionId, fd)
       barcodeStartedAt.current = null
+      keyPointsAccumMs.current = 0
+      keyPointsEnteredAt.current = null
+      setTimerActive(false)
+      setTimerSecs(0)
       const n = lotCount + 1
       setLotCount(n)
       saveLastBarcode(barcode)
@@ -558,9 +592,21 @@ export default function LotWizardTab({
         <span className="text-xs text-gray-500 uppercase tracking-wider">Adding to:</span>
         <span className="font-mono font-bold text-[#2AB4A6] text-sm">{auction.code}</span>
         <span className="text-gray-300 text-sm">{auction.name}</span>
-        {lotCount > 0 && (
-          <span className="ml-auto text-green-400 text-sm font-bold">{lotCount} lot{lotCount !== 1 ? "s" : ""} added this session</span>
-        )}
+        <div className="ml-auto flex items-center gap-4">
+          {timerActive && (
+            <span className="flex items-center gap-1.5 font-mono text-sm font-bold tabular-nums"
+              style={{ color: timerSecs > 300 ? "#ef4444" : timerSecs > 120 ? "#f59e0b" : "#2AB4A6" }}>
+              <svg className="w-3.5 h-3.5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
+              </svg>
+              {String(Math.floor(timerSecs / 60)).padStart(2, "0")}:{String(timerSecs % 60).padStart(2, "0")}
+            </span>
+          )}
+          {lotCount > 0 && (
+            <span className="text-green-400 text-sm font-bold">{lotCount} lot{lotCount !== 1 ? "s" : ""} added</span>
+          )}
+        </div>
       </div>
 
       {/* Step indicator */}
@@ -657,7 +703,7 @@ export default function LotWizardTab({
               <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Internal Barcode <span className="text-red-500">*</span></label>
               <input value={barcode} onChange={e => {
                 const v = e.target.value
-                if (v && !barcode && !barcodeStartedAt.current) barcodeStartedAt.current = Date.now()
+                if (v && !barcode && !barcodeStartedAt.current) { barcodeStartedAt.current = Date.now(); setTimerActive(true) }
                 setBarcode(v)
               }} className={inpFocus} placeholder="Scan or type barcode…" autoFocus />
             </div>

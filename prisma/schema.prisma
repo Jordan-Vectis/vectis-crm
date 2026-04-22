@@ -337,16 +337,17 @@ model CommissionBid {
 }
 
 model CatalogueTimingLog {
-  id         String           @id @default(cuid())
-  auctionId  String
-  auction    CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
-  lotId      String?          // ID of the lot that was created
-  userId     String           // Internal user ID
-  userName   String           // Display name of cataloguer
-  method     String           // "WIZARD" | "PHOTO_ONLY"
-  durationMs Int              // Milliseconds from barcode entry to save
-  lotNumber  String?          // Barcode for reference
-  savedAt    DateTime         @default(now())
+  id           String           @id @default(cuid())
+  auctionId    String
+  auction      CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  lotId        String?          // ID of the lot that was created
+  userId       String           // Internal user ID
+  userName     String           // Display name of cataloguer
+  method       String           // "WIZARD" | "PHOTO_ONLY"
+  durationMs   Int              // Total ms from barcode entry to save
+  keyPointsMs  Int?             // Ms spent on the Key Points step (wizard only)
+  lotNumber    String?          // Barcode for reference
+  savedAt      DateTime         @default(now())
 }
 
 model CataloguePhotoSession {

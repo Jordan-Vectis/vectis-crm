@@ -120,17 +120,19 @@ export async function createLot(auctionId: string, formData: FormData) {
   const lot = await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName, imageUrls } })
 
   // Log timing if provided
-  const durationMs = parseInt(formData.get("durationMs") as string ?? "0") || 0
+  const durationMs  = parseInt(formData.get("durationMs")  as string ?? "0") || 0
+  const keyPointsMs = parseInt(formData.get("keyPointsMs") as string ?? "0") || 0
   if (durationMs > 0) {
     await prisma.catalogueTimingLog.create({
       data: {
         auctionId,
-        lotId:     lot.id,
-        userId:    session.user.id,
-        userName:  createdByName,
-        method:    "WIZARD",
+        lotId:       lot.id,
+        userId:      session.user.id,
+        userName:    createdByName,
+        method:      "WIZARD",
         durationMs,
-        lotNumber: data.lotNumber || null,
+        keyPointsMs: keyPointsMs > 0 ? keyPointsMs : null,
+        lotNumber:   data.lotNumber || null,
       },
     })
   }

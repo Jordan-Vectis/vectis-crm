@@ -1,0 +1,1 @@
+ALTER TABLE "CatalogueTimingLog" ADD COLUMN IF NOT EXISTS "keyPointsMs" INTEGER;

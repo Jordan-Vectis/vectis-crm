@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { format } from "date-fns"
+import Link from "next/link"
 
 export const dynamic = "force-dynamic"
 
@@ -158,7 +159,12 @@ export default async function CataloguingReportsPage() {
             <tbody className="divide-y divide-gray-50">
               {userStats.map(u => (
                 <tr key={u.userId} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-3 font-semibold text-gray-800">{u.name}</td>
+                  <td className="px-5 py-3">
+                    <Link href={`/admin/cataloguing-reports/${encodeURIComponent(u.userId)}`}
+                      className="font-semibold text-slate-700 hover:text-blue-600 hover:underline transition-colors">
+                      {u.name}
+                    </Link>
+                  </td>
                   <td className="px-5 py-3 text-right font-bold text-slate-700">{u.totalLots}</td>
                   <td className="px-5 py-3 text-right text-gray-500">{u.wizardLots}</td>
                   <td className="px-5 py-3 text-right text-gray-500">{u.photoOnlyLots}</td>
