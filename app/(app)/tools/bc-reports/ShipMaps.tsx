@@ -184,15 +184,15 @@ export function UKMap({
   const missed = ukRows.filter(r => !UK_COORDS[r.city])
   const max    = Math.max(...mapped.map(r => r.count), 1)
 
-  const W = 380, H = 420
-  const projection = geoMercator().center([-2, 54.8]).scale(2100).translate([W / 2, H / 2])
+  const W = 500, H = 620
+  const projection = geoMercator().center([-2, 54.8]).scale(2800).translate([W / 2, H / 2])
   const pathGen    = geoPath(projection)
 
   return (
     <div className="relative rounded border border-gray-800 bg-[#080a14]">
       {!topo && <p className="text-gray-500 text-sm py-8 text-center">Loading map…</p>}
       {topo && (
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 380 }}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
           {(feature(topo, topo.objects.countries) as unknown as FeatureCollection).features
             .filter((f: any) => String(f.id) === "826" || String(f.id) === "372")
             .map((feat: any) => (
