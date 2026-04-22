@@ -626,6 +626,28 @@ export default function LotWizardTab({
 
       {validErr && <p className="text-red-400 text-sm mb-3">{validErr}</p>}
 
+      {/* Top nav */}
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={goBack} disabled={step === 1}
+          className="px-4 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 text-sm rounded transition-colors disabled:opacity-30 hover:border-gray-500">
+          ← Back
+        </button>
+        <span className="text-xs text-gray-600">{step} / 8</span>
+        {step < 8 ? (
+          <button onClick={goNext}
+            className="px-4 py-1.5 text-sm font-semibold rounded transition-colors"
+            style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
+            Next →
+          </button>
+        ) : (
+          <button onClick={saveLot} disabled={pending}
+            className="px-4 py-1.5 text-sm font-semibold rounded transition-colors disabled:opacity-50"
+            style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
+            {pending ? "Saving…" : photoFiles.length > 0 ? "Save Lot ✓" : "Skip & Save ✓"}
+          </button>
+        )}
+      </div>
+
       {/* Step content */}
       <div className="flex-1 overflow-y-auto">
 
