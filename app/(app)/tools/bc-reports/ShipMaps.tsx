@@ -66,11 +66,12 @@ export function WorldMap({
       {topo && (
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
           {(feature(topo, topo.objects.countries) as unknown as FeatureCollection).features.map((feat: any) => {
-            const id    = String(feat.id)
+            const raw   = String(feat.id)
+            const id    = raw.replace(/^0+/, "") // strip leading zeros ("036" → "36")
             const count = countByGeoId[id] ?? 0
             const fill  = count > 0 ? heatColor(count / max) : "#131627"
             const a2    = NUMERIC_TO_ALPHA2[id]
-            const name  = a2 ? (COUNTRY_NAMES[a2] ?? a2) : id
+            const name  = a2 ? (COUNTRY_NAMES[a2] ?? a2) : raw
             return (
               <path
                 key={feat.id}
