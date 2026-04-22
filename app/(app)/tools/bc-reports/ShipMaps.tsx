@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { geoNaturalEarth1, geoMercator, geoPath } from "d3-geo"
 import { feature } from "topojson-client"
 import type { FeatureCollection } from "geojson"
@@ -177,6 +177,11 @@ export function UKMap({
 }) {
   const [topo, setTopo] = useState<any>(null)
   const [tip, setTip]   = useState<Tip | null>(null)
+  const svgRef          = useRef<SVGSVGElement>(null)
+  const dragRef         = useRef<{ x: number; y: number; vb: typeof vb } | null>(null)
+
+  const W = 500, H = 620
+  const [vb, setVb] = useState({ x: 0, y: 0, w: W, h: H })
 
   useEffect(() => { fetch(GEO_URL).then(r => r.json()).then(setTopo) }, [])
 
@@ -185,15 +190,66 @@ export function UKMap({
   const missed = ukRows.filter(r => !UK_COORDS[r.city])
   const max    = Math.max(...mapped.map(r => r.count), 1)
 
-  const W = 500, H = 620
   const projection = geoMercator().center([-2, 54.8]).scale(2800).translate([W / 2, H / 2])
   const pathGen    = geoPath(projection)
 
+  function zoomBy(factor: number, cx = W / 2, cy = H / 2) {
+    setVb(v => {
+      const newW = Math.max(W / 10, Math.min(W, v.w * factor))
+      const newH = Math.max(H / 10, Math.min(H, v.h * factor))
+      return {
+        x: cx - (cx - v.x) * (newW / v.w),
+        y: cy - (cy - v.y) * (newH / v.h),
+        w: newW,
+        h: newH,
+      }
+    })
+  }
+
+  function onWheel(e: React.WheelEvent) {
+    e.preventDefault()
+    if (!svgRef.current) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const cx = vb.x + ((e.clientX - rect.left) / rect.width)  * vb.w
+    const cy = vb.y + ((e.clientY - rect.top)  / rect.height) * vb.h
+    zoomBy(e.deltaY > 0 ? 1.18 : 0.85, cx, cy)
+  }
+
+  function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragRef.current = { x: e.clientX, y: e.clientY, vb: { ...vb } }
+  }
+
+  function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (!dragRef.current || !svgRef.current) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const dx = (e.clientX - dragRef.current.x) * (dragRef.current.vb.w / rect.width)
+    const dy = (e.clientY - dragRef.current.y) * (dragRef.current.vb.h / rect.height)
+    setVb({ ...dragRef.current.vb, x: dragRef.current.vb.x - dx, y: dragRef.current.vb.y - dy })
+  }
+
+  function onPointerUp() { dragRef.current = null }
+
   return (
     <div className="relative rounded border border-gray-800 bg-[#080a14]">
+      {/* Zoom controls */}
+      <div className="absolute top-2 right-2 flex flex-col gap-1 z-10">
+        <button onClick={() => zoomBy(0.7)} className="w-7 h-7 bg-[#0d0f1a] border border-gray-700 text-gray-300 rounded text-sm hover:border-gray-500 hover:text-white">+</button>
+        <button onClick={() => zoomBy(1.4)} className="w-7 h-7 bg-[#0d0f1a] border border-gray-700 text-gray-300 rounded text-sm hover:border-gray-500 hover:text-white">−</button>
+        <button onClick={() => setVb({ x: 0, y: 0, w: W, h: H })} className="w-7 h-7 bg-[#0d0f1a] border border-gray-700 text-gray-500 rounded text-xs hover:border-gray-500 hover:text-white">⌂</button>
+      </div>
       {!topo && <p className="text-gray-500 text-sm py-8 text-center">Loading map…</p>}
       {topo && (
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+        <svg
+          ref={svgRef}
+          viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
+          className="w-full"
+          style={{ height: 500, cursor: dragRef.current ? "grabbing" : "grab", userSelect: "none" }}
+          onWheel={onWheel}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        >
           {(feature(topo, topo.objects.countries) as unknown as FeatureCollection).features
             .filter((f: any) => String(f.id) === "826" || String(f.id) === "372")
             .map((feat: any) => (
