@@ -6,6 +6,7 @@ import {
   LabelList, ResponsiveContainer, Cell,
 } from "recharts"
 import * as XLSX from "xlsx"
+import { COUNTRY_NAMES } from "@/lib/country-names"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -817,8 +818,38 @@ function ShippingTab() {
           <SubTabs tabs={["By Country", "By City"]} active={subTab} onChange={setSubTab} />
           {subTab === "By Country" && (
             <>
-              <HBar data={data.byCountry} valueKey="count" labelKey="country" />
-              <ExportBtn onClick={() => exportXlsx(data.byCountry, "shipping_by_country")} />
+              <div className="overflow-x-auto rounded border border-gray-800 mb-3" style={{ maxHeight: 520 }}>
+                <table className="w-full text-sm">
+                  <thead className="bg-[#0d0f1a] text-gray-500 text-xs uppercase sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Country</th>
+                      <th className="px-4 py-2 text-right">Shipments</th>
+                      <th className="px-4 py-2 text-right">%</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {data.byCountry.map((r, i) => (
+                      <tr key={i} className="hover:bg-[#0d0f1a]">
+                        <td className="px-4 py-2 text-gray-300">
+                          {COUNTRY_NAMES[r.country] ? `${COUNTRY_NAMES[r.country]} (${r.country})` : r.country}
+                        </td>
+                        <td className="px-4 py-2 text-right text-gray-300">{r.count.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-right text-gray-400">
+                          {data.meta.total ? ((r.count / data.meta.total) * 100).toFixed(1) : "—"}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <ExportBtn onClick={() => exportXlsx(
+                data.byCountry.map(r => ({
+                  "Country": COUNTRY_NAMES[r.country] ? `${COUNTRY_NAMES[r.country]} (${r.country})` : r.country,
+                  "Shipments": r.count,
+                  "%": data.meta.total ? +((r.count / data.meta.total) * 100).toFixed(1) : 0,
+                })),
+                "shipping_by_country"
+              )} />
             </>
           )}
           {subTab === "By City" && (
@@ -830,20 +861,34 @@ function ShippingTab() {
                       <th className="px-4 py-2 text-left">City</th>
                       <th className="px-4 py-2 text-left">Country</th>
                       <th className="px-4 py-2 text-right">Shipments</th>
+                      <th className="px-4 py-2 text-right">%</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
                     {data.byCity.map((r, i) => (
                       <tr key={i} className="hover:bg-[#0d0f1a]">
                         <td className="px-4 py-2 text-gray-300">{r.city}</td>
-                        <td className="px-4 py-2 text-gray-500">{r.country}</td>
+                        <td className="px-4 py-2 text-gray-500">
+                          {COUNTRY_NAMES[r.country] ? `${COUNTRY_NAMES[r.country]} (${r.country})` : r.country}
+                        </td>
                         <td className="px-4 py-2 text-right text-gray-300">{r.count.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-right text-gray-400">
+                          {data.meta.total ? ((r.count / data.meta.total) * 100).toFixed(1) : "—"}%
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <ExportBtn onClick={() => exportXlsx(data.byCity, "shipping_by_city")} />
+              <ExportBtn onClick={() => exportXlsx(
+                data.byCity.map(r => ({
+                  "City": r.city,
+                  "Country": COUNTRY_NAMES[r.country] ? `${COUNTRY_NAMES[r.country]} (${r.country})` : r.country,
+                  "Shipments": r.count,
+                  "%": data.meta.total ? +((r.count / data.meta.total) * 100).toFixed(1) : 0,
+                })),
+                "shipping_by_city"
+              )} />
             </>
           )}
         </div>
