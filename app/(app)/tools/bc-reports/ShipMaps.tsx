@@ -1,18 +1,18 @@
 "use client"
 
-import { useState } from "react"
-import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps"
+import { useState, useEffect } from "react"
+import { geoNaturalEarth1, geoMercator, geoPath } from "d3-geo"
+import { feature } from "topojson-client"
+import type { FeatureCollection } from "geojson"
 import { COUNTRY_NAMES, ISO_NUMERIC } from "@/lib/country-names"
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json"
 
-// Reverse lookup: numeric string → alpha-2
 const NUMERIC_TO_ALPHA2: Record<string, string> = Object.fromEntries(
   Object.entries(ISO_NUMERIC).map(([a2, num]) => [num, a2])
 )
 
 function heatColor(t: number): string {
-  // dark navy → bright blue as t goes 0→1
   const r = Math.round(14  + t * (0   - 14))
   const g = Math.round(42  + t * (120 - 42))
   const b = Math.round(111 + t * (212 - 111))
@@ -42,7 +42,10 @@ export function WorldMap({
   byCountry: { country: string; count: number }[]
   total: number
 }) {
-  const [tip, setTip] = useState<Tip | null>(null)
+  const [topo, setTopo]   = useState<any>(null)
+  const [tip, setTip]     = useState<Tip | null>(null)
+
+  useEffect(() => { fetch(GEO_URL).then(r => r.json()).then(setTopo) }, [])
 
   const countByGeoId: Record<string, number> = {}
   for (const r of byCountry) {
@@ -51,36 +54,40 @@ export function WorldMap({
   }
   const max = Math.max(...Object.values(countByGeoId), 1)
 
+  const W = 800, H = 430
+  const projection = geoNaturalEarth1().scale(127).translate([W / 2, H / 2])
+  const pathGen    = geoPath(projection)
+
   return (
-    <div className="relative rounded border border-gray-800 overflow-hidden bg-[#080a14]">
-      <ComposableMap style={{ width: "100%", height: 420 }} projectionConfig={{ scale: 140 }}>
-        <Geographies geography={GEO_URL}>
-          {({ geographies }) =>
-            geographies.map((geo) => {
-              const count = countByGeoId[geo.id as string] ?? 0
-              const fill  = count > 0 ? heatColor(count / max) : "#131627"
-              const a2    = NUMERIC_TO_ALPHA2[geo.id as string]
-              const name  = a2 ? (COUNTRY_NAMES[a2] ?? a2) : (geo.id as string)
-              return (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={fill}
-                  stroke="#0a0c1a"
-                  strokeWidth={0.4}
-                  style={{ outline: "none", cursor: count > 0 ? "pointer" : "default" }}
-                  onMouseEnter={(e: React.MouseEvent) => {
-                    if (!count) return
-                    const pct = ((count / total) * 100).toFixed(1)
-                    setTip({ x: e.clientX, y: e.clientY, text: `${name}: ${count.toLocaleString()} (${pct}%)` })
-                  }}
-                  onMouseLeave={() => setTip(null)}
-                />
-              )
-            })
-          }
-        </Geographies>
-      </ComposableMap>
+    <div className="relative rounded border border-gray-800 bg-[#080a14]">
+      {!topo && <p className="text-gray-500 text-sm py-8 text-center">Loading map…</p>}
+      {topo && (
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+          {(feature(topo, topo.objects.countries) as unknown as FeatureCollection).features.map((feat: any) => {
+            const id    = String(feat.id)
+            const count = countByGeoId[id] ?? 0
+            const fill  = count > 0 ? heatColor(count / max) : "#131627"
+            const a2    = NUMERIC_TO_ALPHA2[id]
+            const name  = a2 ? (COUNTRY_NAMES[a2] ?? a2) : id
+            return (
+              <path
+                key={feat.id}
+                d={pathGen(feat) ?? ""}
+                fill={fill}
+                stroke="#0a0c1a"
+                strokeWidth={0.3}
+                style={{ cursor: count > 0 ? "pointer" : "default", outline: "none" }}
+                onMouseEnter={(e) => {
+                  if (!count) return
+                  const pct = ((count / total) * 100).toFixed(1)
+                  setTip({ x: e.clientX, y: e.clientY, text: `${name}: ${count.toLocaleString()} (${pct}%)` })
+                }}
+                onMouseLeave={() => setTip(null)}
+              />
+            )
+          })}
+        </svg>
+      )}
       <Tooltip tip={tip} />
       <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-800">
         <span className="text-gray-600 text-xs">Low</span>
@@ -150,7 +157,6 @@ const UK_COORDS: Record<string, [number, number]> = {
   "Barnsley":       [-1.4794, 53.5526],
   "Shrewsbury":     [-2.7527, 52.7082],
   "Worcester":      [-2.2227, 52.1920],
-  "Hereford":       [-2.7160, 52.0567],
   "Chester":        [-2.8910, 53.1905],
   "Wrexham":        [-2.9988, 53.0461],
   "Newport":        [-2.9982, 51.5842],
@@ -166,58 +172,61 @@ export function UKMap({
   byCity: { city: string; country: string; count: number }[]
   total: number
 }) {
-  const [tip, setTip] = useState<Tip | null>(null)
+  const [topo, setTopo] = useState<any>(null)
+  const [tip, setTip]   = useState<Tip | null>(null)
+
+  useEffect(() => { fetch(GEO_URL).then(r => r.json()).then(setTopo) }, [])
 
   const ukRows = byCity.filter(r => r.country === "GB" || r.country === "UK")
   const mapped = ukRows.filter(r => UK_COORDS[r.city])
   const missed = ukRows.filter(r => !UK_COORDS[r.city])
-  const max = Math.max(...mapped.map(r => r.count), 1)
+  const max    = Math.max(...mapped.map(r => r.count), 1)
+
+  const W = 500, H = 560
+  const projection = geoMercator().center([-2, 54.2]).scale(3200).translate([W / 2, H / 2])
+  const pathGen    = geoPath(projection)
 
   return (
-    <div className="relative rounded border border-gray-800 overflow-hidden bg-[#080a14]">
-      <ComposableMap
-        projection="geoMercator"
-        projectionConfig={{ center: [-2, 54.2], scale: 3000 }}
-        style={{ width: "100%", height: 500 }}
-      >
-        <Geographies geography={GEO_URL}>
-          {({ geographies }) =>
-            geographies
-              .filter(geo => geo.id === "826" || geo.id === "372") // UK + Ireland for context
-              .map(geo => (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={geo.id === "826" ? "#1e3a5f" : "#131a2e"}
-                  stroke="#2d4a6a"
-                  strokeWidth={0.8}
-                  style={{ outline: "none" }}
-                />
-              ))
-          }
-        </Geographies>
-        {mapped.map((r, i) => {
-          const coords = UK_COORDS[r.city]!
-          const radius = 3 + (r.count / max) * 18
-          const pct    = ((r.count / total) * 100).toFixed(1)
-          return (
-            <Marker key={String(i)} coordinates={coords}>
+    <div className="relative rounded border border-gray-800 bg-[#080a14]">
+      {!topo && <p className="text-gray-500 text-sm py-8 text-center">Loading map…</p>}
+      {topo && (
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 560 }}>
+          {(feature(topo, topo.objects.countries) as unknown as FeatureCollection).features
+            .filter((f: any) => String(f.id) === "826" || String(f.id) === "372")
+            .map((feat: any) => (
+              <path
+                key={feat.id}
+                d={pathGen(feat) ?? ""}
+                fill={String(feat.id) === "826" ? "#1e3a5f" : "#131a2e"}
+                stroke="#2d4a6a"
+                strokeWidth={0.8}
+                style={{ outline: "none" }}
+              />
+            ))}
+          {mapped.map((r, i) => {
+            const pt     = projection(UK_COORDS[r.city])
+            if (!pt) return null
+            const [cx, cy] = pt
+            const radius   = 3 + (r.count / max) * 18
+            const pct      = ((r.count / total) * 100).toFixed(1)
+            return (
               <circle
+                key={i}
+                cx={cx}
+                cy={cy}
                 r={radius}
                 fill="#0078D4"
                 fillOpacity={0.75}
                 stroke="#60a5fa"
                 strokeWidth={0.8}
                 style={{ cursor: "pointer" }}
-                onMouseEnter={(e: React.MouseEvent) =>
-                  setTip({ x: e.clientX, y: e.clientY, text: `${r.city}: ${r.count.toLocaleString()} (${pct}%)` })
-                }
+                onMouseEnter={(e) => setTip({ x: e.clientX, y: e.clientY, text: `${r.city}: ${r.count.toLocaleString()} (${pct}%)` })}
                 onMouseLeave={() => setTip(null)}
               />
-            </Marker>
-          )
-        })}
-      </ComposableMap>
+            )
+          })}
+        </svg>
+      )}
       <Tooltip tip={tip} />
       {missed.length > 0 && (
         <p className="text-xs text-gray-600 px-3 py-1.5 border-t border-gray-800">
