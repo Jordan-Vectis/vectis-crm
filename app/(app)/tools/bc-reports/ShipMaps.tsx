@@ -1,0 +1,229 @@
+"use client"
+
+import { useState } from "react"
+import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps"
+import { COUNTRY_NAMES, ISO_NUMERIC } from "@/lib/country-names"
+
+const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json"
+
+// Reverse lookup: numeric string → alpha-2
+const NUMERIC_TO_ALPHA2: Record<string, string> = Object.fromEntries(
+  Object.entries(ISO_NUMERIC).map(([a2, num]) => [num, a2])
+)
+
+function heatColor(t: number): string {
+  // dark navy → bright blue as t goes 0→1
+  const r = Math.round(14  + t * (0   - 14))
+  const g = Math.round(42  + t * (120 - 42))
+  const b = Math.round(111 + t * (212 - 111))
+  return `rgb(${r},${g},${b})`
+}
+
+type Tip = { x: number; y: number; text: string }
+
+function Tooltip({ tip }: { tip: Tip | null }) {
+  if (!tip) return null
+  return (
+    <div
+      className="fixed z-50 bg-[#0d0f1a] border border-gray-700 text-gray-200 text-xs px-2 py-1.5 rounded pointer-events-none shadow-lg"
+      style={{ left: tip.x + 14, top: tip.y - 32 }}
+    >
+      {tip.text}
+    </div>
+  )
+}
+
+// ─── World choropleth ─────────────────────────────────────────────────────────
+
+export function WorldMap({
+  byCountry,
+  total,
+}: {
+  byCountry: { country: string; count: number }[]
+  total: number
+}) {
+  const [tip, setTip] = useState<Tip | null>(null)
+
+  const countByGeoId: Record<string, number> = {}
+  for (const r of byCountry) {
+    const num = ISO_NUMERIC[r.country]
+    if (num) countByGeoId[num] = (countByGeoId[num] ?? 0) + r.count
+  }
+  const max = Math.max(...Object.values(countByGeoId), 1)
+
+  return (
+    <div className="relative rounded border border-gray-800 overflow-hidden bg-[#080a14]">
+      <ComposableMap style={{ width: "100%", height: 420 }} projectionConfig={{ scale: 140 }}>
+        <Geographies geography={GEO_URL}>
+          {({ geographies }) =>
+            geographies.map((geo) => {
+              const count = countByGeoId[geo.id as string] ?? 0
+              const fill  = count > 0 ? heatColor(count / max) : "#131627"
+              const a2    = NUMERIC_TO_ALPHA2[geo.id as string]
+              const name  = a2 ? (COUNTRY_NAMES[a2] ?? a2) : (geo.id as string)
+              return (
+                <Geography
+                  key={geo.rsmKey}
+                  geography={geo}
+                  fill={fill}
+                  stroke="#0a0c1a"
+                  strokeWidth={0.4}
+                  style={{ outline: "none", cursor: count > 0 ? "pointer" : "default" }}
+                  onMouseEnter={(e: React.MouseEvent) => {
+                    if (!count) return
+                    const pct = ((count / total) * 100).toFixed(1)
+                    setTip({ x: e.clientX, y: e.clientY, text: `${name}: ${count.toLocaleString()} (${pct}%)` })
+                  }}
+                  onMouseLeave={() => setTip(null)}
+                />
+              )
+            })
+          }
+        </Geographies>
+      </ComposableMap>
+      <Tooltip tip={tip} />
+      <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-800">
+        <span className="text-gray-600 text-xs">Low</span>
+        <div className="flex-1 h-2 rounded" style={{ background: "linear-gradient(to right, rgb(14,42,111), rgb(0,120,212))" }} />
+        <span className="text-gray-600 text-xs">High</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── UK city bubble map ───────────────────────────────────────────────────────
+
+const UK_COORDS: Record<string, [number, number]> = {
+  "London":         [-0.1276, 51.5074],
+  "Birmingham":     [-1.8904, 52.4862],
+  "Manchester":     [-2.2374, 53.4808],
+  "Leeds":          [-1.5491, 53.8008],
+  "Glasgow":        [-4.2518, 55.8642],
+  "Sheffield":      [-1.4701, 53.3811],
+  "Bradford":       [-1.7594, 53.7960],
+  "Edinburgh":      [-3.1883, 55.9533],
+  "Liverpool":      [-2.9916, 53.4084],
+  "Bristol":        [-2.5879, 51.4545],
+  "Cardiff":        [-3.1791, 51.4816],
+  "Leicester":      [-1.1398, 52.6369],
+  "Coventry":       [-1.5224, 52.4068],
+  "Nottingham":     [-1.1581, 52.9548],
+  "Newcastle":      [-1.6178, 54.9783],
+  "Belfast":        [-5.9301, 54.5973],
+  "Brighton":       [-0.1363, 50.8225],
+  "Plymouth":       [-4.1427, 50.3755],
+  "Stoke-on-Trent": [-2.1803, 53.0027],
+  "Wolverhampton":  [-2.1294, 52.5870],
+  "Derby":          [-1.4759, 52.9225],
+  "Swansea":        [-3.9995, 51.6214],
+  "Southampton":    [-1.4043, 50.9097],
+  "Portsmouth":     [-1.0880, 50.8198],
+  "Aberdeen":       [-2.0943, 57.1497],
+  "Dundee":         [-2.9707, 56.4620],
+  "Oxford":         [-1.2577, 51.7520],
+  "Cambridge":      [ 0.1218, 52.2053],
+  "York":           [-1.0827, 53.9590],
+  "Exeter":         [-3.5275, 50.7184],
+  "Norwich":        [ 1.2979, 52.6309],
+  "Peterborough":   [-0.2431, 52.5695],
+  "Luton":          [-0.4152, 51.8787],
+  "Reading":        [-0.9781, 51.4543],
+  "Sunderland":     [-1.3829, 54.9047],
+  "Middlesbrough":  [-1.2349, 54.5742],
+  "Huddersfield":   [-1.7849, 53.6450],
+  "Milton Keynes":  [-0.7594, 52.0406],
+  "Northampton":    [-0.8932, 52.2405],
+  "Ipswich":        [ 1.1550, 52.0567],
+  "Warrington":     [-2.5960, 53.3900],
+  "Bolton":         [-2.4289, 53.5779],
+  "Blackpool":      [-3.0488, 53.8175],
+  "Preston":        [-2.7036, 53.7632],
+  "Hull":           [-0.3274, 53.7441],
+  "Gloucester":     [-2.2440, 51.8642],
+  "Cheltenham":     [-2.0779, 51.8994],
+  "Guildford":      [-0.5822, 51.2362],
+  "Colchester":     [ 0.8986, 51.8959],
+  "Wigan":          [-2.6306, 53.5451],
+  "Stockport":      [-2.1531, 53.4083],
+  "Burnley":        [-2.2481, 53.7892],
+  "Wakefield":      [-1.4977, 53.6830],
+  "Barnsley":       [-1.4794, 53.5526],
+  "Shrewsbury":     [-2.7527, 52.7082],
+  "Worcester":      [-2.2227, 52.1920],
+  "Hereford":       [-2.7160, 52.0567],
+  "Chester":        [-2.8910, 53.1905],
+  "Wrexham":        [-2.9988, 53.0461],
+  "Newport":        [-2.9982, 51.5842],
+  "Inverness":      [-4.2247, 57.4778],
+  "Perth":          [-3.4305, 56.3950],
+  "Stirling":       [-3.9369, 56.1165],
+}
+
+export function UKMap({
+  byCity,
+  total,
+}: {
+  byCity: { city: string; country: string; count: number }[]
+  total: number
+}) {
+  const [tip, setTip] = useState<Tip | null>(null)
+
+  const ukRows = byCity.filter(r => r.country === "GB" || r.country === "UK")
+  const mapped = ukRows.filter(r => UK_COORDS[r.city])
+  const missed = ukRows.filter(r => !UK_COORDS[r.city])
+  const max = Math.max(...mapped.map(r => r.count), 1)
+
+  return (
+    <div className="relative rounded border border-gray-800 overflow-hidden bg-[#080a14]">
+      <ComposableMap
+        projection="geoMercator"
+        projectionConfig={{ center: [-2, 54.2], scale: 3000 }}
+        style={{ width: "100%", height: 500 }}
+      >
+        <Geographies geography={GEO_URL}>
+          {({ geographies }) =>
+            geographies
+              .filter(geo => geo.id === "826" || geo.id === "372") // UK + Ireland for context
+              .map(geo => (
+                <Geography
+                  key={geo.rsmKey}
+                  geography={geo}
+                  fill={geo.id === "826" ? "#1e3a5f" : "#131a2e"}
+                  stroke="#2d4a6a"
+                  strokeWidth={0.8}
+                  style={{ outline: "none" }}
+                />
+              ))
+          }
+        </Geographies>
+        {mapped.map((r, i) => {
+          const coords = UK_COORDS[r.city]!
+          const radius = 3 + (r.count / max) * 18
+          const pct    = ((r.count / total) * 100).toFixed(1)
+          return (
+            <Marker key={String(i)} coordinates={coords}>
+              <circle
+                r={radius}
+                fill="#0078D4"
+                fillOpacity={0.75}
+                stroke="#60a5fa"
+                strokeWidth={0.8}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={(e: React.MouseEvent) =>
+                  setTip({ x: e.clientX, y: e.clientY, text: `${r.city}: ${r.count.toLocaleString()} (${pct}%)` })
+                }
+                onMouseLeave={() => setTip(null)}
+              />
+            </Marker>
+          )
+        })}
+      </ComposableMap>
+      <Tooltip tip={tip} />
+      {missed.length > 0 && (
+        <p className="text-xs text-gray-600 px-3 py-1.5 border-t border-gray-800">
+          {missed.length} UK {missed.length === 1 ? "city" : "cities"} not plotted (unrecognised location)
+        </p>
+      )}
+    </div>
+  )
+}

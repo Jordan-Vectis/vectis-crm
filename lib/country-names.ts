@@ -1,3 +1,17 @@
+// ISO alpha-2 → numeric (used to match world-atlas feature IDs)
+export const ISO_NUMERIC: Record<string, string> = {
+  AD: "20",  AE: "784", AR: "32",  AT: "40",  AU: "36",  BE: "56",
+  BG: "100", BR: "76",  CA: "124", CH: "756", CN: "156", CY: "196",
+  CZ: "203", DE: "276", DK: "208", EE: "233", ES: "724", FI: "246",
+  FR: "250", GB: "826", GR: "300", HK: "344", HR: "191", HU: "348",
+  IE: "372", IL: "376", IN: "356", IS: "352", IT: "380", JP: "392",
+  KR: "410", LI: "438", LT: "440", LU: "442", LV: "428", MC: "492",
+  MT: "470", MX: "484", MY: "458", NL: "528", NO: "578", NZ: "554",
+  PL: "616", PT: "620", RO: "642", RS: "688", RU: "643", SA: "682",
+  SE: "752", SG: "702", SI: "705", SK: "703", TH: "764", TR: "792",
+  TW: "158", UA: "804", UK: "826", US: "840", ZA: "710",
+}
+
 export const COUNTRY_NAMES: Record<string, string> = {
   AD: "Andorra",
   AE: "United Arab Emirates",
