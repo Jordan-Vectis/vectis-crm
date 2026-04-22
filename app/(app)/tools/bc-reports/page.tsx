@@ -31,7 +31,13 @@ type WhData = {
   meta:         { total: number; openTotes: number; categoryCount: number; largestCategory: string }
 }
 
-type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "location"
+type ShipData = {
+  byCountry: { country: string; count: number }[]
+  byCity:    { city: string; country: string; count: number }[]
+  meta:      { total: number; countries: number; cities: number }
+}
+
+type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "location" | "shipping"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -748,12 +754,114 @@ function LocationHistoryTab() {
 
 // ─── Sidebar nav items ────────────────────────────────────────────────────────
 
+// ─── Shipping tab ─────────────────────────────────────────────────────────────
+
+function ShippingTab() {
+  const [from, setFrom] = useState(startOfYear())
+  const [to, setTo]     = useState(today())
+  const [data, setData] = useState<ShipData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState<string | null>(null)
+  const [subTab, setSubTab]   = useState("By Country")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const load = useCallback(async (f: string, t: string) => {
+    if (!f || !t) return
+    setLoading(true); setError(null)
+    try {
+      const res  = await window.fetch(`/api/bc/shipping?from=${f}&to=${t}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? res.statusText)
+      setData(json)
+    } catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load(from, to) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleManualChange(f: string, t: string) {
+    setFrom(f); setTo(t)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => load(f, t), 700)
+  }
+
+  function handlePreset(f: string, t: string) {
+    setFrom(f); setTo(t)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    load(f, t)
+  }
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-white mb-4">Shipping Report</h2>
+      <DateRange from={from} to={to} onChange={handleManualChange} onPreset={handlePreset} />
+      {!loading && <LoadBtn loading={loading} onClick={() => load(from, to)} />}
+      {loading && <p className="text-xs text-gray-500 mb-5">Loading…</p>}
+      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+      {data && (
+        <div className={loading ? "opacity-40 pointer-events-none transition-opacity" : "transition-opacity"}>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Total Shipments</p>
+              <p className="text-xl font-bold text-white">{data.meta.total.toLocaleString()}</p>
+            </div>
+            <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Countries</p>
+              <p className="text-xl font-bold text-white">{data.meta.countries.toLocaleString()}</p>
+            </div>
+            <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Cities</p>
+              <p className="text-xl font-bold text-white">{data.meta.cities.toLocaleString()}</p>
+            </div>
+          </div>
+          <MetaBar text={`${from} — ${to}  ·  ${data.meta.total.toLocaleString()} shipments`} />
+          <SubTabs tabs={["By Country", "By City"]} active={subTab} onChange={setSubTab} />
+          {subTab === "By Country" && (
+            <>
+              <HBar data={data.byCountry} valueKey="count" labelKey="country" />
+              <ExportBtn onClick={() => exportXlsx(data.byCountry, "shipping_by_country")} />
+            </>
+          )}
+          {subTab === "By City" && (
+            <>
+              <div className="overflow-x-auto rounded border border-gray-800 mb-3" style={{ maxHeight: 520 }}>
+                <table className="w-full text-sm">
+                  <thead className="bg-[#0d0f1a] text-gray-500 text-xs uppercase sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 text-left">City</th>
+                      <th className="px-4 py-2 text-left">Country</th>
+                      <th className="px-4 py-2 text-right">Shipments</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {data.byCity.map((r, i) => (
+                      <tr key={i} className="hover:bg-[#0d0f1a]">
+                        <td className="px-4 py-2 text-gray-300">{r.city}</td>
+                        <td className="px-4 py-2 text-gray-500">{r.country}</td>
+                        <td className="px-4 py-2 text-right text-gray-300">{r.count.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <ExportBtn onClick={() => exportXlsx(data.byCity, "shipping_by_city")} />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const reports: { id: Report; label: string; color: string; dot: string }[] = [
   { id: "cataloguing", label: "Cataloguing",   color: "text-red-400",    dot: "bg-red-500"    },
   { id: "packing",     label: "Packing",       color: "text-orange-400", dot: "bg-orange-500" },
   { id: "warehouse",   label: "Warehouse",     color: "text-green-400",  dot: "bg-green-500"  },
   { id: "explorer",    label: "Data Explorer", color: "text-purple-400", dot: "bg-purple-500" },
   { id: "location",    label: "Loc. History",  color: "text-blue-400",   dot: "bg-blue-500"   },
+  { id: "shipping",    label: "Shipping",      color: "text-cyan-400",   dot: "bg-cyan-500"   },
 ]
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -872,6 +980,7 @@ export default function BCReportsPage() {
             {activeReport === "warehouse"   && <WarehouseTab />}
             {activeReport === "explorer"    && <DataExplorerTab />}
             {activeReport === "location"    && <LocationHistoryTab />}
+            {activeReport === "shipping"    && <ShippingTab />}
           </div>
         )}
       </main>
