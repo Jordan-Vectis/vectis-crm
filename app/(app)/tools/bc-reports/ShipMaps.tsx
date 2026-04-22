@@ -180,7 +180,7 @@ export function UKMap({
   const svgRef          = useRef<SVGSVGElement>(null)
   const dragRef         = useRef<{ x: number; y: number; vb: typeof vb } | null>(null)
 
-  const W = 500, H = 620
+  const W = 500, H = 780
   const [vb, setVb] = useState({ x: 0, y: 0, w: W, h: H })
 
   useEffect(() => { fetch(GEO_URL).then(r => r.json()).then(setTopo) }, [])
@@ -190,7 +190,7 @@ export function UKMap({
   const missed = ukRows.filter(r => !UK_COORDS[r.city])
   const max    = Math.max(...mapped.map(r => r.count), 1)
 
-  const projection = geoMercator().center([-2, 54.8]).scale(2800).translate([W / 2, H / 2])
+  const projection = geoMercator().center([-2, 54.5]).scale(2800).translate([W / 2, H / 2])
   const pathGen    = geoPath(projection)
 
   function zoomBy(factor: number, cx = W / 2, cy = H / 2) {
@@ -231,7 +231,7 @@ export function UKMap({
   function onPointerUp() { dragRef.current = null }
 
   return (
-    <div className="relative rounded border border-gray-800 bg-[#080a14]">
+    <div className="relative rounded border border-gray-800 bg-[#080a14]" style={{ maxWidth: 520 }}>
       {/* Zoom controls */}
       <div className="absolute top-2 right-2 flex flex-col gap-1 z-10">
         <button onClick={() => zoomBy(0.7)} className="w-7 h-7 bg-[#0d0f1a] border border-gray-700 text-gray-300 rounded text-sm hover:border-gray-500 hover:text-white">+</button>
@@ -244,7 +244,7 @@ export function UKMap({
           ref={svgRef}
           viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
           className="w-full"
-          style={{ height: 500, cursor: dragRef.current ? "grabbing" : "grab", userSelect: "none" }}
+          style={{ cursor: dragRef.current ? "grabbing" : "grab", userSelect: "none" }}
           onWheel={onWheel}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
