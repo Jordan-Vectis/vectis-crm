@@ -25,9 +25,10 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
   const [pending, start]            = useTransition()
   const [savedCount, setSavedCount] = useState(0)
 
-  const videoRef    = useRef<HTMLVideoElement>(null)
-  const controlsRef = useRef<{ stop: () => void } | null>(null)
-  const photoRef    = useRef<HTMLInputElement>(null)
+  const videoRef         = useRef<HTMLVideoElement>(null)
+  const controlsRef      = useRef<{ stop: () => void } | null>(null)
+  const photoRef         = useRef<HTMLInputElement>(null)
+  const barcodeStartedAt = useRef<number | null>(null)
 
   // Stop scanner on unmount
   useEffect(() => () => { controlsRef.current?.stop() }, [])
@@ -45,8 +46,10 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
         (result, err) => {
           if (result) {
             const text = result.getText()
-            if (target === "lot") setLotBarcode(text)
-            else setToteNumber(text)
+            if (target === "lot") {
+              if (!lotBarcode && !barcodeStartedAt.current) barcodeStartedAt.current = Date.now()
+              setLotBarcode(text)
+            } else setToteNumber(text)
             controls.stop()
             controlsRef.current = null
             setScanning(false)
@@ -84,8 +87,9 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
 
   function buildFormData() {
     const fd = new FormData()
-    fd.set("lotNumber", lotBarcode.trim())   // temp ID until auto-lotter runs
-    fd.set("barcode",   lotBarcode.trim())   // permanent barcode field
+    fd.set("lotNumber",  lotBarcode.trim())   // temp ID until auto-lotter runs
+    fd.set("barcode",    lotBarcode.trim())   // permanent barcode field
+    fd.set("durationMs", String(barcodeStartedAt.current ? Date.now() - barcodeStartedAt.current : 0))
     if (toteNumber.trim()) fd.set("tote", toteNumber.trim())
     if (notes.trim()) fd.set("notes", notes.trim())
     itemPhotos.forEach(p => fd.append("itemPhoto", p.file))
@@ -93,6 +97,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
   }
 
   function resetLot(scanNext = false) {
+    barcodeStartedAt.current = null
     itemPhotos.forEach(p => URL.revokeObjectURL(p.preview))
     setItemPhotos([])
     setLotBarcode("")
@@ -173,7 +178,11 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated }: Prop
               </div>
               <input
                 value={lotBarcode}
-                onChange={e => setLotBarcode(e.target.value)}
+                onChange={e => {
+                  const v = e.target.value
+                  if (v && !lotBarcode && !barcodeStartedAt.current) barcodeStartedAt.current = Date.now()
+                  setLotBarcode(v)
+                }}
                 placeholder="Scan or type barcode…"
                 className="w-full rounded-lg border border-gray-700 bg-[#2C2C2E] px-3 py-3 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6] font-mono"
               />

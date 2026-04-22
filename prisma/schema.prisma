@@ -260,6 +260,7 @@ model CatalogueAuction {
   updatedAt   DateTime       @updatedAt
   lots        CatalogueLot[]
   photoSessions CataloguePhotoSession[]
+  timingLogs  CatalogueTimingLog[]
   liveAuction LiveAuction?
   bidderRegistrations BidderRegistration[]
 }
@@ -333,6 +334,19 @@ model CommissionBid {
   updatedAt         DateTime        @updatedAt
 
   @@unique([lotId, customerAccountId])
+}
+
+model CatalogueTimingLog {
+  id         String           @id @default(cuid())
+  auctionId  String
+  auction    CatalogueAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  lotId      String?          // ID of the lot that was created
+  userId     String           // Internal user ID
+  userName   String           // Display name of cataloguer
+  method     String           // "WIZARD" | "PHOTO_ONLY"
+  durationMs Int              // Milliseconds from barcode entry to save
+  lotNumber  String?          // Barcode for reference
+  savedAt    DateTime         @default(now())
 }
 
 model CataloguePhotoSession {

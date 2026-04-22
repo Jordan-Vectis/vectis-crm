@@ -404,6 +404,8 @@ export default function LotWizardTab({
 }) {
   const [pending, start] = useTransition()
 
+  const barcodeStartedAt = useRef<number | null>(null)
+
   const [vendor,      setVendor]      = useState("")
   const [tote,        setTote]        = useState("")
   const [receipt,     setReceipt]     = useState("")
@@ -495,6 +497,7 @@ export default function LotWizardTab({
     if (!src) return
     const m = src.match(/(\d+)$/)
     if (!m) return
+    if (!barcodeStartedAt.current) barcodeStartedAt.current = Date.now()
     setBarcode(src.slice(0, m.index) + String(parseInt(m[1]) + 1).padStart(m[1].length, "0"))
   }
 
@@ -524,10 +527,12 @@ export default function LotWizardTab({
     fd.append("brand",        brand)
     fd.append("notes",        parcel)
     fd.append("status",       "ENTERED")
+    fd.append("durationMs",   String(barcodeStartedAt.current ? Date.now() - barcodeStartedAt.current : 0))
     photoFiles.forEach(p => fd.append("photo", p.file))
 
     start(async () => {
       await createLot(auctionId, fd)
+      barcodeStartedAt.current = null
       const n = lotCount + 1
       setLotCount(n)
       saveLastBarcode(barcode)
@@ -650,7 +655,11 @@ export default function LotWizardTab({
             <p className="text-xs text-gray-500">Scan the internal barcode or type it manually.</p>
             <div>
               <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Internal Barcode <span className="text-red-500">*</span></label>
-              <input value={barcode} onChange={e => setBarcode(e.target.value)} className={inpFocus} placeholder="Scan or type barcode…" autoFocus />
+              <input value={barcode} onChange={e => {
+                const v = e.target.value
+                if (v && !barcode && !barcodeStartedAt.current) barcodeStartedAt.current = Date.now()
+                setBarcode(v)
+              }} className={inpFocus} placeholder="Scan or type barcode…" autoFocus />
             </div>
             <button type="button" onClick={nextBarcodeNumber}
               className="px-4 py-2 text-sm rounded transition-colors"

@@ -117,7 +117,24 @@ export async function createLot(auctionId: string, formData: FormData) {
   }
 
   if (data.receipt) data.receipt = await sequencedReceipt(data.receipt)
-  await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName, imageUrls } })
+  const lot = await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName, imageUrls } })
+
+  // Log timing if provided
+  const durationMs = parseInt(formData.get("durationMs") as string ?? "0") || 0
+  if (durationMs > 0) {
+    await prisma.catalogueTimingLog.create({
+      data: {
+        auctionId,
+        lotId:     lot.id,
+        userId:    session.user.id,
+        userName:  createdByName,
+        method:    "WIZARD",
+        durationMs,
+        lotNumber: data.lotNumber || null,
+      },
+    })
+  }
+
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
@@ -141,9 +158,26 @@ export async function createPhotoOnlyLot(auctionId: string, formData: FormData) 
   }
 
   const createdByName = session.user.name ?? session.user.email ?? "Unknown"
-  await prisma.catalogueLot.create({
+  const lot = await prisma.catalogueLot.create({
     data: { auctionId, lotNumber, title: "", description: "", tote: toteNumber || null, notes, status: "ENTERED", imageUrls, createdByName },
   })
+
+  // Log timing if provided
+  const durationMs = parseInt(formData.get("durationMs") as string ?? "0") || 0
+  if (durationMs > 0) {
+    await prisma.catalogueTimingLog.create({
+      data: {
+        auctionId,
+        lotId:     lot.id,
+        userId:    session.user.id,
+        userName:  createdByName,
+        method:    "PHOTO_ONLY",
+        durationMs,
+        lotNumber: lotNumber || null,
+      },
+    })
+  }
+
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
