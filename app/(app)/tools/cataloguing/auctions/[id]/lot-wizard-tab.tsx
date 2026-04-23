@@ -794,14 +794,14 @@ export default function LotWizardTab({
                   <input value={estHigh} onChange={e => setEstHigh(e.target.value)} className={inpFocus} placeholder="e.g. 60" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
                 {([["Low", estLow, setEstLow], ["High", estHigh, setEstHigh]] as const).map(([label, val, setter]) => (
                   <div key={label} className="bg-[#2C2C2E] rounded-lg p-3 border border-gray-700">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 text-center">{label}</p>
-                    <div className="grid grid-cols-2 gap-1">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">{label}</p>
+                    <div className="flex flex-wrap gap-1">
                       {ESTIMATE_VALUES.map(v => (
                         <button key={v} type="button" onClick={() => setter(String(v))}
-                          className="px-1 py-1.5 text-xs rounded transition-colors"
+                          className="px-2 py-1.5 text-xs rounded transition-colors"
                           style={{
                             background: val === String(v) ? CAT_ACCENT : "#1C1C1E",
                             color:      val === String(v) ? "#1C1C1E" : "#d1d5db",
@@ -910,27 +910,6 @@ export default function LotWizardTab({
         )}
       </div>
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-800">
-        <button onClick={goBack} disabled={step === 1}
-          className="px-5 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-300 text-sm rounded transition-colors disabled:opacity-30 hover:border-gray-500">
-          ← Back
-        </button>
-        <span className="text-xs text-gray-600">{step} / 8</span>
-        {step < 8 ? (
-          <button onClick={goNext}
-            className="px-5 py-2 text-sm font-semibold rounded transition-colors"
-            style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
-            Next →
-          </button>
-        ) : (
-          <button onClick={saveLot} disabled={pending}
-            className="px-5 py-2 text-sm font-semibold rounded transition-colors disabled:opacity-50"
-            style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
-            {pending ? "Saving…" : photoFiles.length > 0 ? "Save Lot ✓" : "Skip & Save ✓"}
-          </button>
-        )}
-      </div>
     </div>
   )
 }
