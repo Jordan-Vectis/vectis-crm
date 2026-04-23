@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { getBCToken, bcFetchAll } from "@/lib/bc"
+import { getCachedBC, setCachedBC } from "@/lib/bc-cache"
 
-// In-memory cache: key = "from|to", value = { count, cachedAt }
-const cache = new Map<string, { count: number; cachedAt: number }>()
 const TTL_MS = 30 * 60 * 1000 // 30 minutes
 
 export async function GET(req: NextRequest) {
@@ -14,14 +13,13 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl
     const from = searchParams.get("from") ?? ""
     const to   = searchParams.get("to")   ?? ""
-    const cacheKey = `${from}|${to}`
     const today = new Date().toISOString().split("T")[0]
+    const rangeIsInPast = !!to && to < today
 
-    // Serve from cache if available and range is in the past (stable data)
-    const cached = cache.get(cacheKey)
-    const rangeIsInPast = to < today
-    if (cached && rangeIsInPast && Date.now() - cached.cachedAt < TTL_MS) {
-      return NextResponse.json({ count: cached.count, cached: true })
+    // Only serve from persistent cache for past date ranges
+    if (rangeIsInPast) {
+      const hit = await getCachedBC<number>(`collected-count:${from}:${to}`, TTL_MS)
+      if (hit !== null) return NextResponse.json({ count: hit, cached: true })
     }
 
     const token = await getBCToken()
@@ -33,15 +31,14 @@ export async function GET(req: NextRequest) {
     const fromStr = from ? `${from}T00:00:00` : null
     const toStr   = to   ? `${to}T23:59:59`   : null
 
-    const filtered = rows.filter(r => {
+    const count = rows.filter(r => {
       const d = r.Date_and_Time ?? ""
       if (fromStr && d < fromStr) return false
       if (toStr   && d > toStr)   return false
       return true
-    })
+    }).length
 
-    const count = filtered.length
-    cache.set(cacheKey, { count, cachedAt: Date.now() })
+    if (rangeIsInPast) await setCachedBC(`collected-count:${from}:${to}`, count)
 
     return NextResponse.json({ count })
   } catch (e: any) {

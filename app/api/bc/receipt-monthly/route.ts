@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { getBCToken, bcFetchAll } from "@/lib/bc"
+import { getCachedBC, setCachedBC } from "@/lib/bc-cache"
 
 export const maxDuration = 60
 
+const TTL_MS = 60 * 60 * 1000 // 1 hour
+
 type CachedResult = { months: any[]; avgLots: number; avgPerAuction: number; totalAuctions: number; total: number; range: { start: string; end: string } }
-let cached: { result: CachedResult; cachedAt: number } | null = null
-const TTL_MS = 60 * 60 * 1000 // 1 hour — last 3 months is stable data
 
 function last3MonthsRange(): { start: string; end: string } {
   const now = new Date()
@@ -23,14 +24,15 @@ export async function GET() {
     const session = await auth()
     if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-    if (cached && Date.now() - cached.cachedAt < TTL_MS) {
-      return NextResponse.json({ ...cached.result, fromCache: true })
-    }
+    const { start, end } = last3MonthsRange()
+    const cacheKey = `receipt-monthly:${start}:${end}`
+
+    const hit = await getCachedBC<CachedResult>(cacheKey, TTL_MS)
+    if (hit) return NextResponse.json({ ...hit, fromCache: true })
 
     const token = await getBCToken()
     if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
 
-    const { start, end } = last3MonthsRange()
     const filter = `EVA_AuctionDate ge ${start} and EVA_AuctionDate le ${end}`
     const filtered = await bcFetchAll(token, "EVA_AuctionLine", filter, "EVA_AuctionNo,EVA_AuctionDate", 500)
 
@@ -59,7 +61,7 @@ export async function GET() {
     const avgPerAuction = totalAuctions > 0 ? Math.round(filtered.length / totalAuctions) : 0
 
     const result: CachedResult = { months, avgLots, avgPerAuction, totalAuctions, total: filtered.length, range: { start, end } }
-    cached = { result, cachedAt: Date.now() }
+    await setCachedBC(cacheKey, result)
 
     return NextResponse.json(result)
   } catch (e: any) {
