@@ -432,32 +432,35 @@ function PackingTab() {
   const [monthlyCollectedProgress, setMonthlyCollectedProgress] = useState<{ done: number; total: number } | null>(null)
   const [monthlyCollectedError, setMonthlyCollectedError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function readStream(
-      url: string,
-      onProgress: (done: number, total: number) => void,
-      onResult: (msg: any) => void,
-      onError: (err: string) => void
-    ) {
-      const res = await fetch(url)
-      const reader = res.body!.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ""
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split("\n"); buffer = lines.pop()!
-        for (const line of lines) {
-          if (!line.trim()) continue
-          const msg = JSON.parse(line)
-          if (msg.type === "progress") onProgress(msg.done, msg.total)
-          else if (msg.type === "result") onResult(msg)
-          else if (msg.type === "error") onError(msg.error ?? "Unknown error")
-        }
+  async function readStream(
+    url: string,
+    onProgress: (done: number, total: number) => void,
+    onResult: (msg: any) => void,
+    onError: (err: string) => void
+  ) {
+    const res = await fetch(url)
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ""
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n"); buffer = lines.pop()!
+      for (const line of lines) {
+        if (!line.trim()) continue
+        const msg = JSON.parse(line)
+        if (msg.type === "progress") onProgress(msg.done, msg.total)
+        else if (msg.type === "result") onResult(msg)
+        else if (msg.type === "error") onError(msg.error ?? "Unknown error")
       }
     }
+  }
 
+  function fetchMonthlyLots() {
+    setMonthlyLotsLoading(true)
+    setMonthlyLotsError(null)
+    setMonthlyLotsProgress(null)
     readStream(
       "/api/bc/receipt-monthly",
       (done, total) => setMonthlyLotsProgress({ done, total }),
@@ -466,7 +469,13 @@ function PackingTab() {
     )
       .catch(e => setMonthlyLotsError(e.message))
       .finally(() => setMonthlyLotsLoading(false))
+  }
 
+  function fetchMonthlyCollected() {
+    setMonthlyCollectedLoading(true)
+    setMonthlyCollectedError(null)
+    setMonthlyCollectedProgress(null)
+    setMonthlyCollected(null)
     readStream(
       "/api/packing/collected-monthly",
       (done, total) => setMonthlyCollectedProgress({ done, total }),
@@ -475,7 +484,9 @@ function PackingTab() {
     )
       .catch(e => setMonthlyCollectedError(e.message))
       .finally(() => setMonthlyCollectedLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { fetchMonthlyLots(); fetchMonthlyCollected() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Capacity dashboard inputs
   const [capStaff,           setCapStaff]           = useState(11)
@@ -649,56 +660,89 @@ function PackingTab() {
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
                   <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots by Month (Auction Lines · Last 3 Months + Current)</p>
                   {monthlyLotsError ? (
-                    <p className="text-red-400 text-sm">{monthlyLotsError}</p>
-                  ) : monthlyLotsLoading ? (
-                    <div className="space-y-3">
-                      {monthlyLotsProgress
-                        ? <ProgressBar done={monthlyLotsProgress.done} total={monthlyLotsProgress.total} label="Fetching auction lines…" />
-                        : <p className="text-xs text-gray-600">Connecting…</p>}
-                      {monthlyCollectedProgress && (
-                        <ProgressBar done={monthlyCollectedProgress.done} total={monthlyCollectedProgress.total} label="Fetching collections…" />
-                      )}
+                    <div className="flex items-center gap-3">
+                      <p className="text-red-400 text-sm">{monthlyLotsError}</p>
+                      <button onClick={fetchMonthlyLots} className="text-xs text-blue-400 hover:text-blue-300 underline">Retry</button>
                     </div>
+                  ) : monthlyLotsLoading ? (
+                    monthlyLotsProgress
+                      ? <ProgressBar done={monthlyLotsProgress.done} total={monthlyLotsProgress.total} label="Fetching auction lines…" />
+                      : <p className="text-xs text-gray-600">Connecting…</p>
                   ) : !monthlyLots || monthlyLots.months.length === 0 ? (
                     <p className="text-gray-600 text-sm">No data</p>
                   ) : (
-                    <div className="space-y-3">
-                      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${monthlyLots.months.length + 1}, 1fr)` }}>
-                        {monthlyLots.months.map(({ month, count, auctions, avgPerAuction }) => {
-                          const [yr, mo] = month.split("-")
-                          const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
-                          const collected = monthlyCollected?.[month]
-                          return (
-                            <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
-                              <p className="text-xs text-gray-500 mb-2">{label}</p>
-                              <p className="text-2xl font-bold text-white">{count.toLocaleString()}</p>
-                              <p className="text-xs text-gray-600 mt-0.5">lots</p>
-                              <div className="mt-2 pt-2 border-t border-gray-800 space-y-0.5">
-                                <p className="text-xs text-gray-500">{auctions} auctions · {avgPerAuction}/auction</p>
-                                {monthlyCollectedLoading ? (
-                                  <p className="text-xs text-gray-600">loading collections…</p>
-                                ) : monthlyCollectedError ? (
-                                  <p className="text-xs text-red-500" title={monthlyCollectedError}>collections unavailable</p>
-                                ) : collected !== undefined ? (
-                                  <p className="text-xs text-green-500">{collected.toLocaleString()} collected</p>
-                                ) : (
-                                  <p className="text-xs text-gray-600">0 collected</p>
-                                )}
-                              </div>
+                    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${monthlyLots.months.length + 1}, 1fr)` }}>
+                      {monthlyLots.months.map(({ month, count, auctions, avgPerAuction }) => {
+                        const [yr, mo] = month.split("-")
+                        const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
+                        return (
+                          <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-2">{label}</p>
+                            <p className="text-2xl font-bold text-white">{count.toLocaleString()}</p>
+                            <p className="text-xs text-gray-600 mt-0.5">lots</p>
+                            <div className="mt-2 pt-2 border-t border-gray-800">
+                              <p className="text-xs text-gray-500">{auctions} auctions · {avgPerAuction}/auction</p>
                             </div>
-                          )
-                        })}
-                        <div className="bg-blue-950/40 border border-blue-800/40 rounded-lg p-3 text-center">
-                          <p className="text-xs text-blue-400 mb-2">3-Month Avg</p>
-                          <p className="text-2xl font-bold text-blue-300">{monthlyLots.avgLots.toLocaleString()}</p>
-                          <p className="text-xs text-blue-500 mt-0.5">lots/month</p>
-                          <div className="mt-2 pt-2 border-t border-blue-900/40">
-                            <p className="text-xs text-blue-400">{monthlyLots.avgPerAuction} lots/auction</p>
                           </div>
+                        )
+                      })}
+                      <div className="bg-blue-950/40 border border-blue-800/40 rounded-lg p-3 text-center">
+                        <p className="text-xs text-blue-400 mb-2">Avg</p>
+                        <p className="text-2xl font-bold text-blue-300">{monthlyLots.avgLots.toLocaleString()}</p>
+                        <p className="text-xs text-blue-500 mt-0.5">lots/month</p>
+                        <div className="mt-2 pt-2 border-t border-blue-900/40">
+                          <p className="text-xs text-blue-400">{monthlyLots.avgPerAuction} lots/auction</p>
                         </div>
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Collections by month — separate section */}
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Lots Collected by Month (Change Log · Last 3 Months + Current)</p>
+                    {!monthlyCollectedLoading && (
+                      <button onClick={fetchMonthlyCollected} className="text-xs text-gray-600 hover:text-gray-400 underline">↺ Refresh</button>
+                    )}
+                  </div>
+                  {monthlyCollectedError ? (
+                    <div className="flex items-center gap-3">
+                      <p className="text-red-400 text-sm">{monthlyCollectedError}</p>
+                      <button onClick={fetchMonthlyCollected} className="text-xs text-blue-400 hover:text-blue-300 underline">Retry</button>
+                    </div>
+                  ) : monthlyCollectedLoading ? (
+                    monthlyCollectedProgress
+                      ? <ProgressBar done={monthlyCollectedProgress.done} total={monthlyCollectedProgress.total} label="Fetching from BC change log…" />
+                      : <p className="text-xs text-gray-600">Connecting…</p>
+                  ) : !monthlyCollected || Object.keys(monthlyCollected).length === 0 ? (
+                    <p className="text-gray-600 text-sm">No collections found in this period</p>
+                  ) : (() => {
+                    const months = Object.entries(monthlyCollected)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                    const total = months.reduce((s, [, v]) => s + v, 0)
+                    const avg = months.length > 0 ? Math.round(total / months.length) : 0
+                    return (
+                      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${months.length + 1}, 1fr)` }}>
+                        {months.map(([month, count]) => {
+                          const [yr, mo] = month.split("-")
+                          const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
+                          return (
+                            <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
+                              <p className="text-xs text-gray-500 mb-2">{label}</p>
+                              <p className="text-2xl font-bold text-green-400">{count.toLocaleString()}</p>
+                              <p className="text-xs text-gray-600 mt-0.5">collected</p>
+                            </div>
+                          )
+                        })}
+                        <div className="bg-green-950/30 border border-green-800/30 rounded-lg p-3 text-center">
+                          <p className="text-xs text-green-500 mb-2">Avg</p>
+                          <p className="text-2xl font-bold text-green-300">{avg.toLocaleString()}</p>
+                          <p className="text-xs text-green-600 mt-0.5">collected/month</p>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             )
