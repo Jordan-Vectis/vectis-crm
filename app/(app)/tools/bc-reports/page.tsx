@@ -590,7 +590,8 @@ function PackingTab() {
             const staffBreakEven  = perPersonRate > 0 ? Math.ceil(effectiveDemand / perPersonRate) : null
             const extraNeeded     = staffBreakEven !== null ? Math.max(0, staffBreakEven - capStaff) : null
             const statusColor     = catchingUp ? "#22c55e" : netPerDay > -10 ? "#f59e0b" : "#ef4444"
-            const daysToClean     = capBacklog > 0 && netPerDay > 0 ? Math.ceil(capBacklog / netPerDay) : null
+            const backlogLots     = capBacklog * capLotsPerSale
+            const daysToClean     = capBacklog > 0 && netPerDay > 0 ? Math.ceil(backlogLots / netPerDay) : null
             const catchupDate     = daysToClean != null
               ? new Date(Date.now() + daysToClean * 24 * 60 * 60 * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
               : null
@@ -606,7 +607,7 @@ function PackingTab() {
                     <NumInput label="Lots / sale" value={capLotsPerSale} onChange={setCapLotsPerSale} />
                     <NumInput label="Working days / month" value={capWorkDays} onChange={setCapWorkDays} />
                     <NumInput label="Avg collections / day" value={capCollectedPerDay} onChange={setCapCollectedPerDay} />
-                    <NumInput label="Current backlog (lots)" value={capBacklog} onChange={setCapBacklog} />
+                    <NumInput label="Current backlog (auctions)" value={capBacklog} onChange={setCapBacklog} />
                   </div>
                 </div>
 
@@ -660,7 +661,7 @@ function PackingTab() {
                       <>
                         <p className="text-3xl font-bold text-white">{catchupDate}</p>
                         <p className="text-xs text-gray-600 mt-1">
-                          {daysToClean} calendar {daysToClean === 1 ? "day" : "days"} to clear {capBacklog.toLocaleString()} lots at +{netPerDay.toFixed(0)} lots/day net
+                          {daysToClean} calendar {daysToClean === 1 ? "day" : "days"} to clear {capBacklog.toLocaleString()} {capBacklog === 1 ? "auction" : "auctions"} (~{backlogLots.toLocaleString()} lots) at +{netPerDay.toFixed(0)} lots/day net
                         </p>
                       </>
                     ) : (
