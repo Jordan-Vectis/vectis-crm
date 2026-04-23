@@ -568,7 +568,7 @@ function PackingTab() {
 
                 {/* Monthly lots from receipt lines */}
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots by Month (Receipt Lines · Last 3 Months)</p>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots by Month (Auction Lines · Last 3 Months)</p>
                   {monthlyLotsError ? (
                     <p className="text-red-400 text-sm">{monthlyLotsError}</p>
                   ) : !monthlyLots ? (
@@ -576,7 +576,7 @@ function PackingTab() {
                       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
                         <div className="h-full bg-[#0078D4] rounded-full animate-pulse w-full" />
                       </div>
-                      <p className="text-gray-600 text-xs">Fetching receipt lines from BC…</p>
+                      <p className="text-gray-600 text-xs">Fetching auction lines from BC…</p>
                     </div>
                   ) : monthlyLots.months.length === 0 ? (
                     <p className="text-gray-600 text-sm">No data</p>
