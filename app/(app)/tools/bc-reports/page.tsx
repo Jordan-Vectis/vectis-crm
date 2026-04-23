@@ -395,6 +395,15 @@ function PackingTab() {
   const [capLotsPerSale, setCapLotsPerSale]  = useState(550)
   const [capWorkDays,    setCapWorkDays]     = useState(22)
   const [capClearMonths, setCapClearMonths]  = useState(3)
+  // Lock per-person rate once when data first loads so changing capStaff only affects throughput
+  const [lockedRate, setLockedRate] = useState(0)
+  const rateLockedRef = useRef(false)
+  useEffect(() => {
+    if (avgLotsPerDay > 0 && capStaff > 0 && !rateLockedRef.current) {
+      setLockedRate(avgLotsPerDay / capStaff)
+      rateLockedRef.current = true
+    }
+  }, [avgLotsPerDay]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
@@ -461,11 +470,10 @@ function PackingTab() {
             </div>
           )}
           {subTab === "Capacity" && (() => {
-            // Rate per person derived from actual observed data (actual staff count, not the input)
-            const actualStaffCount = data.meta.staffCount || capStaff
-            const perPersonRate    = actualStaffCount > 0 ? avgLotsPerDay / actualStaffCount : 0
-            // Modelled throughput scales with the staff input
-            const dailyThroughput  = Math.round(capStaff * perPersonRate)
+            // perPersonRate locked when data first loads (avgLotsPerDay / initial capStaff)
+            // so changing staff scales throughput correctly without re-dividing
+            const perPersonRate   = lockedRate || (avgLotsPerDay / capStaff)
+            const dailyThroughput = Math.round(capStaff * perPersonRate)
             const dailyIncoming    = (capSalesMonth * capLotsPerSale) / capWorkDays
             const netPerDay       = dailyThroughput - dailyIncoming
             const backlog         = collectedLots ?? 5500
@@ -537,7 +545,7 @@ function PackingTab() {
                   <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                     <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Modelled Throughput</p>
                     <p className="text-2xl font-bold text-white">{dailyThroughput}</p>
-                    <p className="text-xs text-gray-600 mt-0.5">lots/day · {perPersonRate.toFixed(1)}/person (actual: {avgLotsPerDay})</p>
+                    <p className="text-xs text-gray-600 mt-0.5">lots/day · {perPersonRate.toFixed(1)} lots/person · observed avg: {avgLotsPerDay}</p>
                   </div>
                   <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                     <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Incoming Demand</p>
