@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getBCToken, bcFetchAll } from "@/lib/bc"
+import { getBCToken, bcFetchAll, bcPage } from "@/lib/bc"
 
 export const maxDuration = 60
 
@@ -21,6 +21,10 @@ export async function GET() {
 
     const token = await getBCToken()
     if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
+
+    // DEBUG: discover fields on EVA_AuctionLine
+    const sample = await bcPage(token, "EVA_AuctionLine", { $top: 1 })
+    return NextResponse.json({ debug_fields: sample.length > 0 ? Object.keys(sample[0]) : [] })
 
     const { start, end } = last3MonthsRange()
     const filter = `EVA_CataloguedDateTime ge ${start}T00:00:00Z and EVA_CataloguedDateTime le ${end}T23:59:59Z`
