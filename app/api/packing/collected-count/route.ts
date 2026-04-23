@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+
+export const maxDuration = 60
 import { auth } from "@/auth"
 import { getBCToken } from "@/lib/bc"
 import { getCollectedDates } from "@/lib/collected-cache"

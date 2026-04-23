@@ -130,6 +130,28 @@ export async function bcFetchAll(
   return all
 }
 
+async function bcPageJson(
+  token: string,
+  url: string,
+  retries = 3
+): Promise<any> {
+  let lastErr: Error | null = null
+  for (let attempt = 0; attempt < retries; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt))
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: "application/json", "OData-MaxVersion": "4.0", Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (!res.ok) throw new Error(`BC API ${res.status}: ${await res.text()}`)
+      return await res.json()
+    } catch (e: any) {
+      lastErr = e
+    }
+  }
+  throw lastErr
+}
+
 export async function bcFetchAllWithProgress(
   token: string,
   endpoint: string,
@@ -153,11 +175,8 @@ export async function bcFetchAllWithProgress(
     const qs = Object.entries(params)
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
       .join("&")
-    const res = await fetch(`${base}?${qs}`, {
-      headers: { Accept: "application/json", "OData-MaxVersion": "4.0", Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) throw new Error(`BC API ${res.status}: ${await res.text()}`)
-    const json = await res.json()
+
+    const json = await bcPageJson(token, `${base}?${qs}`)
     const rows: any[] = json.value ?? []
 
     if (firstPage) {

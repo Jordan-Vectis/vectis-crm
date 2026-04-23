@@ -370,13 +370,16 @@ function PackingTab() {
   // Collected lots count (BC change log — movements TO COLLECTED in date range)
   const [collectedLots, setCollectedLots] = useState<number | null>(null)
   const [collectedProgress, setCollectedProgress] = useState<{ done: number; total: number } | null>(null)
-  useEffect(() => {
+  const [collectedError, setCollectedError] = useState<string | null>(null)
+
+  function fetchCollected(f: string, t: string) {
     setCollectedLots(null)
     setCollectedProgress(null)
+    setCollectedError(null)
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch(`/api/packing/collected-count?from=${from}&to=${to}`)
+        const res = await fetch(`/api/packing/collected-count?from=${f}&to=${t}`)
         const reader = res.body!.getReader()
         const decoder = new TextDecoder()
         let buffer = ""
@@ -390,12 +393,15 @@ function PackingTab() {
             const msg = JSON.parse(line)
             if (msg.type === "progress") setCollectedProgress({ done: msg.done, total: msg.total })
             else if (msg.type === "result") { setCollectedLots(msg.count ?? null); setCollectedProgress(null) }
+            else if (msg.type === "error") { setCollectedError(msg.error); setCollectedProgress(null) }
           }
         }
-      } catch {}
+      } catch (e: any) { setCollectedError(e.message ?? "Failed"); setCollectedProgress(null) }
     })()
     return () => { cancelled = true }
-  }, [from, to])
+  }
+
+  useEffect(() => fetchCollected(from, to), [from, to]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Chart grouping
   const [chartGrouping, setChartGrouping] = useState<"daily" | "weekly" | "monthly">("daily")
@@ -516,7 +522,12 @@ function PackingTab() {
                 </div>
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                   <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Lots Collected</p>
-                  {collectedLots === null ? (
+                  {collectedError ? (
+                    <div className="mt-2">
+                      <p className="text-xs text-red-400 mb-1">Failed — BC dropped connection</p>
+                      <button onClick={() => fetchCollected(from, to)} className="text-xs text-blue-400 hover:text-blue-300 underline">Retry</button>
+                    </div>
+                  ) : collectedLots === null ? (
                     <div className="mt-3">
                       {collectedProgress
                         ? <ProgressBar done={collectedProgress.done} total={collectedProgress.total} label="Fetching from BC…" />
