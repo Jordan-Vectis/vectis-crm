@@ -14,7 +14,7 @@ export async function GET() {
 
     const debugUrl = `https://api.businesscentral.dynamics.com/v2.0/${process.env.BC_TENANT_ID}/${process.env.BC_ENVIRONMENT ?? "production"}/ODataV4/Company('${encodeURIComponent(process.env.BC_COMPANY ?? "Vectis")}')/EVA_AuctionLine`
     try {
-      const sample = await bcPage(token, "Auction_Lines_Excel", { $top: 1 })
+      const sample = await bcPage(token, "EVA_AuctionLine", { $top: 1 })
       return NextResponse.json({ debug_fields: sample.length > 0 ? Object.keys(sample[0]) : [], url: debugUrl })
     } catch (bcErr: any) {
       return NextResponse.json({ error: bcErr.message, url: debugUrl })
