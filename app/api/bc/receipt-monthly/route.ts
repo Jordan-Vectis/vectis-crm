@@ -28,23 +28,32 @@ export async function GET() {
     const rows = await bcFetchAll(token, "Auction_Receipt_Lines_Excel", filter, undefined, 500)
 
     // Group by YYYY-MM using EVA_CataloguedDateTime
-    const byMonth: Record<string, number> = {}
+    const byMonth: Record<string, { count: number; auctions: Set<string> }> = {}
     for (const row of rows) {
       const date: string = row.EVA_CataloguedDateTime ?? ""
       if (!date) continue
       const month = date.slice(0, 7)
-      byMonth[month] = (byMonth[month] ?? 0) + 1
+      if (!byMonth[month]) byMonth[month] = { count: 0, auctions: new Set() }
+      byMonth[month].count++
+      if (row.EVA_SalesAllocation) byMonth[month].auctions.add(row.EVA_SalesAllocation)
     }
 
     const months = Object.entries(byMonth)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, count]) => ({ month, count }))
+      .map(([month, { count, auctions }]) => ({
+        month,
+        count,
+        auctions: auctions.size,
+        avgPerAuction: auctions.size > 0 ? Math.round(count / auctions.size) : 0,
+      }))
 
-    const avg = months.length > 0
+    const avgLots = months.length > 0
       ? Math.round(months.reduce((s, m) => s + m.count, 0) / months.length)
       : 0
+    const totalAuctions = new Set(rows.map(r => r.EVA_SalesAllocation).filter(Boolean)).size
+    const avgPerAuction = totalAuctions > 0 ? Math.round(rows.length / totalAuctions) : 0
 
-    return NextResponse.json({ months, avg, total: rows.length, range: { start, end } })
+    return NextResponse.json({ months, avgLots, avgPerAuction, totalAuctions, total: rows.length, range: { start, end } })
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Unknown error" }, { status: 500 })
   }

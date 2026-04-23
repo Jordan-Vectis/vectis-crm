@@ -390,7 +390,7 @@ function PackingTab() {
   }
 
   // Monthly receipt lines (last 3 months)
-  const [monthlyLots, setMonthlyLots] = useState<{ months: { month: string; count: number }[]; avg: number } | null>(null)
+  const [monthlyLots, setMonthlyLots] = useState<{ months: { month: string; count: number; auctions: number; avgPerAuction: number }[]; avgLots: number; avgPerAuction: number } | null>(null)
   const [monthlyLotsError, setMonthlyLotsError] = useState<string | null>(null)
   useEffect(() => {
     fetch("/api/bc/receipt-monthly")
@@ -571,22 +571,31 @@ function PackingTab() {
                   ) : monthlyLots.months.length === 0 ? (
                     <p className="text-gray-600 text-sm">No data</p>
                   ) : (
-                    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${monthlyLots.months.length + 1}, 1fr)` }}>
-                      {monthlyLots.months.map(({ month, count }) => {
-                        const [yr, mo] = month.split("-")
-                        const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
-                        return (
-                          <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
-                            <p className="text-xs text-gray-500 mb-1">{label}</p>
-                            <p className="text-2xl font-bold text-white">{count.toLocaleString()}</p>
-                            <p className="text-xs text-gray-600 mt-0.5">lots</p>
+                    <div className="space-y-3">
+                      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${monthlyLots.months.length + 1}, 1fr)` }}>
+                        {monthlyLots.months.map(({ month, count, auctions, avgPerAuction }) => {
+                          const [yr, mo] = month.split("-")
+                          const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
+                          return (
+                            <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
+                              <p className="text-xs text-gray-500 mb-2">{label}</p>
+                              <p className="text-2xl font-bold text-white">{count.toLocaleString()}</p>
+                              <p className="text-xs text-gray-600 mt-0.5">lots</p>
+                              <div className="mt-2 pt-2 border-t border-gray-800">
+                                <p className="text-xs text-gray-500">{auctions} auctions</p>
+                                <p className="text-xs text-gray-400">{avgPerAuction} lots/auction</p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <div className="bg-blue-950/40 border border-blue-800/40 rounded-lg p-3 text-center">
+                          <p className="text-xs text-blue-400 mb-2">3-Month Avg</p>
+                          <p className="text-2xl font-bold text-blue-300">{monthlyLots.avgLots.toLocaleString()}</p>
+                          <p className="text-xs text-blue-500 mt-0.5">lots/month</p>
+                          <div className="mt-2 pt-2 border-t border-blue-900/40">
+                            <p className="text-xs text-blue-400">{monthlyLots.avgPerAuction} lots/auction</p>
                           </div>
-                        )
-                      })}
-                      <div className="bg-blue-950/40 border border-blue-800/40 rounded-lg p-3 text-center">
-                        <p className="text-xs text-blue-400 mb-1">3-Month Avg</p>
-                        <p className="text-2xl font-bold text-blue-300">{monthlyLots.avg.toLocaleString()}</p>
-                        <p className="text-xs text-blue-500 mt-0.5">lots/month</p>
+                        </div>
                       </div>
                     </div>
                   )}
