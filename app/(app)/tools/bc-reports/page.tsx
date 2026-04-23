@@ -494,6 +494,7 @@ function PackingTab() {
   const [capLotsPerSale,     setCapLotsPerSale]      = useState(550)
   const [capWorkDays,        setCapWorkDays]         = useState(22)
   const [capCollectedPerDay, setCapCollectedPerDay]  = useState(0)
+  const [capBacklog,         setCapBacklog]          = useState(0)
   // Lock per-person rate once when data first loads so changing capStaff only affects throughput
   const [lockedRate, setLockedRate] = useState(0)
   const rateLockedRef = useRef(false)
@@ -580,25 +581,19 @@ function PackingTab() {
             </div>
           )}
           {subTab === "Capacity" && (() => {
-            const perPersonRate    = lockedRate || (avgLotsPerDay / capStaff)
-            const dailyThroughput  = Math.round(capStaff * perPersonRate)
-            const dailyIncoming    = (capSalesMonth * capLotsPerSale) / capWorkDays
-            const effectiveDemand  = Math.max(0, dailyIncoming - capCollectedPerDay)
-            const netPerDay        = dailyThroughput - effectiveDemand
+            const perPersonRate   = lockedRate || (avgLotsPerDay / capStaff)
+            const dailyThroughput = Math.round(capStaff * perPersonRate)
+            const dailyIncoming   = (capSalesMonth * capLotsPerSale) / capWorkDays
+            const effectiveDemand = Math.max(0, dailyIncoming - capCollectedPerDay)
+            const netPerDay       = dailyThroughput - effectiveDemand
             const catchingUp      = netPerDay > 0
             const staffBreakEven  = perPersonRate > 0 ? Math.ceil(effectiveDemand / perPersonRate) : null
             const extraNeeded     = staffBreakEven !== null ? Math.max(0, staffBreakEven - capStaff) : null
             const statusColor     = catchingUp ? "#22c55e" : netPerDay > -10 ? "#f59e0b" : "#ef4444"
-
-            function NumInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-              return (
-                <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">{label}</label>
-                  <input type="number" value={value} onChange={e => onChange(Number(e.target.value))}
-                    className="w-20 bg-[#07070f] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500 text-right" />
-                </div>
-              )
-            }
+            const daysToClean     = capBacklog > 0 && netPerDay > 0 ? Math.ceil(capBacklog / netPerDay) : null
+            const catchupDate     = daysToClean != null
+              ? new Date(Date.now() + daysToClean * 24 * 60 * 60 * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+              : null
 
             return (
               <div className="space-y-6">
@@ -611,6 +606,7 @@ function PackingTab() {
                     <NumInput label="Lots / sale" value={capLotsPerSale} onChange={setCapLotsPerSale} />
                     <NumInput label="Working days / month" value={capWorkDays} onChange={setCapWorkDays} />
                     <NumInput label="Avg collections / day" value={capCollectedPerDay} onChange={setCapCollectedPerDay} />
+                    <NumInput label="Current backlog (lots)" value={capBacklog} onChange={setCapBacklog} />
                   </div>
                 </div>
 
@@ -655,6 +651,23 @@ function PackingTab() {
                       : `Current ${capStaff} staff is enough to keep up with demand`}
                   </p>
                 </div>
+
+                {/* Estimated catch-up */}
+                {capBacklog > 0 && (
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Estimated catch-up</p>
+                    {daysToClean != null && catchupDate ? (
+                      <>
+                        <p className="text-3xl font-bold text-white">{catchupDate}</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          {daysToClean} calendar {daysToClean === 1 ? "day" : "days"} to clear {capBacklog.toLocaleString()} lots at +{netPerDay.toFixed(0)} lots/day net
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-amber-400">Cannot catch up — throughput is not exceeding demand</p>
+                    )}
+                  </div>
+                )}
 
                 {/* Monthly lots from receipt lines */}
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
@@ -718,6 +731,8 @@ function PackingTab() {
                   ) : !monthlyCollected || Object.keys(monthlyCollected).length === 0 ? (
                     <p className="text-gray-600 text-sm">No collections found in this period</p>
                   ) : (() => {
+                    const now = new Date()
+                    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
                     const months = Object.entries(monthlyCollected)
                       .sort(([a], [b]) => a.localeCompare(b))
                     const total = months.reduce((s, [, v]) => s + v, 0)
@@ -727,11 +742,17 @@ function PackingTab() {
                         {months.map(([month, count]) => {
                           const [yr, mo] = month.split("-")
                           const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
+                          const isCurrentMonth = month === currentMonthKey
+                          const daysInMo = isCurrentMonth ? now.getDate() : new Date(Number(yr), Number(mo), 0).getDate()
+                          const dailyAvg = daysInMo > 0 ? Math.round(count / daysInMo) : 0
                           return (
                             <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
                               <p className="text-xs text-gray-500 mb-2">{label}</p>
                               <p className="text-2xl font-bold text-green-400">{count.toLocaleString()}</p>
                               <p className="text-xs text-gray-600 mt-0.5">collected</p>
+                              <div className="mt-2 pt-2 border-t border-gray-800">
+                                <p className="text-xs text-green-600">{dailyAvg}/day avg{isCurrentMonth ? " so far" : ""}</p>
+                              </div>
                             </div>
                           )
                         })}
@@ -999,6 +1020,16 @@ function DataExplorerTab() {
           <ExportBtn onClick={() => exportXlsx(rows, ENDPOINTS[endpoint])} />
         </>
       )}
+    </div>
+  )
+}
+
+function NumInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">{label}</label>
+      <input type="number" value={value} onChange={e => onChange(Number(e.target.value))}
+        className="w-20 bg-[#07070f] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500 text-right" />
     </div>
   )
 }
