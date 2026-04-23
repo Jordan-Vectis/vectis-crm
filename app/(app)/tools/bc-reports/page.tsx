@@ -1370,7 +1370,10 @@ export default function BCReportsPage() {
             <p className="text-gray-600 text-xs">Company: Vectis</p>
           </div>
           <button
-            onClick={() => setRefreshKey((k) => k + 1)}
+            onClick={async () => {
+              await fetch("/api/bc/cache-bust", { method: "POST" }).catch(() => {})
+              setRefreshKey((k) => k + 1)
+            }}
             className="w-full bg-red-700 hover:bg-red-600 text-white text-xs font-bold py-1.5 px-2 rounded transition-colors"
           >
             ■ REFRESH ALL DATA

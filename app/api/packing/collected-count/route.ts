@@ -3,8 +3,7 @@ import { auth } from "@/auth"
 import { getBCToken, bcFetchAllWithProgress } from "@/lib/bc"
 import { getCachedBC, setCachedBC } from "@/lib/bc-cache"
 
-const TTL_PAST_MS    = 30 * 60 * 1000  // 30 min for historical ranges
-const TTL_CURRENT_MS = 10 * 60 * 1000  // 10 min for ranges that include today
+const TTL_MS = 12 * 60 * 60 * 1000  // 12 hours — bust manually via Refresh All Data
 
 function send(controller: ReadableStreamDefaultController, obj: object) {
   controller.enqueue(new TextEncoder().encode(JSON.stringify(obj) + "\n"))
@@ -17,15 +16,12 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const from = searchParams.get("from") ?? ""
   const to   = searchParams.get("to")   ?? ""
-  const today = new Date().toISOString().split("T")[0]
-  const rangeIsInPast = !!to && to < today
-  const ttl = rangeIsInPast ? TTL_PAST_MS : TTL_CURRENT_MS
   const cacheKey = `collected-count:${from}:${to}`
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const hit = await getCachedBC<number>(cacheKey, ttl)
+        const hit = await getCachedBC<number>(cacheKey, TTL_MS)
         if (hit !== null) {
           send(controller, { type: "progress", done: 1, total: 1 })
           send(controller, { type: "result", count: hit })
