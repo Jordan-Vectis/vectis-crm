@@ -49,11 +49,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         )
         if (!valid) return null
 
+        const SUPERADMIN_EMAILS = ["it@vectis.co.uk"]
+        const effectiveRole = SUPERADMIN_EMAILS.includes(user.email.toLowerCase()) ? "ADMIN" : user.role
+
         return {
           id: user.id,
           name: user.name,
           email: user.email,
-          role: user.role,
+          role: effectiveRole,
           departmentId: user.departmentId,
           appPermissions: user.appPermissions as Record<string, { role: string }> | null,
         }
