@@ -364,11 +364,14 @@ function PackingTab() {
   const avgLotsPerDay = timelineDates.length > 0 ? Math.round(totalLotsPacked / timelineDates.length) : 0
   const timelineData = timelineDates.map(d => ({ date: d, lots: lotsPerDay[d] }))
 
-  // Collected lots count (from local DB via warehouse movements)
+  // Collected lots count (BC change log — movements TO COLLECTED in date range)
   const [collectedLots, setCollectedLots] = useState<number | null>(null)
   useEffect(() => {
-    fetch("/api/packing/collected-count").then(r => r.json()).then(d => setCollectedLots(d.count)).catch(() => {})
-  }, [])
+    fetch(`/api/packing/collected-count?from=${from}&to=${to}`)
+      .then(r => r.json())
+      .then(d => setCollectedLots(d.count ?? null))
+      .catch(() => {})
+  }, [from, to])
 
   // Chart grouping
   const [chartGrouping, setChartGrouping] = useState<"daily" | "weekly" | "monthly">("daily")
@@ -445,7 +448,7 @@ function PackingTab() {
                   <p className="text-2xl font-bold text-white">{timelineDates.length}</p>
                 </div>
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Lots at COLLECTED</p>
+                  <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Lots Collected</p>
                   <p className="text-2xl font-bold text-white">
                     {collectedLots === null ? <span className="text-gray-600 text-base">loading…</span> : collectedLots.toLocaleString()}
                   </p>
