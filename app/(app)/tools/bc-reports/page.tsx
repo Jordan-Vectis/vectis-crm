@@ -461,9 +461,12 @@ function PackingTab() {
             </div>
           )}
           {subTab === "Capacity" && (() => {
-            const dailyThroughput = avgLotsPerDay || 0
-            const perPersonRate   = capStaff > 0 ? dailyThroughput / capStaff : 0
-            const dailyIncoming   = (capSalesMonth * capLotsPerSale) / capWorkDays
+            // Rate per person derived from actual observed data (actual staff count, not the input)
+            const actualStaffCount = data.meta.staffCount || capStaff
+            const perPersonRate    = actualStaffCount > 0 ? avgLotsPerDay / actualStaffCount : 0
+            // Modelled throughput scales with the staff input
+            const dailyThroughput  = Math.round(capStaff * perPersonRate)
+            const dailyIncoming    = (capSalesMonth * capLotsPerSale) / capWorkDays
             const netPerDay       = dailyThroughput - dailyIncoming
             const backlog         = collectedLots ?? 5500
             const catchingUp      = netPerDay > 0
@@ -532,9 +535,9 @@ function PackingTab() {
                 {/* Stats grid */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
-                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Team Throughput</p>
+                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Modelled Throughput</p>
                     <p className="text-2xl font-bold text-white">{dailyThroughput}</p>
-                    <p className="text-xs text-gray-600 mt-0.5">lots/day · {perPersonRate.toFixed(1)}/person</p>
+                    <p className="text-xs text-gray-600 mt-0.5">lots/day · {perPersonRate.toFixed(1)}/person (actual: {avgLotsPerDay})</p>
                   </div>
                   <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                     <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Incoming Demand</p>
