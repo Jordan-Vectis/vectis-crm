@@ -13,8 +13,14 @@ CREATE TABLE IF NOT EXISTS "CatalogueTimingLog" (
     CONSTRAINT "CatalogueTimingLog_pkey" PRIMARY KEY ("id")
 );
 
--- AddForeignKey
-ALTER TABLE "CatalogueTimingLog"
-    ADD CONSTRAINT "CatalogueTimingLog_auctionId_fkey"
-    FOREIGN KEY ("auctionId") REFERENCES "CatalogueAuction"("id")
-    ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (idempotent)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'CatalogueTimingLog_auctionId_fkey'
+  ) THEN
+    ALTER TABLE "CatalogueTimingLog"
+      ADD CONSTRAINT "CatalogueTimingLog_auctionId_fkey"
+      FOREIGN KEY ("auctionId") REFERENCES "CatalogueAuction"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
