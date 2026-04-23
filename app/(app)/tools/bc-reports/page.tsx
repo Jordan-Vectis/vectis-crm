@@ -5,6 +5,7 @@ import Logo from "@/components/logo"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   LabelList, ResponsiveContainer, Cell,
+  LineChart, Line,
 } from "recharts"
 import * as XLSX from "xlsx"
 import { COUNTRY_NAMES } from "@/lib/country-names"
@@ -302,7 +303,7 @@ function PackingTab() {
   const [data, setData] = useState<PackData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
-  const [subTab, setSubTab]   = useState("Collections Daily Avg")
+  const [subTab, setSubTab]   = useState("Overview")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async (f: string, t: string) => {
@@ -331,7 +332,16 @@ function PackingTab() {
     load(f, t)
   }
 
-  const subTabs = ["Collections Daily Avg", "Collections Total", "Lots Daily Avg", "Total Lots", "Raw Data"]
+  const subTabs = ["Overview", "Collections Daily Avg", "Collections Total", "Lots Daily Avg", "Total Lots", "Lots Over Time", "Raw Data"]
+
+  // Derive daily totals from raw for stats + chart
+  const lotsPerDay = data
+    ? data.raw.reduce((acc, r) => { acc[r.date] = (acc[r.date] ?? 0) + r.lotCount; return acc }, {} as Record<string, number>)
+    : {}
+  const timelineDates = Object.keys(lotsPerDay).sort()
+  const totalLotsPacked = timelineDates.reduce((s, d) => s + lotsPerDay[d], 0)
+  const avgLotsPerDay = timelineDates.length > 0 ? Math.round(totalLotsPacked / timelineDates.length) : 0
+  const timelineData = timelineDates.map(d => ({ date: d, lots: lotsPerDay[d] }))
 
   return (
     <div>
@@ -344,10 +354,72 @@ function PackingTab() {
         <div className={loading ? "opacity-40 pointer-events-none transition-opacity" : "transition-opacity"}>
           <MetaBar text={`${from} — ${to}  ·  ${data.meta.total.toLocaleString()} shipments  ·  ${data.meta.staffCount} staff`} />
           <SubTabs tabs={subTabs} active={subTab} onChange={setSubTab} />
+          {subTab === "Overview" && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Total Lots Packed</p>
+                  <p className="text-2xl font-bold text-white">{totalLotsPacked.toLocaleString()}</p>
+                </div>
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Avg Lots Per Day</p>
+                  <p className="text-2xl font-bold text-white">{avgLotsPerDay.toLocaleString()}</p>
+                </div>
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Active Days</p>
+                  <p className="text-2xl font-bold text-white">{timelineDates.length}</p>
+                </div>
+              </div>
+              <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots Packed Per Day</p>
+                {timelineData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={timelineData} margin={{ top: 4, right: 16, left: 0, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e2130" />
+                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false}
+                        interval={Math.max(0, Math.floor(timelineData.length / 8) - 1)}
+                        angle={-35} textAnchor="end" height={40} />
+                      <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} />
+                      <Tooltip
+                        contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }}
+                        cursor={{ stroke: "#374151" }}
+                      />
+                      <Line type="monotone" dataKey="lots" stroke="#0078D4" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-gray-500 text-sm py-6 text-center">No data</p>
+                )}
+              </div>
+            </div>
+          )}
           {subTab === "Collections Daily Avg" && <><HBar data={data.dailyAvgCollections} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgCollections, "packing_daily_avg")} /></>}
           {subTab === "Collections Total"     && <><HBar data={data.totalCollections} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalCollections, "packing_total")} /></>}
           {subTab === "Lots Daily Avg"        && <><HBar data={data.dailyAvgLots} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgLots, "packing_lots_avg")} /></>}
           {subTab === "Total Lots"            && <><HBar data={data.totalLots} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalLots, "packing_total_lots")} /></>}
+          {subTab === "Lots Over Time" && (
+            <>
+              {timelineData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={320}>
+                  <LineChart data={timelineData} margin={{ top: 4, right: 16, left: 0, bottom: 30 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e2130" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false}
+                      interval={Math.max(0, Math.floor(timelineData.length / 10) - 1)}
+                      angle={-40} textAnchor="end" height={50} />
+                    <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }}
+                      cursor={{ stroke: "#374151" }}
+                    />
+                    <Line type="monotone" dataKey="lots" stroke="#0078D4" strokeWidth={2} dot={{ r: 3, fill: "#0078D4" }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-gray-500 text-sm py-6 text-center">No data</p>
+              )}
+              <ExportBtn onClick={() => exportXlsx(timelineData, "packing_lots_over_time")} />
+            </>
+          )}
           {subTab === "Raw Data" && (
             <>
               <div className="overflow-x-auto rounded border border-gray-800">
