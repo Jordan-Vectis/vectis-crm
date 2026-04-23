@@ -407,10 +407,11 @@ function PackingTab() {
   }, [])
 
   // Capacity dashboard inputs
-  const [capStaff,       setCapStaff]       = useState(11)
-  const [capSalesMonth,  setCapSalesMonth]   = useState(14)
-  const [capLotsPerSale, setCapLotsPerSale]  = useState(550)
-  const [capWorkDays,    setCapWorkDays]     = useState(22)
+  const [capStaff,           setCapStaff]           = useState(11)
+  const [capSalesMonth,      setCapSalesMonth]       = useState(14)
+  const [capLotsPerSale,     setCapLotsPerSale]      = useState(550)
+  const [capWorkDays,        setCapWorkDays]         = useState(22)
+  const [capCollectedPerDay, setCapCollectedPerDay]  = useState(0)
   // Lock per-person rate once when data first loads so changing capStaff only affects throughput
   const [lockedRate, setLockedRate] = useState(0)
   const rateLockedRef = useRef(false)
@@ -493,12 +494,13 @@ function PackingTab() {
             </div>
           )}
           {subTab === "Capacity" && (() => {
-            const perPersonRate   = lockedRate || (avgLotsPerDay / capStaff)
-            const dailyThroughput = Math.round(capStaff * perPersonRate)
-            const dailyIncoming   = (capSalesMonth * capLotsPerSale) / capWorkDays
-            const netPerDay       = dailyThroughput - dailyIncoming
+            const perPersonRate    = lockedRate || (avgLotsPerDay / capStaff)
+            const dailyThroughput  = Math.round(capStaff * perPersonRate)
+            const dailyIncoming    = (capSalesMonth * capLotsPerSale) / capWorkDays
+            const effectiveDemand  = Math.max(0, dailyIncoming - capCollectedPerDay)
+            const netPerDay        = dailyThroughput - effectiveDemand
             const catchingUp      = netPerDay > 0
-            const staffBreakEven  = perPersonRate > 0 ? Math.ceil(dailyIncoming / perPersonRate) : null
+            const staffBreakEven  = perPersonRate > 0 ? Math.ceil(effectiveDemand / perPersonRate) : null
             const extraNeeded     = staffBreakEven !== null ? Math.max(0, staffBreakEven - capStaff) : null
             const statusColor     = catchingUp ? "#22c55e" : netPerDay > -10 ? "#f59e0b" : "#ef4444"
 
@@ -522,6 +524,7 @@ function PackingTab() {
                     <NumInput label="Sales / month" value={capSalesMonth} onChange={setCapSalesMonth} />
                     <NumInput label="Lots / sale" value={capLotsPerSale} onChange={setCapLotsPerSale} />
                     <NumInput label="Working days / month" value={capWorkDays} onChange={setCapWorkDays} />
+                    <NumInput label="Avg collections / day" value={capCollectedPerDay} onChange={setCapCollectedPerDay} />
                   </div>
                 </div>
 
@@ -550,9 +553,9 @@ function PackingTab() {
                     <p className="text-xs text-gray-600 mt-0.5">{perPersonRate.toFixed(1)} lots/person · observed avg: {avgLotsPerDay}/day</p>
                   </div>
                   <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
-                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Incoming Demand</p>
-                    <p className="text-2xl font-bold text-white">{dailyIncoming.toFixed(0)}</p>
-                    <p className="text-xs text-gray-600 mt-0.5">{(capSalesMonth * capLotsPerSale).toLocaleString()} lots/month · {capSalesMonth} sales × {capLotsPerSale}</p>
+                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Effective Demand</p>
+                    <p className="text-2xl font-bold text-white">{effectiveDemand.toFixed(0)}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">{dailyIncoming.toFixed(0)} incoming − {capCollectedPerDay} collected/day</p>
                   </div>
                 </div>
 
