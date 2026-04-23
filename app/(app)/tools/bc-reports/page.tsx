@@ -562,7 +562,12 @@ function PackingTab() {
                   {monthlyLotsError ? (
                     <p className="text-red-400 text-sm">{monthlyLotsError}</p>
                   ) : !monthlyLots ? (
-                    <p className="text-gray-600 text-sm">Loading…</p>
+                    <div className="space-y-2">
+                      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#0078D4] rounded-full animate-pulse w-full" />
+                      </div>
+                      <p className="text-gray-600 text-xs">Fetching receipt lines from BC…</p>
+                    </div>
                   ) : monthlyLots.months.length === 0 ? (
                     <p className="text-gray-600 text-sm">No data</p>
                   ) : (
