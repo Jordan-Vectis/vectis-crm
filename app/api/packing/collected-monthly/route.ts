@@ -30,7 +30,7 @@ export async function GET() {
     if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
 
     const { start, end } = last3MonthsRange()
-    const filter = `New_Value eq 'COLLECTED' and Field_Caption eq 'Article Location Code'`
+    const filter = `New_Value eq 'COLLECTED' and Field_Caption eq 'Article Location Code' and Date_and_Time ge ${start}`
     const rows = await bcFetchAll(token, "ChangeLogEntries", filter, "Primary_Key_Field_1_Value,Date_and_Time", 500)
 
     const byMonth: Record<string, number> = {}

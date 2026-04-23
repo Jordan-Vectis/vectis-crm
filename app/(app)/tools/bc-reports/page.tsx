@@ -214,6 +214,31 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   )
 }
 
+// ─── Simulated percentage bar (for BC fetches with no chunk progress) ─────────
+
+function SimulatedBar({ loading, label }: { loading: boolean; label?: string }) {
+  const [pct, setPct] = useState(0)
+  useEffect(() => {
+    if (!loading) { setPct(100); return }
+    setPct(0)
+    const id = setInterval(() => {
+      setPct(p => p >= 89 ? p : p + Math.max(0.4, (89 - p) * 0.04))
+    }, 150)
+    return () => clearInterval(id)
+  }, [loading])
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between text-xs text-gray-500">
+        <span>{loading ? (label ?? "Fetching from BC…") : "Loaded"}</span>
+        <span>{Math.round(pct)}%</span>
+      </div>
+      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+        <div className="h-full bg-[#0078D4] rounded-full transition-all duration-200" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
 // ─── Cataloguing tab ──────────────────────────────────────────────────────────
 
 function CataloguingTab() {
@@ -395,9 +420,14 @@ function PackingTab() {
 
   // Monthly receipt lines (last 3 months)
   const [monthlyLots, setMonthlyLots] = useState<{ months: { month: string; count: number; auctions: number; avgPerAuction: number }[]; avgLots: number; avgPerAuction: number } | null>(null)
+  const [monthlyLotsLoading, setMonthlyLotsLoading] = useState(true)
   const [monthlyLotsError, setMonthlyLotsError] = useState<string | null>(null)
   const [monthlyCollected, setMonthlyCollected] = useState<Record<string, number> | null>(null)
+  const [monthlyCollectedLoading, setMonthlyCollectedLoading] = useState(true)
+  const [monthlyCollectedError, setMonthlyCollectedError] = useState<string | null>(null)
   useEffect(() => {
+    setMonthlyLotsLoading(true)
+    setMonthlyCollectedLoading(true)
     fetch("/api/bc/receipt-monthly")
       .then(r => r.json())
       .then(d => {
@@ -405,10 +435,15 @@ function PackingTab() {
         setMonthlyLots(d)
       })
       .catch(e => setMonthlyLotsError(e.message))
+      .finally(() => setMonthlyLotsLoading(false))
     fetch("/api/packing/collected-monthly")
       .then(r => r.json())
-      .then(d => { if (!d.error) setMonthlyCollected(d.byMonth) })
-      .catch(() => {})
+      .then(d => {
+        if (d.error) { setMonthlyCollectedError(d.error); return }
+        setMonthlyCollected(d.byMonth)
+      })
+      .catch(e => setMonthlyCollectedError(e.message))
+      .finally(() => setMonthlyCollectedLoading(false))
   }, [])
 
   // Capacity dashboard inputs
@@ -457,12 +492,7 @@ function PackingTab() {
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                   <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Lots Collected</p>
                   {collectedLots === null ? (
-                    <div className="space-y-2 mt-2">
-                      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#0078D4] rounded-full animate-indeterminate" />
-                      </div>
-                      <p className="text-xs text-gray-600">Fetching from BC…</p>
-                    </div>
+                    <div className="mt-2"><SimulatedBar loading={true} label="Fetching from BC…" /></div>
                   ) : (
                     <p className="text-2xl font-bold text-white">{collectedLots.toLocaleString()}</p>
                   )}
@@ -580,14 +610,9 @@ function PackingTab() {
                   <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots by Month (Auction Lines · Last 3 Months)</p>
                   {monthlyLotsError ? (
                     <p className="text-red-400 text-sm">{monthlyLotsError}</p>
-                  ) : !monthlyLots ? (
-                    <div className="space-y-2">
-                      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#0078D4] rounded-full animate-indeterminate" />
-                      </div>
-                      <p className="text-gray-600 text-xs">Fetching auction lines from BC…</p>
-                    </div>
-                  ) : monthlyLots.months.length === 0 ? (
+                  ) : monthlyLotsLoading ? (
+                    <SimulatedBar loading={true} label="Fetching auction lines from BC…" />
+                  ) : !monthlyLots || monthlyLots.months.length === 0 ? (
                     <p className="text-gray-600 text-sm">No data</p>
                   ) : (
                     <div className="space-y-3">
@@ -595,7 +620,7 @@ function PackingTab() {
                         {monthlyLots.months.map(({ month, count, auctions, avgPerAuction }) => {
                           const [yr, mo] = month.split("-")
                           const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
-                          const collected = monthlyCollected?.[month] ?? null
+                          const collected = monthlyCollected?.[month]
                           return (
                             <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
                               <p className="text-xs text-gray-500 mb-2">{label}</p>
@@ -603,9 +628,15 @@ function PackingTab() {
                               <p className="text-xs text-gray-600 mt-0.5">lots</p>
                               <div className="mt-2 pt-2 border-t border-gray-800 space-y-0.5">
                                 <p className="text-xs text-gray-500">{auctions} auctions · {avgPerAuction}/auction</p>
-                                <p className="text-xs text-green-500">
-                                  {collected === null ? "…" : `${collected.toLocaleString()} collected`}
-                                </p>
+                                {monthlyCollectedLoading ? (
+                                  <p className="text-xs text-gray-600">loading collections…</p>
+                                ) : monthlyCollectedError ? (
+                                  <p className="text-xs text-red-500" title={monthlyCollectedError}>collections unavailable</p>
+                                ) : collected !== undefined ? (
+                                  <p className="text-xs text-green-500">{collected.toLocaleString()} collected</p>
+                                ) : (
+                                  <p className="text-xs text-gray-600">0 collected</p>
+                                )}
                               </div>
                             </div>
                           )
