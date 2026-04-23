@@ -11,11 +11,10 @@ type CachedResult = { months: any[]; avgLots: number; avgPerAuction: number; tot
 
 function last3MonthsRange(): { start: string; end: string } {
   const now = new Date()
-  const endMonth   = new Date(now.getFullYear(), now.getMonth(), 0)
   const startMonth = new Date(now.getFullYear(), now.getMonth() - 3, 1)
   return {
     start: startMonth.toISOString().split("T")[0],
-    end:   endMonth.toISOString().split("T")[0],
+    end:   now.toISOString().split("T")[0],
   }
 }
 

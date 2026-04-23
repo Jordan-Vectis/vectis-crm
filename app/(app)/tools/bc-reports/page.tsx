@@ -636,7 +636,7 @@ function PackingTab() {
 
                 {/* Monthly lots from receipt lines */}
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots by Month (Auction Lines · Last 3 Months)</p>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots by Month (Auction Lines · Last 3 Months + Current)</p>
                   {monthlyLotsError ? (
                     <p className="text-red-400 text-sm">{monthlyLotsError}</p>
                   ) : monthlyLotsLoading ? (
