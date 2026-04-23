@@ -396,6 +396,7 @@ function PackingTab() {
   // Monthly receipt lines (last 3 months)
   const [monthlyLots, setMonthlyLots] = useState<{ months: { month: string; count: number; auctions: number; avgPerAuction: number }[]; avgLots: number; avgPerAuction: number } | null>(null)
   const [monthlyLotsError, setMonthlyLotsError] = useState<string | null>(null)
+  const [monthlyCollected, setMonthlyCollected] = useState<Record<string, number> | null>(null)
   useEffect(() => {
     fetch("/api/bc/receipt-monthly")
       .then(r => r.json())
@@ -404,6 +405,10 @@ function PackingTab() {
         setMonthlyLots(d)
       })
       .catch(e => setMonthlyLotsError(e.message))
+    fetch("/api/packing/collected-monthly")
+      .then(r => r.json())
+      .then(d => { if (!d.error) setMonthlyCollected(d.byMonth) })
+      .catch(() => {})
   }, [])
 
   // Capacity dashboard inputs
@@ -590,14 +595,17 @@ function PackingTab() {
                         {monthlyLots.months.map(({ month, count, auctions, avgPerAuction }) => {
                           const [yr, mo] = month.split("-")
                           const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
+                          const collected = monthlyCollected?.[month] ?? null
                           return (
                             <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
                               <p className="text-xs text-gray-500 mb-2">{label}</p>
                               <p className="text-2xl font-bold text-white">{count.toLocaleString()}</p>
                               <p className="text-xs text-gray-600 mt-0.5">lots</p>
-                              <div className="mt-2 pt-2 border-t border-gray-800">
-                                <p className="text-xs text-gray-500">{auctions} auctions</p>
-                                <p className="text-xs text-gray-400">{avgPerAuction} lots/auction</p>
+                              <div className="mt-2 pt-2 border-t border-gray-800 space-y-0.5">
+                                <p className="text-xs text-gray-500">{auctions} auctions · {avgPerAuction}/auction</p>
+                                <p className="text-xs text-green-500">
+                                  {collected === null ? "…" : `${collected.toLocaleString()} collected`}
+                                </p>
                               </div>
                             </div>
                           )
