@@ -367,6 +367,7 @@ function PackingTab() {
   // Collected lots count (BC change log — movements TO COLLECTED in date range)
   const [collectedLots, setCollectedLots] = useState<number | null>(null)
   useEffect(() => {
+    setCollectedLots(null)
     fetch(`/api/packing/collected-count?from=${from}&to=${to}`)
       .then(r => r.json())
       .then(d => setCollectedLots(d.count ?? null))
