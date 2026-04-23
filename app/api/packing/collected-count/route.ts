@@ -6,7 +6,7 @@ export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  // Get containers whose most recent movement is to COLLECTED
+  // Get containers (identified by barcode) whose most recent movement is to COLLECTED
   const result = await prisma.$queryRaw<{ count: bigint }[]>`
     WITH latest AS (
       SELECT DISTINCT ON ("containerId") "containerId", "locationCode"
@@ -15,7 +15,7 @@ export async function GET() {
     )
     SELECT COUNT(cl.id) AS count
     FROM "CatalogueLot" cl
-    INNER JOIN latest ON latest."containerId" = cl.tote
+    INNER JOIN latest ON latest."containerId" = cl.barcode
     WHERE latest."locationCode" = 'COLLECTED'
   `
 

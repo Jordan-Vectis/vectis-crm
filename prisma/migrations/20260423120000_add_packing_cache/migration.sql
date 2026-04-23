@@ -1,10 +1,10 @@
-CREATE TABLE "BCPackingDay" (
+CREATE TABLE IF NOT EXISTS "BCPackingDay" (
     "date" TEXT NOT NULL,
     "fetchedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "BCPackingDay_pkey" PRIMARY KEY ("date")
 );
 
-CREATE TABLE "BCPackingEntry" (
+CREATE TABLE IF NOT EXISTS "BCPackingEntry" (
     "date" TEXT NOT NULL,
     "staff" TEXT NOT NULL,
     "docNo" TEXT NOT NULL,
@@ -12,4 +12,4 @@ CREATE TABLE "BCPackingEntry" (
     CONSTRAINT "BCPackingEntry_pkey" PRIMARY KEY ("date","staff","docNo")
 );
 
-CREATE INDEX "BCPackingEntry_date_idx" ON "BCPackingEntry"("date");
+CREATE INDEX IF NOT EXISTS "BCPackingEntry_date_idx" ON "BCPackingEntry"("date");

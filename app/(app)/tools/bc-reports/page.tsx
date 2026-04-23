@@ -394,7 +394,6 @@ function PackingTab() {
   const [capSalesMonth,  setCapSalesMonth]   = useState(14)
   const [capLotsPerSale, setCapLotsPerSale]  = useState(550)
   const [capWorkDays,    setCapWorkDays]     = useState(22)
-  const [capClearMonths, setCapClearMonths]  = useState(3)
   // Lock per-person rate once when data first loads so changing capStaff only affects throughput
   const [lockedRate, setLockedRate] = useState(0)
   const rateLockedRef = useRef(false)
@@ -470,35 +469,21 @@ function PackingTab() {
             </div>
           )}
           {subTab === "Capacity" && (() => {
-            // perPersonRate locked when data first loads (avgLotsPerDay / initial capStaff)
-            // so changing staff scales throughput correctly without re-dividing
             const perPersonRate   = lockedRate || (avgLotsPerDay / capStaff)
             const dailyThroughput = Math.round(capStaff * perPersonRate)
-            const dailyIncoming    = (capSalesMonth * capLotsPerSale) / capWorkDays
+            const dailyIncoming   = (capSalesMonth * capLotsPerSale) / capWorkDays
             const netPerDay       = dailyThroughput - dailyIncoming
-            const backlog         = collectedLots ?? 5500
             const catchingUp      = netPerDay > 0
-            const daysToClear     = catchingUp && backlog > 0 ? Math.ceil(backlog / netPerDay) : null
-            const weeksToClear    = daysToClear ? Math.ceil(daysToClear / 5) : null
             const staffBreakEven  = perPersonRate > 0 ? Math.ceil(dailyIncoming / perPersonRate) : null
-            const staffToClear    = perPersonRate > 0
-              ? Math.ceil((dailyIncoming + backlog / (capClearMonths * capWorkDays)) / perPersonRate)
-              : null
-            const extraToClear    = staffToClear !== null ? Math.max(0, staffToClear - capStaff) : null
-            const backlogIn3m     = catchingUp ? 0 : Math.round(backlog + Math.abs(netPerDay) * capClearMonths * capWorkDays)
+            const extraNeeded     = staffBreakEven !== null ? Math.max(0, staffBreakEven - capStaff) : null
+            const statusColor     = catchingUp ? "#22c55e" : netPerDay > -10 ? "#f59e0b" : "#ef4444"
 
-            const statusColor = catchingUp ? "#22c55e" : netPerDay > -10 ? "#f59e0b" : "#ef4444"
-            const statusLabel = catchingUp ? "Catching up" : "Falling behind"
-
-            function NumInput({ label, value, onChange, suffix }: { label: string; value: number; onChange: (v: number) => void; suffix?: string }) {
+            function NumInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
               return (
                 <div>
                   <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">{label}</label>
-                  <div className="flex items-center gap-1">
-                    <input type="number" value={value} onChange={e => onChange(Number(e.target.value))}
-                      className="w-20 bg-[#07070f] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500 text-right" />
-                    {suffix && <span className="text-xs text-gray-500">{suffix}</span>}
-                  </div>
+                  <input type="number" value={value} onChange={e => onChange(Number(e.target.value))}
+                    className="w-20 bg-[#07070f] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500 text-right" />
                 </div>
               )
             }
@@ -513,13 +498,6 @@ function PackingTab() {
                     <NumInput label="Sales / month" value={capSalesMonth} onChange={setCapSalesMonth} />
                     <NumInput label="Lots / sale" value={capLotsPerSale} onChange={setCapLotsPerSale} />
                     <NumInput label="Working days / month" value={capWorkDays} onChange={setCapWorkDays} />
-                    <NumInput label="Target clear in" value={capClearMonths} onChange={setCapClearMonths} suffix="months" />
-                    <div>
-                      <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Current Backlog</label>
-                      <p className="text-sm text-white font-semibold mt-1.5">
-                        {collectedLots !== null ? collectedLots.toLocaleString() : "—"} <span className="text-gray-600 text-xs font-normal">lots (COLLECTED)</span>
-                      </p>
-                    </div>
                   </div>
                 </div>
 
@@ -527,11 +505,11 @@ function PackingTab() {
                 <div className="rounded-xl border p-4 flex items-center gap-4" style={{ borderColor: statusColor + "44", background: statusColor + "11" }}>
                   <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: statusColor }} />
                   <div className="flex-1">
-                    <p className="font-semibold text-white text-sm">{statusLabel}</p>
+                    <p className="font-semibold text-white text-sm">{catchingUp ? "Keeping up" : "Falling behind"}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       {catchingUp
-                        ? `Net +${netPerDay.toFixed(0)} lots/day — backlog cleared in ~${weeksToClear} week${weeksToClear !== 1 ? "s" : ""} at current rate`
-                        : `Net ${netPerDay.toFixed(0)} lots/day — backlog grows by ~${Math.abs(netPerDay * capWorkDays).toFixed(0)} lots/month`}
+                        ? `Packing ${netPerDay.toFixed(0)} more lots/day than incoming`
+                        : `${Math.abs(netPerDay).toFixed(0)} more lots/day coming in than being packed`}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -541,55 +519,29 @@ function PackingTab() {
                 </div>
 
                 {/* Stats grid */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                     <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Modelled Throughput</p>
                     <p className="text-2xl font-bold text-white">{dailyThroughput}</p>
-                    <p className="text-xs text-gray-600 mt-0.5">lots/day · {perPersonRate.toFixed(1)} lots/person · observed avg: {avgLotsPerDay}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">{perPersonRate.toFixed(1)} lots/person · observed avg: {avgLotsPerDay}/day</p>
                   </div>
                   <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                     <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Incoming Demand</p>
                     <p className="text-2xl font-bold text-white">{dailyIncoming.toFixed(0)}</p>
-                    <p className="text-xs text-gray-600 mt-0.5">lots/day · {(capSalesMonth * capLotsPerSale).toLocaleString()}/month</p>
-                  </div>
-                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
-                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Current Backlog</p>
-                    <p className="text-2xl font-bold text-white">{backlog.toLocaleString()}</p>
-                    <p className="text-xs text-gray-600 mt-0.5">lots at COLLECTED</p>
+                    <p className="text-xs text-gray-600 mt-0.5">{(capSalesMonth * capLotsPerSale).toLocaleString()} lots/month · {capSalesMonth} sales × {capLotsPerSale}</p>
                   </div>
                 </div>
 
-                {/* Staff needed */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Staff to break even</p>
-                    <p className="text-3xl font-bold text-white">{staffBreakEven ?? "—"}</p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {staffBreakEven !== null && staffBreakEven > capStaff
-                        ? `+${staffBreakEven - capStaff} more needed just to stop falling behind`
-                        : "Current team is sufficient to break even"}
-                    </p>
-                  </div>
-                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Staff to clear in {capClearMonths} months</p>
-                    <p className="text-3xl font-bold" style={{ color: extraToClear && extraToClear > 0 ? "#f59e0b" : "#22c55e" }}>
-                      {staffToClear ?? "—"}
-                    </p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {extraToClear !== null && extraToClear > 0
-                        ? `+${extraToClear} extra staff on top of current ${capStaff}`
-                        : "Current team can clear backlog in time"}
-                    </p>
-                  </div>
+                {/* Staff to break even */}
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Staff needed to break even</p>
+                  <p className="text-3xl font-bold text-white">{staffBreakEven ?? "—"}</p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {extraNeeded !== null && extraNeeded > 0
+                      ? `+${extraNeeded} more on top of your current ${capStaff} staff`
+                      : `Current ${capStaff} staff is enough to keep up with demand`}
+                  </p>
                 </div>
-
-                {!catchingUp && (
-                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Projected backlog in {capClearMonths} months (if no change)</p>
-                    <p className="text-2xl font-bold text-red-400">{backlogIn3m.toLocaleString()} lots</p>
-                    <p className="text-xs text-gray-600 mt-1">Up from {backlog.toLocaleString()} today</p>
-                  </div>
-                )}
               </div>
             )
           })()}
