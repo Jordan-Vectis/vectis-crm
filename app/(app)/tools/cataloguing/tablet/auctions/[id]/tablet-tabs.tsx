@@ -176,14 +176,21 @@ function TabletManageLots({ lots, auctionId, onEdit, onDelete }: {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return lots
-    return lots.filter(l =>
-      l.lotNumber.toLowerCase().includes(q) ||
-      (l.barcode ?? "").toLowerCase().includes(q) ||
-      l.title.toLowerCase().includes(q) ||
-      (l.vendor ?? "").toLowerCase().includes(q) ||
-      (l.tote ?? "").toLowerCase().includes(q)
-    )
+    const result = q
+      ? lots.filter(l =>
+          l.lotNumber.toLowerCase().includes(q) ||
+          (l.barcode ?? "").toLowerCase().includes(q) ||
+          l.title.toLowerCase().includes(q) ||
+          (l.vendor ?? "").toLowerCase().includes(q) ||
+          (l.tote ?? "").toLowerCase().includes(q)
+        )
+      : lots
+    return [...result].sort((a, b) => {
+      const an = parseInt(a.lotNumber, 10)
+      const bn = parseInt(b.lotNumber, 10)
+      if (!isNaN(an) && !isNaN(bn)) return an - bn
+      return a.lotNumber.localeCompare(b.lotNumber)
+    })
   }, [lots, search])
 
   async function handleDelete(lot: Lot) {
