@@ -452,7 +452,7 @@ function PackingTab() {
                   {collectedLots === null ? (
                     <div className="space-y-2 mt-2">
                       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#0078D4] rounded-full animate-pulse w-full" />
+                        <div className="h-full bg-[#0078D4] rounded-full animate-indeterminate" />
                       </div>
                       <p className="text-xs text-gray-600">Fetching from BC…</p>
                     </div>
@@ -574,7 +574,7 @@ function PackingTab() {
                   ) : !monthlyLots ? (
                     <div className="space-y-2">
                       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#0078D4] rounded-full animate-pulse w-full" />
+                        <div className="h-full bg-[#0078D4] rounded-full animate-indeterminate" />
                       </div>
                       <p className="text-gray-600 text-xs">Fetching auction lines from BC…</p>
                     </div>
