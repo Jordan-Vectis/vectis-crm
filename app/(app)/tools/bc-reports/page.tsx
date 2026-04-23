@@ -495,6 +495,7 @@ function PackingTab() {
   const [capWorkDays,        setCapWorkDays]         = useState(22)
   const [capCollectedPerDay, setCapCollectedPerDay]  = useState(0)
   const [capBacklog,         setCapBacklog]          = useState(0)
+  const [capHelpOpen,        setCapHelpOpen]         = useState(false)
   // Lock per-person rate once when data first loads so changing capStaff only affects throughput
   const [lockedRate, setLockedRate] = useState(0)
   const rateLockedRef = useRef(false)
@@ -598,9 +599,29 @@ function PackingTab() {
 
             return (
               <div className="space-y-6">
+                {/* Help modal */}
+                {capHelpOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setCapHelpOpen(false)}>
+                    <div className="bg-[#0d0f1a] border border-gray-700 rounded-xl p-6 max-w-lg w-full mx-4 space-y-3" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm font-semibold text-white">How the Capacity tab works</p>
+                        <button onClick={() => setCapHelpOpen(false)} className="text-gray-500 hover:text-white text-lg leading-none">✕</button>
+                      </div>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Assumptions</span> — Enter your inputs: staff, sales per month, average lots per sale, working days, average collections per day, and how many auctions you're currently behind.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Throughput</span> — Based on your actual historical packing rate from BC, it calculates how many lots your team processes per day. Adjust the staff number to model adding or removing people.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Demand vs. Capacity</span> — Works out how many lots are coming in each day (sales × lots per sale ÷ working days), subtracts collections offsetting that demand, and compares to throughput. If throughput exceeds demand you're catching up; if not, you're falling behind.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Estimated Catch-Up</span> — Enter a backlog (in auctions) and it multiplies by your average lots per sale, then divides by your daily surplus to give a projected date when the backlog will be cleared.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Lots by Month</span> — Actual auction lines received from BC over the last three months so you can see volume trends.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Collections by Month</span> — How many lots were marked as collected each month, with a daily average, pulled from the BC change log.</p>
+                    </div>
+                  </div>
+                )}
                 {/* Inputs */}
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Assumptions</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Assumptions</p>
+                    <button onClick={() => setCapHelpOpen(true)} className="text-xs text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 rounded px-2 py-0.5 transition-colors">? Help</button>
+                  </div>
                   <div className="flex flex-wrap gap-5">
                     <NumInput label="Staff" value={capStaff} onChange={setCapStaff} />
                     <NumInput label="Sales / month" value={capSalesMonth} onChange={setCapSalesMonth} />
