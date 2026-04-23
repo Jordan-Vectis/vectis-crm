@@ -9,7 +9,7 @@ export async function GET() {
   const token = await getBCToken()
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
 
-  const rows = await bcFetchAll(token, "Auction_Receipt_Lines_Excel", "Location_Code eq 'COLLECTED'", undefined, 500)
+  const rows = await bcFetchAll(token, "Auction_Receipt_Lines_Excel", "EVA_ArticleLocationCode eq 'COLLECTED'", undefined, 500)
 
   return NextResponse.json({ count: rows.length })
 }
