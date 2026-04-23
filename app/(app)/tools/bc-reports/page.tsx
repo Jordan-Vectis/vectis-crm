@@ -449,9 +449,16 @@ function PackingTab() {
                 </div>
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                   <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Lots Collected</p>
-                  <p className="text-2xl font-bold text-white">
-                    {collectedLots === null ? <span className="text-gray-600 text-base">loading…</span> : collectedLots.toLocaleString()}
-                  </p>
+                  {collectedLots === null ? (
+                    <div className="space-y-2 mt-2">
+                      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#0078D4] rounded-full animate-pulse w-full" />
+                      </div>
+                      <p className="text-xs text-gray-600">Fetching from BC…</p>
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-white">{collectedLots.toLocaleString()}</p>
+                  )}
                 </div>
               </div>
               <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
