@@ -312,7 +312,11 @@ function PackingTab() {
     setLoading(true); setError(null); setProgress(null)
     try {
       const res = await window.fetch(`/api/bc/packing?from=${f}&to=${t}`)
-      if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? res.statusText) }
+      if (!res.ok) {
+        let msg = res.statusText
+        try { const j = await res.json(); msg = j.error ?? msg } catch {}
+        throw new Error(msg)
+      }
 
       const reader  = res.body!.getReader()
       const decoder = new TextDecoder()
