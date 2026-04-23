@@ -5,7 +5,7 @@ import { getCachedBC, setCachedBC } from "@/lib/bc-cache"
 
 export const maxDuration = 60
 
-const TTL_MS = 60 * 60 * 1000
+const TTL_MS = 10 * 365 * 24 * 60 * 60 * 1000  // effectively forever — bust via Refresh All Data
 
 type CachedResult = { months: any[]; avgLots: number; avgPerAuction: number; totalAuctions: number; total: number; range: { start: string; end: string } }
 

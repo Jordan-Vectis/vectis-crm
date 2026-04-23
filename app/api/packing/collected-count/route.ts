@@ -3,7 +3,7 @@ import { auth } from "@/auth"
 import { getBCToken, bcFetchAllWithProgress } from "@/lib/bc"
 import { getCachedBC, setCachedBC } from "@/lib/bc-cache"
 
-const TTL_MS = 12 * 60 * 60 * 1000  // 12 hours — bust manually via Refresh All Data
+const TTL_MS = 10 * 365 * 24 * 60 * 60 * 1000  // effectively forever — bust via Refresh All Data
 
 function send(controller: ReadableStreamDefaultController, obj: object) {
   controller.enqueue(new TextEncoder().encode(JSON.stringify(obj) + "\n"))
