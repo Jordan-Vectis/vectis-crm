@@ -129,3 +129,47 @@ export async function bcFetchAll(
   }
   return all
 }
+
+export async function bcFetchAllWithProgress(
+  token: string,
+  endpoint: string,
+  filter: string | undefined,
+  select: string | undefined,
+  batchSize: number,
+  onProgress: (done: number, total: number) => void
+): Promise<any[]> {
+  const all: any[] = []
+  let skip = 0
+  let knownTotal = 0
+  let firstPage = true
+
+  while (true) {
+    const params: Record<string, string | number> = { $top: batchSize, $skip: skip }
+    if (filter) params.$filter = filter
+    if (select) params.$select = select
+    if (firstPage) params["$count"] = "true"
+
+    const base = baseUrl() + endpoint
+    const qs = Object.entries(params)
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+      .join("&")
+    const res = await fetch(`${base}?${qs}`, {
+      headers: { Accept: "application/json", "OData-MaxVersion": "4.0", Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error(`BC API ${res.status}: ${await res.text()}`)
+    const json = await res.json()
+    const rows: any[] = json.value ?? []
+
+    if (firstPage) {
+      knownTotal = json["@odata.count"] ?? 0
+      firstPage = false
+    }
+
+    all.push(...rows)
+    onProgress(all.length, Math.max(knownTotal, all.length))
+
+    if (rows.length < batchSize) break
+    skip += batchSize
+  }
+  return all
+}

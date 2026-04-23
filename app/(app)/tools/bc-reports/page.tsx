@@ -196,44 +196,23 @@ function LoadBtn({ loading, onClick }: { loading: boolean; onClick: () => void }
 
 // ─── Progress bar ─────────────────────────────────────────────────────────────
 
-function ProgressBar({ done, total }: { done: number; total: number }) {
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+function ProgressBar({ done, total, label, unit }: { done: number; total: number; label?: string; unit?: string }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : null
   return (
-    <div className="mb-5">
+    <div className="mb-3">
       <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-        <span>Fetching data…</span>
-        <span>{done} / {total} chunks ({pct}%)</span>
+        <span>{label ?? "Fetching data…"}</span>
+        <span>
+          {pct !== null
+            ? `${done.toLocaleString()} / ${total.toLocaleString()} ${unit ?? "records"} (${pct}%)`
+            : `${done.toLocaleString()} ${unit ?? "records"}…`}
+        </span>
       </div>
       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
         <div
           className="h-full bg-[#0078D4] rounded-full transition-all duration-300"
-          style={{ width: `${pct}%` }}
+          style={{ width: pct !== null ? `${pct}%` : "40%" }}
         />
-      </div>
-    </div>
-  )
-}
-
-// ─── Simulated percentage bar (for BC fetches with no chunk progress) ─────────
-
-function SimulatedBar({ loading, label }: { loading: boolean; label?: string }) {
-  const [pct, setPct] = useState(0)
-  useEffect(() => {
-    if (!loading) { setPct(100); return }
-    setPct(0)
-    const id = setInterval(() => {
-      setPct(p => p >= 89 ? p : p + Math.max(0.4, (89 - p) * 0.04))
-    }, 150)
-    return () => clearInterval(id)
-  }, [loading])
-  return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between text-xs text-gray-500">
-        <span>{loading ? (label ?? "Fetching from BC…") : "Loaded"}</span>
-        <span>{Math.round(pct)}%</span>
-      </div>
-      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-        <div className="h-full bg-[#0078D4] rounded-full transition-all duration-200" style={{ width: `${pct}%` }} />
       </div>
     </div>
   )
@@ -300,8 +279,7 @@ function CataloguingTab() {
       <h2 className="text-lg font-semibold text-white mb-4">Cataloguing Report</h2>
       <DateRange from={from} to={to} onChange={handleManualChange} onPreset={handlePreset} />
 
-      {/* Progress bar sits above results — old data stays visible underneath */}
-      {loading && progress && <ProgressBar done={progress.done} total={progress.total} />}
+      {loading && progress && <ProgressBar done={progress.done} total={progress.total} unit="chunks" />}
       {loading && !progress && <p className="text-xs text-gray-500 mb-4">Connecting…</p>}
       {!loading && <LoadBtn loading={loading} onClick={() => load(from, to)} />}
 
@@ -391,12 +369,32 @@ function PackingTab() {
 
   // Collected lots count (BC change log — movements TO COLLECTED in date range)
   const [collectedLots, setCollectedLots] = useState<number | null>(null)
+  const [collectedProgress, setCollectedProgress] = useState<{ done: number; total: number } | null>(null)
   useEffect(() => {
     setCollectedLots(null)
-    fetch(`/api/packing/collected-count?from=${from}&to=${to}`)
-      .then(r => r.json())
-      .then(d => setCollectedLots(d.count ?? null))
-      .catch(() => {})
+    setCollectedProgress(null)
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/packing/collected-count?from=${from}&to=${to}`)
+        const reader = res.body!.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ""
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done || cancelled) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split("\n"); buffer = lines.pop()!
+          for (const line of lines) {
+            if (!line.trim()) continue
+            const msg = JSON.parse(line)
+            if (msg.type === "progress") setCollectedProgress({ done: msg.done, total: msg.total })
+            else if (msg.type === "result") { setCollectedLots(msg.count ?? null); setCollectedProgress(null) }
+          }
+        }
+      } catch {}
+    })()
+    return () => { cancelled = true }
   }, [from, to])
 
   // Chart grouping
@@ -421,27 +419,54 @@ function PackingTab() {
   // Monthly receipt lines (last 3 months)
   const [monthlyLots, setMonthlyLots] = useState<{ months: { month: string; count: number; auctions: number; avgPerAuction: number }[]; avgLots: number; avgPerAuction: number } | null>(null)
   const [monthlyLotsLoading, setMonthlyLotsLoading] = useState(true)
+  const [monthlyLotsProgress, setMonthlyLotsProgress] = useState<{ done: number; total: number } | null>(null)
   const [monthlyLotsError, setMonthlyLotsError] = useState<string | null>(null)
   const [monthlyCollected, setMonthlyCollected] = useState<Record<string, number> | null>(null)
   const [monthlyCollectedLoading, setMonthlyCollectedLoading] = useState(true)
+  const [monthlyCollectedProgress, setMonthlyCollectedProgress] = useState<{ done: number; total: number } | null>(null)
   const [monthlyCollectedError, setMonthlyCollectedError] = useState<string | null>(null)
+
   useEffect(() => {
-    setMonthlyLotsLoading(true)
-    setMonthlyCollectedLoading(true)
-    fetch("/api/bc/receipt-monthly")
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) { setMonthlyLotsError(d.error); return }
-        setMonthlyLots(d)
-      })
+    async function readStream(
+      url: string,
+      onProgress: (done: number, total: number) => void,
+      onResult: (msg: any) => void,
+      onError: (err: string) => void
+    ) {
+      const res = await fetch(url)
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n"); buffer = lines.pop()!
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "progress") onProgress(msg.done, msg.total)
+          else if (msg.type === "result") onResult(msg)
+          else if (msg.type === "error") onError(msg.error ?? "Unknown error")
+        }
+      }
+    }
+
+    readStream(
+      "/api/bc/receipt-monthly",
+      (done, total) => setMonthlyLotsProgress({ done, total }),
+      (msg) => { setMonthlyLots(msg.data); setMonthlyLotsProgress(null) },
+      (err) => { setMonthlyLotsError(err); setMonthlyLotsProgress(null) }
+    )
       .catch(e => setMonthlyLotsError(e.message))
       .finally(() => setMonthlyLotsLoading(false))
-    fetch("/api/packing/collected-monthly")
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) { setMonthlyCollectedError(d.error); return }
-        setMonthlyCollected(d.byMonth)
-      })
+
+    readStream(
+      "/api/packing/collected-monthly",
+      (done, total) => setMonthlyCollectedProgress({ done, total }),
+      (msg) => { setMonthlyCollected(msg.byMonth); setMonthlyCollectedProgress(null) },
+      (err) => { setMonthlyCollectedError(err); setMonthlyCollectedProgress(null) }
+    )
       .catch(e => setMonthlyCollectedError(e.message))
       .finally(() => setMonthlyCollectedLoading(false))
   }, [])
@@ -466,7 +491,7 @@ function PackingTab() {
     <div>
       <h2 className="text-lg font-semibold text-white mb-4">Packing Report</h2>
       <DateRange from={from} to={to} onChange={handleManualChange} onPreset={handlePreset} />
-      {loading && progress && <ProgressBar done={progress.done} total={progress.total} />}
+      {loading && progress && <ProgressBar done={progress.done} total={progress.total} unit="chunks" />}
       {loading && !progress && <p className="text-xs text-gray-500 mb-4">Connecting…</p>}
       {!loading && <LoadBtn loading={loading} onClick={() => load(from, to)} />}
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
@@ -492,7 +517,11 @@ function PackingTab() {
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                   <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Lots Collected</p>
                   {collectedLots === null ? (
-                    <div className="mt-2"><SimulatedBar loading={true} label="Fetching from BC…" /></div>
+                    <div className="mt-3">
+                      {collectedProgress
+                        ? <ProgressBar done={collectedProgress.done} total={collectedProgress.total} label="Fetching from BC…" />
+                        : <p className="text-xs text-gray-600">Connecting…</p>}
+                    </div>
                   ) : (
                     <p className="text-2xl font-bold text-white">{collectedLots.toLocaleString()}</p>
                   )}
@@ -611,7 +640,14 @@ function PackingTab() {
                   {monthlyLotsError ? (
                     <p className="text-red-400 text-sm">{monthlyLotsError}</p>
                   ) : monthlyLotsLoading ? (
-                    <SimulatedBar loading={true} label="Fetching auction lines from BC…" />
+                    <div className="space-y-3">
+                      {monthlyLotsProgress
+                        ? <ProgressBar done={monthlyLotsProgress.done} total={monthlyLotsProgress.total} label="Fetching auction lines…" />
+                        : <p className="text-xs text-gray-600">Connecting…</p>}
+                      {monthlyCollectedProgress && (
+                        <ProgressBar done={monthlyCollectedProgress.done} total={monthlyCollectedProgress.total} label="Fetching collections…" />
+                      )}
+                    </div>
                   ) : !monthlyLots || monthlyLots.months.length === 0 ? (
                     <p className="text-gray-600 text-sm">No data</p>
                   ) : (
