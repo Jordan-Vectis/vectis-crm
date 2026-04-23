@@ -14,13 +14,20 @@ export async function GET(req: NextRequest) {
     const from = searchParams.get("from")
     const to   = searchParams.get("to")
 
-    let filter = `New_Value eq 'COLLECTED' and Field_Caption eq 'Article Location Code'`
-    if (from) filter += ` and Date_and_Time ge ${from}T00:00:00Z`
-    if (to)   filter += ` and Date_and_Time le ${to}T23:59:59Z`
+    const filter = `New_Value eq 'COLLECTED' and Field_Caption eq 'Article Location Code'`
+    const rows = await bcFetchAll(token, "ChangeLogEntries", filter, "Primary_Key_Field_1_Value,Date_and_Time", 500)
 
-    const rows = await bcFetchAll(token, "ChangeLogEntries", filter, "Primary_Key_Field_1_Value", 500)
+    const fromStr = from ? `${from}T00:00:00` : null
+    const toStr   = to   ? `${to}T23:59:59`   : null
 
-    return NextResponse.json({ count: rows.length })
+    const filtered = rows.filter(r => {
+      const d = r.Date_and_Time ?? ""
+      if (fromStr && d < fromStr) return false
+      if (toStr   && d > toStr)   return false
+      return true
+    })
+
+    return NextResponse.json({ count: filtered.length })
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Unknown error" }, { status: 500 })
   }
