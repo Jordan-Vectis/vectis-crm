@@ -301,21 +301,38 @@ function PackingTab() {
   const [from, setFrom] = useState(daysAgo(29))
   const [to, setTo]     = useState(today())
   const [data, setData] = useState<PackData | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState<string | null>(null)
-  const [subTab, setSubTab]   = useState("Overview")
+  const [loading, setLoading]   = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [error, setError]       = useState<string | null>(null)
+  const [subTab, setSubTab]     = useState("Overview")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async (f: string, t: string) => {
     if (!f || !t) return
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setProgress(null)
     try {
-      const res  = await window.fetch(`/api/bc/packing?from=${f}&to=${t}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? res.statusText)
-      setData(json)
+      const res = await window.fetch(`/api/bc/packing?from=${f}&to=${t}`)
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? res.statusText) }
+
+      const reader  = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop()!
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "progress") setProgress({ done: msg.done, total: msg.total })
+          else if (msg.type === "result") setData(msg.data)
+        }
+      }
     } catch (e: any) { setError(e.message) }
-    finally { setLoading(false) }
+    finally { setLoading(false); setProgress(null) }
   }, [])
 
   useEffect(() => { load(from, to) }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -347,8 +364,9 @@ function PackingTab() {
     <div>
       <h2 className="text-lg font-semibold text-white mb-4">Packing Report</h2>
       <DateRange from={from} to={to} onChange={handleManualChange} onPreset={handlePreset} />
+      {loading && progress && <ProgressBar done={progress.done} total={progress.total} />}
+      {loading && !progress && <p className="text-xs text-gray-500 mb-4">Connecting…</p>}
       {!loading && <LoadBtn loading={loading} onClick={() => load(from, to)} />}
-      {loading && <p className="text-xs text-gray-500 mb-5">Loading…</p>}
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
       {data && (
         <div className={loading ? "opacity-40 pointer-events-none transition-opacity" : "transition-opacity"}>

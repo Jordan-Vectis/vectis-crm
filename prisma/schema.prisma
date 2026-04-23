@@ -388,6 +388,21 @@ model BCCatalogueEntry {
   @@index([date])
 }
 
+model BCPackingDay {
+  date      String   @id
+  fetchedAt DateTime @default(now())
+}
+
+model BCPackingEntry {
+  date     String
+  staff    String
+  docNo    String
+  lotCount Int
+
+  @@id([date, staff, docNo])
+  @@index([date])
+}
+
 model WarehouseReceipt {
   id             String   @id
   contactId      String
