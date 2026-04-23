@@ -391,8 +391,15 @@ function PackingTab() {
 
   // Monthly receipt lines (last 3 months)
   const [monthlyLots, setMonthlyLots] = useState<{ months: { month: string; count: number }[]; avg: number } | null>(null)
+  const [monthlyLotsError, setMonthlyLotsError] = useState<string | null>(null)
   useEffect(() => {
-    fetch("/api/bc/receipt-monthly").then(r => r.json()).then(d => setMonthlyLots(d)).catch(() => {})
+    fetch("/api/bc/receipt-monthly")
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setMonthlyLotsError(d.error); return }
+        setMonthlyLots(d)
+      })
+      .catch(e => setMonthlyLotsError(e.message))
   }, [])
 
   // Capacity dashboard inputs
@@ -552,7 +559,9 @@ function PackingTab() {
                 {/* Monthly lots from receipt lines */}
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
                   <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots by Month (Receipt Lines · Last 3 Months)</p>
-                  {!monthlyLots ? (
+                  {monthlyLotsError ? (
+                    <p className="text-red-400 text-sm">{monthlyLotsError}</p>
+                  ) : !monthlyLots ? (
                     <p className="text-gray-600 text-sm">Loading…</p>
                   ) : monthlyLots.months.length === 0 ? (
                     <p className="text-gray-600 text-sm">No data</p>

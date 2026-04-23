@@ -22,7 +22,7 @@ export async function GET() {
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
 
   const { start, end } = last3MonthsRange()
-  const filter = `Auction_Date ge ${start} and Auction_Date le ${end}`
+  const filter = `Auction_Date ge '${start}' and Auction_Date le '${end}'`
 
   const rows = await bcFetchAll(token, "Auction_Receipt_Lines_Excel", filter, undefined, 500)
 
