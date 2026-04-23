@@ -389,6 +389,12 @@ function PackingTab() {
     return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([date, lots]) => ({ date, lots }))
   }
 
+  // Monthly receipt lines (last 3 months)
+  const [monthlyLots, setMonthlyLots] = useState<{ months: { month: string; count: number }[]; avg: number } | null>(null)
+  useEffect(() => {
+    fetch("/api/bc/receipt-monthly").then(r => r.json()).then(d => setMonthlyLots(d)).catch(() => {})
+  }, [])
+
   // Capacity dashboard inputs
   const [capStaff,       setCapStaff]       = useState(11)
   const [capSalesMonth,  setCapSalesMonth]   = useState(14)
@@ -541,6 +547,35 @@ function PackingTab() {
                       ? `+${extraNeeded} more on top of your current ${capStaff} staff`
                       : `Current ${capStaff} staff is enough to keep up with demand`}
                   </p>
+                </div>
+
+                {/* Monthly lots from receipt lines */}
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots by Month (Receipt Lines · Last 3 Months)</p>
+                  {!monthlyLots ? (
+                    <p className="text-gray-600 text-sm">Loading…</p>
+                  ) : monthlyLots.months.length === 0 ? (
+                    <p className="text-gray-600 text-sm">No data</p>
+                  ) : (
+                    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${monthlyLots.months.length + 1}, 1fr)` }}>
+                      {monthlyLots.months.map(({ month, count }) => {
+                        const [yr, mo] = month.split("-")
+                        const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
+                        return (
+                          <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-1">{label}</p>
+                            <p className="text-2xl font-bold text-white">{count.toLocaleString()}</p>
+                            <p className="text-xs text-gray-600 mt-0.5">lots</p>
+                          </div>
+                        )
+                      })}
+                      <div className="bg-blue-950/40 border border-blue-800/40 rounded-lg p-3 text-center">
+                        <p className="text-xs text-blue-400 mb-1">3-Month Avg</p>
+                        <p className="text-2xl font-bold text-blue-300">{monthlyLots.avg.toLocaleString()}</p>
+                        <p className="text-xs text-blue-500 mt-0.5">lots/month</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )

@@ -1,24 +1,15 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
+import { getBCToken, bcFetchAll } from "@/lib/bc"
 
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  // Get containers (identified by barcode) whose most recent movement is to COLLECTED
-  const result = await prisma.$queryRaw<{ count: bigint }[]>`
-    WITH latest AS (
-      SELECT DISTINCT ON ("containerId") "containerId", "locationCode"
-      FROM "WarehouseMovement"
-      ORDER BY "containerId", "movedAt" DESC
-    )
-    SELECT COUNT(cl.id) AS count
-    FROM "CatalogueLot" cl
-    INNER JOIN latest ON latest."containerId" = cl.barcode
-    WHERE latest."locationCode" = 'COLLECTED'
-  `
+  const token = await getBCToken()
+  if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
 
-  const count = Number(result[0]?.count ?? 0)
-  return NextResponse.json({ count })
+  const rows = await bcFetchAll(token, "Auction_Receipt_Lines_Excel", "Location_Code eq 'COLLECTED'", undefined, 500)
+
+  return NextResponse.json({ count: rows.length })
 }
