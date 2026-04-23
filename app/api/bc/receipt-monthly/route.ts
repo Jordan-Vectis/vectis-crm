@@ -24,20 +24,14 @@ export async function GET() {
 
     const { start, end } = last3MonthsRange()
 
-    // Fetch all rows and filter client-side — BC datetime filtering is unreliable
-    const rows = await bcFetchAll(
+    const filter = `EVA_AuctionDate ge ${start} and EVA_AuctionDate le ${end}`
+    const filtered = await bcFetchAll(
       token,
       "EVA_AuctionLine",
-      undefined,
+      filter,
       "EVA_AuctionNo,EVA_AuctionDate",
       500
     )
-
-    // Filter to last 3 months client-side
-    const filtered = rows.filter(r => {
-      const d = (r.EVA_AuctionDate ?? "").slice(0, 10)
-      return d >= start && d <= end
-    })
 
     // Group by YYYY-MM
     const byMonth: Record<string, { count: number; auctions: Set<string> }> = {}
