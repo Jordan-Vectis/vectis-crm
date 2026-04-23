@@ -353,7 +353,7 @@ function PackingTab() {
     load(f, t)
   }
 
-  const subTabs = ["Overview", "Collections Daily Avg", "Collections Total", "Lots Daily Avg", "Total Lots", "Lots Over Time", "Raw Data"]
+  const subTabs = ["Overview", "Capacity", "Collections Daily Avg", "Collections Total", "Lots Daily Avg", "Total Lots", "Lots Over Time", "Raw Data"]
 
   // Derive daily totals from raw for stats + chart
   const lotsPerDay = data
@@ -363,6 +363,38 @@ function PackingTab() {
   const totalLotsPacked = timelineDates.reduce((s, d) => s + lotsPerDay[d], 0)
   const avgLotsPerDay = timelineDates.length > 0 ? Math.round(totalLotsPacked / timelineDates.length) : 0
   const timelineData = timelineDates.map(d => ({ date: d, lots: lotsPerDay[d] }))
+
+  // Collected lots count (from local DB via warehouse movements)
+  const [collectedLots, setCollectedLots] = useState<number | null>(null)
+  useEffect(() => {
+    fetch("/api/packing/collected-count").then(r => r.json()).then(d => setCollectedLots(d.count)).catch(() => {})
+  }, [])
+
+  // Chart grouping
+  const [chartGrouping, setChartGrouping] = useState<"daily" | "weekly" | "monthly">("daily")
+  function groupedTimeline(raw: { date: string; lots: number }[]) {
+    if (chartGrouping === "daily") return raw
+    const grouped: Record<string, number> = {}
+    for (const row of raw) {
+      let key: string
+      if (chartGrouping === "weekly") {
+        const d = new Date(row.date + "T00:00:00Z")
+        const mon = new Date(d); mon.setUTCDate(d.getUTCDate() - (d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1))
+        key = mon.toISOString().split("T")[0]
+      } else {
+        key = row.date.slice(0, 7)
+      }
+      grouped[key] = (grouped[key] ?? 0) + row.lots
+    }
+    return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([date, lots]) => ({ date, lots }))
+  }
+
+  // Capacity dashboard inputs
+  const [capStaff,       setCapStaff]       = useState(11)
+  const [capSalesMonth,  setCapSalesMonth]   = useState(14)
+  const [capLotsPerSale, setCapLotsPerSale]  = useState(550)
+  const [capWorkDays,    setCapWorkDays]     = useState(22)
+  const [capClearMonths, setCapClearMonths]  = useState(3)
 
   return (
     <div>
@@ -378,7 +410,7 @@ function PackingTab() {
           <SubTabs tabs={subTabs} active={subTab} onChange={setSubTab} />
           {subTab === "Overview" && (
             <div className="space-y-5">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                   <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Total Lots Packed</p>
                   <p className="text-2xl font-bold text-white">{totalLotsPacked.toLocaleString()}</p>
@@ -391,57 +423,197 @@ function PackingTab() {
                   <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Active Days</p>
                   <p className="text-2xl font-bold text-white">{timelineDates.length}</p>
                 </div>
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Lots at COLLECTED</p>
+                  <p className="text-2xl font-bold text-white">
+                    {collectedLots === null ? <span className="text-gray-600 text-base">loading…</span> : collectedLots.toLocaleString()}
+                  </p>
+                </div>
               </div>
               <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots Packed Per Day</p>
-                {timelineData.length > 0 ? (
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Lots Packed Over Time</p>
+                  <div className="flex gap-1">
+                    {(["daily", "weekly", "monthly"] as const).map(g => (
+                      <button key={g} onClick={() => setChartGrouping(g)}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${chartGrouping === g ? "bg-[#0078D4] text-white" : "bg-[#07070f] border border-gray-700 text-gray-400 hover:text-white"}`}>
+                        {g.charAt(0).toUpperCase() + g.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {timelineData.length > 0 ? (() => { const cd = groupedTimeline(timelineData); return (
                   <ResponsiveContainer width="100%" height={240}>
-                    <LineChart data={timelineData} margin={{ top: 4, right: 16, left: 0, bottom: 20 }}>
+                    <LineChart data={cd} margin={{ top: 4, right: 16, left: 0, bottom: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e2130" />
                       <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false}
-                        interval={Math.max(0, Math.floor(timelineData.length / 8) - 1)}
+                        interval={Math.max(0, Math.floor(cd.length / 8) - 1)}
                         angle={-35} textAnchor="end" height={40} />
                       <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} />
-                      <Tooltip
-                        contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }}
-                        cursor={{ stroke: "#374151" }}
-                      />
+                      <Tooltip contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }} cursor={{ stroke: "#374151" }} />
                       <Line type="monotone" dataKey="lots" stroke="#0078D4" strokeWidth={2} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
-                ) : (
+                )})() : (
                   <p className="text-gray-500 text-sm py-6 text-center">No data</p>
                 )}
               </div>
             </div>
           )}
+          {subTab === "Capacity" && (() => {
+            const dailyThroughput = avgLotsPerDay || 0
+            const perPersonRate   = capStaff > 0 ? dailyThroughput / capStaff : 0
+            const dailyIncoming   = (capSalesMonth * capLotsPerSale) / capWorkDays
+            const netPerDay       = dailyThroughput - dailyIncoming
+            const backlog         = collectedLots ?? 5500
+            const catchingUp      = netPerDay > 0
+            const daysToClear     = catchingUp && backlog > 0 ? Math.ceil(backlog / netPerDay) : null
+            const weeksToClear    = daysToClear ? Math.ceil(daysToClear / 5) : null
+            const staffBreakEven  = perPersonRate > 0 ? Math.ceil(dailyIncoming / perPersonRate) : null
+            const staffToClear    = perPersonRate > 0
+              ? Math.ceil((dailyIncoming + backlog / (capClearMonths * capWorkDays)) / perPersonRate)
+              : null
+            const extraToClear    = staffToClear !== null ? Math.max(0, staffToClear - capStaff) : null
+            const backlogIn3m     = catchingUp ? 0 : Math.round(backlog + Math.abs(netPerDay) * capClearMonths * capWorkDays)
+
+            const statusColor = catchingUp ? "#22c55e" : netPerDay > -10 ? "#f59e0b" : "#ef4444"
+            const statusLabel = catchingUp ? "Catching up" : "Falling behind"
+
+            function NumInput({ label, value, onChange, suffix }: { label: string; value: number; onChange: (v: number) => void; suffix?: string }) {
+              return (
+                <div>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">{label}</label>
+                  <div className="flex items-center gap-1">
+                    <input type="number" value={value} onChange={e => onChange(Number(e.target.value))}
+                      className="w-20 bg-[#07070f] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500 text-right" />
+                    {suffix && <span className="text-xs text-gray-500">{suffix}</span>}
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <div className="space-y-6">
+                {/* Inputs */}
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Assumptions</p>
+                  <div className="flex flex-wrap gap-5">
+                    <NumInput label="Staff" value={capStaff} onChange={setCapStaff} />
+                    <NumInput label="Sales / month" value={capSalesMonth} onChange={setCapSalesMonth} />
+                    <NumInput label="Lots / sale" value={capLotsPerSale} onChange={setCapLotsPerSale} />
+                    <NumInput label="Working days / month" value={capWorkDays} onChange={setCapWorkDays} />
+                    <NumInput label="Target clear in" value={capClearMonths} onChange={setCapClearMonths} suffix="months" />
+                    <div>
+                      <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Current Backlog</label>
+                      <p className="text-sm text-white font-semibold mt-1.5">
+                        {collectedLots !== null ? collectedLots.toLocaleString() : "—"} <span className="text-gray-600 text-xs font-normal">lots (COLLECTED)</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status banner */}
+                <div className="rounded-xl border p-4 flex items-center gap-4" style={{ borderColor: statusColor + "44", background: statusColor + "11" }}>
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: statusColor }} />
+                  <div className="flex-1">
+                    <p className="font-semibold text-white text-sm">{statusLabel}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {catchingUp
+                        ? `Net +${netPerDay.toFixed(0)} lots/day — backlog cleared in ~${weeksToClear} week${weeksToClear !== 1 ? "s" : ""} at current rate`
+                        : `Net ${netPerDay.toFixed(0)} lots/day — backlog grows by ~${Math.abs(netPerDay * capWorkDays).toFixed(0)} lots/month`}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-2xl font-bold" style={{ color: statusColor }}>{netPerDay > 0 ? "+" : ""}{netPerDay.toFixed(0)}</p>
+                    <p className="text-xs text-gray-500">lots/day net</p>
+                  </div>
+                </div>
+
+                {/* Stats grid */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Team Throughput</p>
+                    <p className="text-2xl font-bold text-white">{dailyThroughput}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">lots/day · {perPersonRate.toFixed(1)}/person</p>
+                  </div>
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Incoming Demand</p>
+                    <p className="text-2xl font-bold text-white">{dailyIncoming.toFixed(0)}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">lots/day · {(capSalesMonth * capLotsPerSale).toLocaleString()}/month</p>
+                  </div>
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Current Backlog</p>
+                    <p className="text-2xl font-bold text-white">{backlog.toLocaleString()}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">lots at COLLECTED</p>
+                  </div>
+                </div>
+
+                {/* Staff needed */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Staff to break even</p>
+                    <p className="text-3xl font-bold text-white">{staffBreakEven ?? "—"}</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {staffBreakEven !== null && staffBreakEven > capStaff
+                        ? `+${staffBreakEven - capStaff} more needed just to stop falling behind`
+                        : "Current team is sufficient to break even"}
+                    </p>
+                  </div>
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Staff to clear in {capClearMonths} months</p>
+                    <p className="text-3xl font-bold" style={{ color: extraToClear && extraToClear > 0 ? "#f59e0b" : "#22c55e" }}>
+                      {staffToClear ?? "—"}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {extraToClear !== null && extraToClear > 0
+                        ? `+${extraToClear} extra staff on top of current ${capStaff}`
+                        : "Current team can clear backlog in time"}
+                    </p>
+                  </div>
+                </div>
+
+                {!catchingUp && (
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Projected backlog in {capClearMonths} months (if no change)</p>
+                    <p className="text-2xl font-bold text-red-400">{backlogIn3m.toLocaleString()} lots</p>
+                    <p className="text-xs text-gray-600 mt-1">Up from {backlog.toLocaleString()} today</p>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
           {subTab === "Collections Daily Avg" && <><HBar data={data.dailyAvgCollections} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgCollections, "packing_daily_avg")} /></>}
           {subTab === "Collections Total"     && <><HBar data={data.totalCollections} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalCollections, "packing_total")} /></>}
           {subTab === "Lots Daily Avg"        && <><HBar data={data.dailyAvgLots} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgLots, "packing_lots_avg")} /></>}
           {subTab === "Total Lots"            && <><HBar data={data.totalLots} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalLots, "packing_total_lots")} /></>}
-          {subTab === "Lots Over Time" && (
+          {subTab === "Lots Over Time" && (() => { const cd = groupedTimeline(timelineData); return (
             <>
-              {timelineData.length > 0 ? (
+              <div className="flex justify-end mb-3 gap-1">
+                {(["daily", "weekly", "monthly"] as const).map(g => (
+                  <button key={g} onClick={() => setChartGrouping(g)}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${chartGrouping === g ? "bg-[#0078D4] text-white" : "bg-[#07070f] border border-gray-700 text-gray-400 hover:text-white"}`}>
+                    {g.charAt(0).toUpperCase() + g.slice(1)}
+                  </button>
+                ))}
+              </div>
+              {cd.length > 0 ? (
                 <ResponsiveContainer width="100%" height={320}>
-                  <LineChart data={timelineData} margin={{ top: 4, right: 16, left: 0, bottom: 30 }}>
+                  <LineChart data={cd} margin={{ top: 4, right: 16, left: 0, bottom: 30 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e2130" />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false}
-                      interval={Math.max(0, Math.floor(timelineData.length / 10) - 1)}
+                      interval={Math.max(0, Math.floor(cd.length / 10) - 1)}
                       angle={-40} textAnchor="end" height={50} />
                     <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }}
-                      cursor={{ stroke: "#374151" }}
-                    />
+                    <Tooltip contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }} cursor={{ stroke: "#374151" }} />
                     <Line type="monotone" dataKey="lots" stroke="#0078D4" strokeWidth={2} dot={{ r: 3, fill: "#0078D4" }} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
                 <p className="text-gray-500 text-sm py-6 text-center">No data</p>
               )}
-              <ExportBtn onClick={() => exportXlsx(timelineData, "packing_lots_over_time")} />
+              <ExportBtn onClick={() => exportXlsx(cd, "packing_lots_over_time")} />
             </>
-          )}
+          )})()}
           {subTab === "Raw Data" && (
             <>
               <div className="overflow-x-auto rounded border border-gray-800">
