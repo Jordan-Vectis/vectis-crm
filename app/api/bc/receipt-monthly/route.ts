@@ -4,10 +4,14 @@ import { getBCToken, bcFetchAll } from "@/lib/bc"
 
 export const maxDuration = 60
 
+type CachedResult = { months: any[]; avgLots: number; avgPerAuction: number; totalAuctions: number; total: number; range: { start: string; end: string } }
+let cached: { result: CachedResult; cachedAt: number } | null = null
+const TTL_MS = 60 * 60 * 1000 // 1 hour — last 3 months is stable data
+
 function last3MonthsRange(): { start: string; end: string } {
   const now = new Date()
-  const endMonth   = new Date(now.getFullYear(), now.getMonth(), 0)      // last day of previous month
-  const startMonth = new Date(now.getFullYear(), now.getMonth() - 3, 1) // first day 3 months ago
+  const endMonth   = new Date(now.getFullYear(), now.getMonth(), 0)
+  const startMonth = new Date(now.getFullYear(), now.getMonth() - 3, 1)
   return {
     start: startMonth.toISOString().split("T")[0],
     end:   endMonth.toISOString().split("T")[0],
@@ -19,21 +23,17 @@ export async function GET() {
     const session = await auth()
     if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
+    if (cached && Date.now() - cached.cachedAt < TTL_MS) {
+      return NextResponse.json({ ...cached.result, fromCache: true })
+    }
+
     const token = await getBCToken()
     if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 401 })
 
     const { start, end } = last3MonthsRange()
-
     const filter = `EVA_AuctionDate ge ${start} and EVA_AuctionDate le ${end}`
-    const filtered = await bcFetchAll(
-      token,
-      "EVA_AuctionLine",
-      filter,
-      "EVA_AuctionNo,EVA_AuctionDate",
-      500
-    )
+    const filtered = await bcFetchAll(token, "EVA_AuctionLine", filter, "EVA_AuctionNo,EVA_AuctionDate", 500)
 
-    // Group by YYYY-MM
     const byMonth: Record<string, { count: number; auctions: Set<string> }> = {}
     for (const row of filtered) {
       const month = (row.EVA_AuctionDate ?? "").slice(0, 7)
@@ -58,7 +58,10 @@ export async function GET() {
     const totalAuctions = new Set(filtered.map(r => r.EVA_AuctionNo).filter(Boolean)).size
     const avgPerAuction = totalAuctions > 0 ? Math.round(filtered.length / totalAuctions) : 0
 
-    return NextResponse.json({ months, avgLots, avgPerAuction, totalAuctions, total: filtered.length, range: { start, end } })
+    const result: CachedResult = { months, avgLots, avgPerAuction, totalAuctions, total: filtered.length, range: { start, end } }
+    cached = { result, cachedAt: Date.now() }
+
+    return NextResponse.json(result)
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Unknown error" }, { status: 500 })
   }
