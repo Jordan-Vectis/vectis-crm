@@ -140,28 +140,42 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
     const photoMap: Record<string, Blob[]> = {}
     const total = eligibleLots.reduce((s, l) => s + l.imageUrls.length, 0)
     setFetchProgress({ done: 0, total })
-    addLog(`Fetching photos for ${eligibleLots.length} lots (${total} images)…`)
+    addLog(`── Starting run: ${eligibleLots.length} lots, ${total} images, model: ${model}`)
+    addLog(`── Preset: "${preset}"`)
+    addLog(`── Fetching ${total} photos from storage…`)
 
     let fetched = 0
     for (const lot of eligibleLots) {
       if (cancelRef.current) break
       photoMap[lot.id] = []
-      for (const key of lot.imageUrls) {
+      const label = lot.barcode || lot.lotNumber
+      for (let pi = 0; pi < lot.imageUrls.length; pi++) {
         if (cancelRef.current) break
+        const key = lot.imageUrls[pi]
         try {
+          const t0  = Date.now()
           const res = await fetch(`/api/catalogue/photo-proxy?key=${encodeURIComponent(key)}`)
           if (res.ok) {
             const blob = await res.blob()
             photoMap[lot.id].push(blob)
+            const kb = Math.round(blob.size / 1024)
+            addLog(`  ↓ ${label} photo ${pi + 1}/${lot.imageUrls.length} — ${kb} KB (${Date.now() - t0}ms)`)
+          } else {
+            addLog(`  ✗ ${label} photo ${pi + 1} — HTTP ${res.status}`)
           }
-        } catch { /* skip failed photos */ }
+        } catch (err: any) {
+          addLog(`  ✗ ${label} photo ${pi + 1} — fetch failed: ${err.message}`)
+        }
         fetched++
         setFetchProgress({ done: fetched, total })
       }
     }
 
     if (cancelRef.current) { setPhase("idle"); return }
-    addLog(`Photos ready. Starting AI processing…`)
+    const totalFetched = Object.values(photoMap).reduce((s, a) => s + a.length, 0)
+    const totalKb = Math.round(Object.values(photoMap).flat().reduce((s, b) => s + b.size, 0) / 1024)
+    addLog(`── All photos fetched: ${totalFetched}/${total} succeeded (${totalKb} KB total)`)
+    addLog(`── Starting AI processing…`)
 
     // ── Phase 2: Run AI lot by lot ──────────────────────────────────────────
     setPhase("running")
@@ -178,7 +192,9 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
 
       const lot    = eligibleLots[i]
       const photos = photoMap[lot.id] ?? []
-      addLog(`Processing ${i + 1}/${runTotal} — ${lot.barcode || lot.lotNumber} (${photos.length} photo${photos.length !== 1 ? "s" : ""})`)
+      const label  = lot.barcode || lot.lotNumber
+      const lotKb  = Math.round(photos.reduce((s, b) => s + b.size, 0) / 1024)
+      addLog(`── ${i + 1}/${runTotal} ${label} — ${photos.length} photo${photos.length !== 1 ? "s" : ""} (${lotKb} KB)`)
 
       // Retry loop — keeps trying until success, with uncapped exponential backoff
       let attempt = 0
@@ -191,20 +207,26 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
           photos.forEach((blob, j) => {
             fd.append(`lot_${lot.lotNumber}_image_${j}`, blob, `photo_${j}.jpg`)
           })
-          if (sendDesc) {
-            const ctx = contextField === "description" ? lot.description : lot.keyPoints
-            if (ctx.trim()) fd.set(`lot_${lot.lotNumber}_context`, ctx.trim())
+          const ctx = sendDesc ? (contextField === "description" ? lot.description : lot.keyPoints).trim() : ""
+          if (ctx) {
+            fd.set(`lot_${lot.lotNumber}_context`, ctx)
+            addLog(`  → sending ${contextField === "description" ? "description" : "key points"} as context (${ctx.length} chars)`)
+          } else {
+            addLog(`  → no existing context — AI working from photos only`)
           }
+
+          addLog(`  → sending to Gemini${attempt > 0 ? ` (attempt ${attempt + 1})` : ""}…`)
+          const reqStart = Date.now()
 
           // Abort after 3 minutes so the retry loop can kick in if the server hangs
           const controller = new AbortController()
           const timer = setTimeout(() => controller.abort(), 3 * 60 * 1000)
-          // Heartbeat: log every 30s so the UI doesn't look frozen
+          // Heartbeat every 20s so the UI doesn't look frozen
           let elapsed = 0
           const heartbeat = setInterval(() => {
-            elapsed += 30
-            addLog(`⏳ ${lot.barcode || lot.lotNumber} — waiting for Gemini… (${elapsed}s)`)
-          }, 30_000)
+            elapsed += 20
+            addLog(`  ⏳ still waiting for Gemini… (${elapsed}s elapsed)`)
+          }, 20_000)
           let res: Response
           try {
             res = await fetch("/api/auction-ai/batch", { method: "POST", body: fd, signal: controller.signal })
@@ -212,14 +234,17 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
             clearTimeout(timer)
             clearInterval(heartbeat)
           }
+          const reqMs = Date.now() - reqStart
+          addLog(`  ← response received in ${(reqMs / 1000).toFixed(1)}s — HTTP ${res.status}`)
+
           // Guard against non-JSON responses (e.g. "first byte timeout" from Railway)
           const text = await res.text()
           let json: any
-          try { json = JSON.parse(text) } catch { throw new Error(text.slice(0, 120)) }
+          try { json = JSON.parse(text) } catch { throw new Error(`Non-JSON response: ${text.slice(0, 120)}`) }
           if (!res.ok) throw new Error(json.error ?? res.statusText)
 
           const r = json.results?.[0]
-          if (!r || r.status !== "OK") throw new Error(r?.error ?? "No result")
+          if (!r || r.status !== "OK") throw new Error(r?.error ?? "No result returned")
 
           const { low, high } = parseEstimate(r.estimate)
           collected.push({
@@ -242,17 +267,20 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
             body: JSON.stringify({
               code:        auctionCode,
               preset,
-              lot:         lot.barcode || lot.lotNumber,
+              lot:         label,
               description: r.description,
               estimate:    r.estimate ?? "",
             }),
           }).catch(() => {})
-          addLog(`✓ ${lot.barcode || lot.lotNumber} — done`)
+          addLog(`  ✓ ${label} — done${r.estimate ? ` · estimate: ${r.estimate}` : ""}`)
           succeeded = true
         } catch (e: any) {
-          const delayMs = Math.pow(2, attempt) * 5000 + Math.random() * 2000
-          const delaySec = Math.round(delayMs / 1000)
-          addLog(`⚠ ${lot.barcode || lot.lotNumber} — ${e.message} — retrying in ${delaySec}s (attempt ${attempt + 1})`)
+          const isTimeout = e.name === "AbortError" || e.message?.includes("aborted")
+          const errType   = isTimeout ? "3min timeout" : e.message?.includes("429") || e.message?.includes("RESOURCE_EXHAUSTED") ? "rate limited" : "error"
+          const delayMs   = Math.pow(2, attempt) * 5000 + Math.random() * 2000
+          const delaySec  = Math.round(delayMs / 1000)
+          addLog(`  ⚠ ${label} — ${errType}: ${e.message}`)
+          addLog(`  ↻ retrying in ${delaySec}s (attempt ${attempt + 1} failed)`)
           await new Promise(r => setTimeout(r, delayMs))
           attempt++
         }
@@ -263,6 +291,7 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
 
       // 8s rate-limit gap — split into small chunks so pause/cancel responds quickly
       if (i < eligibleLots.length - 1 && !cancelRef.current) {
+        addLog(`  · waiting 8s before next lot…`)
         for (let t = 0; t < 80; t++) {
           if (cancelRef.current) break
           await new Promise(r => setTimeout(r, 100))
