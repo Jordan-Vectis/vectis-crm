@@ -75,23 +75,37 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
         // Load via <img> so EXIF rotation is applied before scanning
         const imgEl = await loadImgElement(file)
 
-        // Native BarcodeDetector — try via img element first, then ImageBitmap (different
-        // internal code paths in Chrome, one may succeed where the other fails)
-        if (nativeDetector) {
-          try {
-            const results = await nativeDetector.detect(imgEl)
-            if (results.length > 0) return results[0].rawValue as string
-          } catch {}
-          try {
-            const bmp = await createImageBitmap(imgEl)
-            const results = await nativeDetector.detect(bmp)
-            if (results.length > 0) return results[0].rawValue as string
-          } catch {}
-        }
-
-        // ZXing fallback — draw to canvas and try at multiple scales
         const naturalW = imgEl.naturalWidth
         const naturalH = imgEl.naturalHeight
+
+        // Helper: draw image to a canvas at a given pixel width
+        function toCanvas(srcW: number, srcH: number, targetW: number): HTMLCanvasElement {
+          const scale  = targetW / srcW
+          const c = document.createElement("canvas")
+          c.width  = targetW
+          c.height = Math.round(srcH * scale)
+          c.getContext("2d")!.drawImage(imgEl, 0, 0, c.width, c.height)
+          return c
+        }
+
+        // Native BarcodeDetector — try at several resolutions (full → 800px → 400px).
+        // Downscaling can improve detection by smoothing JPEG noise around bar edges.
+        if (nativeDetector) {
+          for (const targetW of [naturalW, 800, 400]) {
+            const c = toCanvas(naturalW, naturalH, Math.min(naturalW, targetW))
+            try {
+              const bmp     = await createImageBitmap(c)
+              const results = await nativeDetector.detect(bmp)
+              if (results.length > 0) {
+                // Strip any non-printable control characters before returning
+                const raw = (results[0].rawValue as string).replace(/[^\x20-\x7E]/g, "").trim()
+                if (raw) return raw
+              }
+            } catch {}
+          }
+        }
+
+        // ZXing fallback — try at multiple scales
         for (const maxDim of [2000, 1200, 3000]) {
           const scale = Math.min(1, maxDim / Math.max(naturalW, naturalH))
           const w = Math.round(naturalW * scale)
@@ -103,7 +117,7 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
           try {
             const luminance = new HTMLCanvasElementLuminanceSource(canvas)
             const bitmap = new BinaryBitmap(new HybridBinarizer(luminance))
-            return zxing.decodeWithState(bitmap).getText()
+            return zxing.decodeWithState(bitmap).getText().replace(/[^\x20-\x7E]/g, "").trim()
           } catch {}
         }
         return null
