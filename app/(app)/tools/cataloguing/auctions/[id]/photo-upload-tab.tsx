@@ -79,29 +79,36 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
         const naturalH = imgEl.naturalHeight
 
         // Helper: draw image to a canvas at a given pixel width
-        function toCanvas(srcW: number, srcH: number, targetW: number): HTMLCanvasElement {
+        function toCanvas(srcW: number, srcH: number, targetW: number, pad = 0): HTMLCanvasElement {
           const scale  = targetW / srcW
+          const dw = targetW + pad * 2
+          const dh = Math.round(srcH * scale) + pad * 2
           const c = document.createElement("canvas")
-          c.width  = targetW
-          c.height = Math.round(srcH * scale)
-          c.getContext("2d")!.drawImage(imgEl, 0, 0, c.width, c.height)
+          c.width  = dw
+          c.height = dh
+          const ctx = c.getContext("2d")!
+          // Fill white first — restores any cut-off quiet zones on barcode edges
+          ctx.fillStyle = "#ffffff"
+          ctx.fillRect(0, 0, dw, dh)
+          ctx.drawImage(imgEl, 0, 0, srcW, srcH, pad, pad, targetW, dh - pad * 2)
           return c
         }
 
-        // Native BarcodeDetector — try at several resolutions (full → 800px → 400px).
-        // Downscaling can improve detection by smoothing JPEG noise around bar edges.
+        // Native BarcodeDetector — try at several resolutions, with and without padding.
+        // The padding pass restores quiet zones that may be clipped at the photo edge.
         if (nativeDetector) {
           for (const targetW of [naturalW, 800, 400]) {
-            const c = toCanvas(naturalW, naturalH, Math.min(naturalW, targetW))
-            try {
-              const bmp     = await createImageBitmap(c)
-              const results = await nativeDetector.detect(bmp)
-              if (results.length > 0) {
-                // Strip any non-printable control characters before returning
-                const raw = (results[0].rawValue as string).replace(/[^\x20-\x7E]/g, "").trim()
-                if (raw) return raw
-              }
-            } catch {}
+            for (const pad of [0, 30]) {
+              const c = toCanvas(naturalW, naturalH, Math.min(naturalW, targetW), pad)
+              try {
+                const bmp     = await createImageBitmap(c)
+                const results = await nativeDetector.detect(bmp)
+                if (results.length > 0) {
+                  const raw = (results[0].rawValue as string).replace(/[^\x20-\x7E]/g, "").trim()
+                  if (raw) return raw
+                }
+              } catch {}
+            }
           }
         }
 
