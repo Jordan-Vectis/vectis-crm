@@ -356,7 +356,7 @@ function PackingTab() {
     load(f, t)
   }
 
-  const subTabs = ["Overview", "Capacity", "Collections Daily Avg", "Collections Total", "Lots Daily Avg", "Total Lots", "Lots Over Time", "Raw Data"]
+  const subTabs = ["Overview", "Capacity", "Collection Dockets Daily Avg", "Collection Dockets Total", "Lots Daily Avg", "Total Lots", "Lots Over Time", "Raw Data"]
 
   // Derive daily totals from raw for stats + chart
   const lotsPerDay = data
@@ -790,8 +790,8 @@ function PackingTab() {
               </div>
             )
           })()}
-          {subTab === "Collections Daily Avg" && <><HBar data={data.dailyAvgCollections} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgCollections, "packing_daily_avg")} /></>}
-          {subTab === "Collections Total"     && <><HBar data={data.totalCollections} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalCollections, "packing_total")} /></>}
+          {subTab === "Collection Dockets Daily Avg" && <><HBar data={data.dailyAvgCollections} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgCollections, "packing_daily_avg")} /></>}
+          {subTab === "Collection Dockets Total"     && <><HBar data={data.totalCollections} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalCollections, "packing_total")} /></>}
           {subTab === "Lots Daily Avg"        && <><HBar data={data.dailyAvgLots} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgLots, "packing_lots_avg")} /></>}
           {subTab === "Total Lots"            && <><HBar data={data.totalLots} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalLots, "packing_total_lots")} /></>}
           {subTab === "Lots Over Time" && (() => { const cd = groupedTimeline(timelineData); return (
