@@ -1415,16 +1415,34 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
   const [log,          setLog]          = useState<string[]>([])
   const [paused,       setPaused]       = useState(false)
   const [showResults,  setShowResults]  = useState(false)
-  const logRef    = useRef<HTMLDivElement>(null)
-  const cancelRef = useRef(false)
-  const pauseRef  = useRef(false)
-  const abortRef  = useRef<AbortController | null>(null)
+  const [auctionList,  setAuctionList]  = useState<{ code: string; name: string; auctionDate: string | null }[]>([])
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const logRef      = useRef<HTMLDivElement>(null)
+  const cancelRef   = useRef(false)
+  const pauseRef    = useRef(false)
+  const abortRef    = useRef<AbortController | null>(null)
+  const codeInputRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetch("/api/auction-ai/models")
       .then(r => r.json())
       .then(j => { if (j.models?.length) setModelList(j.models) })
       .catch(() => {})
+    fetch("/api/auction-ai/auctions")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setAuctionList(data) })
+      .catch(() => {})
+  }, [])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (codeInputRef.current && !codeInputRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
   }, [])
 
   function addLog(msg: string) {
@@ -1704,16 +1722,45 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
 
       {/* Load */}
       <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-3">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">Auction code</p>
+        <p className="text-xs text-gray-500 uppercase tracking-wider">Auction</p>
         <div className="flex gap-2">
-          <input
-            value={code}
-            onChange={e => setCode(e.target.value.toUpperCase())}
-            onKeyDown={e => e.key === "Enter" && handleLoad()}
-            placeholder="e.g. F051"
-            className={inp}
-          />
-          <button onClick={handleLoad} disabled={!code.trim() || loading}
+          <div ref={codeInputRef} className="relative flex-1">
+            <input
+              value={code}
+              onChange={e => { setCode(e.target.value.toUpperCase()); setDropdownOpen(true) }}
+              onFocus={() => setDropdownOpen(true)}
+              onKeyDown={e => {
+                if (e.key === "Enter") { setDropdownOpen(false); handleLoad() }
+                if (e.key === "Escape") setDropdownOpen(false)
+              }}
+              placeholder="Type or select an auction…"
+              className={inp}
+              autoComplete="off"
+            />
+            {dropdownOpen && (() => {
+              const filtered = auctionList.filter(a =>
+                !code.trim() || a.code.includes(code.trim()) || a.name?.toLowerCase().includes(code.toLowerCase())
+              )
+              return filtered.length > 0 ? (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1C1C1E] border border-gray-700 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                  {filtered.map(a => (
+                    <button key={a.code}
+                      onMouseDown={e => { e.preventDefault(); setCode(a.code); setDropdownOpen(false) }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-[#2C2C2E] transition-colors border-b border-gray-800 last:border-0">
+                      <span className="font-mono text-sm text-[#C8A96E] w-14 flex-shrink-0">{a.code}</span>
+                      <span className="text-sm text-gray-300 truncate">{a.name}</span>
+                      {a.auctionDate && (
+                        <span className="text-xs text-gray-600 flex-shrink-0 ml-auto">
+                          {new Date(a.auctionDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : null
+            })()}
+          </div>
+          <button onClick={() => { setDropdownOpen(false); handleLoad() }} disabled={!code.trim() || loading}
             className="bg-[#C8A96E] hover:bg-[#b8944f] text-black text-sm font-semibold px-5 py-2 rounded disabled:opacity-40 transition-colors whitespace-nowrap">
             {loading ? "Loading…" : "Load"}
           </button>
