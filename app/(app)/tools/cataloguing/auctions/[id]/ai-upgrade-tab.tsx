@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { applyAiDescriptions } from "@/lib/actions/catalogue"
+import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
 import { PRESETS } from "@/lib/auction-ai-presets"
 
 interface Lot {
@@ -70,9 +70,10 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
   const [log,          setLog]          = useState<string[]>([])
   const [error,        setError]        = useState<string | null>(null)
   const [paused,       setPaused]       = useState(false)
-  const cancelRef = useRef(false)
-  const pauseRef  = useRef(false)
-  const logRef    = useRef<HTMLDivElement>(null)
+  const cancelRef  = useRef(false)
+  const pauseRef   = useRef(false)
+  const abortRef   = useRef<AbortController | null>(null)
+  const logRef     = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetch("/api/auction-ai/models")
@@ -103,6 +104,11 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
     cancelRef.current = true
     pauseRef.current  = false
     setPaused(false)
+    if (abortRef.current) {
+      addLog("⛔ Stop requested — aborting current request…")
+      abortRef.current.abort()
+      abortRef.current = null
+    }
   }
 
   // Wait while paused (called inside the run loop)
@@ -218,8 +224,10 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
           addLog(`  → sending to Gemini${attempt > 0 ? ` (attempt ${attempt + 1})` : ""}…`)
           const reqStart = Date.now()
 
-          // Abort after 3 minutes so the retry loop can kick in if the server hangs
+          // Abort after 3 minutes so the retry loop can kick in if the server hangs.
+          // Also wired to abortRef so "Stop & review" kills the request immediately.
           const controller = new AbortController()
+          abortRef.current = controller
           const timer = setTimeout(() => controller.abort(), 3 * 60 * 1000)
           // Heartbeat every 20s so the UI doesn't look frozen
           let elapsed = 0
@@ -233,6 +241,7 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
           } finally {
             clearTimeout(timer)
             clearInterval(heartbeat)
+            if (abortRef.current === controller) abortRef.current = null
           }
           const reqMs = Date.now() - reqStart
           addLog(`  ← response received in ${(reqMs / 1000).toFixed(1)}s — HTTP ${res.status}`)
@@ -275,13 +284,21 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
           addLog(`  ✓ ${label} — done${r.estimate ? ` · estimate: ${r.estimate}` : ""}`)
           succeeded = true
         } catch (e: any) {
-          const isTimeout = e.name === "AbortError" || e.message?.includes("aborted")
-          const errType   = isTimeout ? "3min timeout" : e.message?.includes("429") || e.message?.includes("RESOURCE_EXHAUSTED") ? "rate limited" : "error"
-          const delayMs   = Math.pow(2, attempt) * 5000 + Math.random() * 2000
-          const delaySec  = Math.round(delayMs / 1000)
+          if (cancelRef.current) break   // "Stop & review" aborted the fetch — exit immediately
+          const isTimeout   = e.name === "AbortError" || e.message?.includes("aborted")
+          const isRateLimit = e.message?.includes("429") || e.message?.includes("RESOURCE_EXHAUSTED")
+          const errType     = isTimeout ? "3min timeout" : isRateLimit ? "rate limited" : "error"
+          const delayMs     = Math.pow(2, attempt) * 5000 + Math.random() * 2000
+          const delaySec    = Math.round(delayMs / 1000)
           addLog(`  ⚠ ${label} — ${errType}: ${e.message}`)
           addLog(`  ↻ retrying in ${delaySec}s (attempt ${attempt + 1} failed)`)
-          await new Promise(r => setTimeout(r, delayMs))
+          // Chunked delay — checks cancelRef every 500ms so Stop & review is instant
+          const chunks = Math.ceil(delayMs / 500)
+          for (let c = 0; c < chunks; c++) {
+            if (cancelRef.current) break
+            await new Promise(r => setTimeout(r, Math.min(500, delayMs - c * 500)))
+          }
+          if (cancelRef.current) break
           attempt++
         }
       }
@@ -291,12 +308,16 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
 
       // 8s rate-limit gap — split into small chunks so pause/cancel responds quickly
       if (i < eligibleLots.length - 1 && !cancelRef.current) {
-        addLog(`  · waiting 8s before next lot…`)
+        if (!pauseRef.current) addLog(`  · waiting 8s before next lot…`)
         for (let t = 0; t < 80; t++) {
-          if (cancelRef.current) break
+          if (cancelRef.current || pauseRef.current) break
           await new Promise(r => setTimeout(r, 100))
         }
-        await waitIfPaused()
+        if (pauseRef.current && !cancelRef.current) {
+          addLog(`⏸ Paused — ${collected.length} lot${collected.length !== 1 ? "s" : ""} done so far. Click Resume to continue or Stop & review to finish.`)
+          await waitIfPaused()
+          if (!cancelRef.current) addLog(`▶ Resumed`)
+        }
       }
     }
 
@@ -314,16 +335,37 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
     if (toApply.length === 0) { setError("No approved lots to apply."); return }
     setError(null)
     setSaveProgress({ done: 0, total: toApply.length })
+    setLog([])
     setPhase("saving")
 
-    await applyAiDescriptions(auctionId, toApply.map(r => ({
-      id:           r.lotId,
-      description:  r.newDescription,
-      estimateLow:  r.newEstimateLow,
-      estimateHigh: r.newEstimateHigh,
-    })))
+    addLog(`── Saving ${toApply.length} lot${toApply.length !== 1 ? "s" : ""} to database…`)
 
-    setSaveProgress({ done: toApply.length, total: toApply.length })
+    const failed: string[] = []
+    for (let i = 0; i < toApply.length; i++) {
+      const r = toApply[i]
+      addLog(`  · ${i + 1}/${toApply.length} ${r.lotNumber} — saving…`)
+      const t0 = Date.now()
+      try {
+        await applyAiDescriptionOne(auctionId, {
+          id:           r.lotId,
+          description:  r.newDescription,
+          estimateLow:  r.newEstimateLow,
+          estimateHigh: r.newEstimateHigh,
+        })
+        addLog(`  ✓ ${r.lotNumber} — saved (${Date.now() - t0}ms)`)
+      } catch (e: any) {
+        addLog(`  ✗ ${r.lotNumber} — failed: ${e.message}`)
+        failed.push(r.lotNumber)
+      }
+      setSaveProgress({ done: i + 1, total: toApply.length })
+    }
+
+    if (failed.length > 0) {
+      addLog(`── Done with ${failed.length} failure${failed.length !== 1 ? "s" : ""}: ${failed.join(", ")}`)
+    } else {
+      addLog(`── All ${toApply.length} lots saved successfully`)
+    }
+
     setPhase("done")
     onDone()
   }
@@ -517,9 +559,23 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
 
       {/* ── Saving ── */}
       {phase === "saving" && (
-        <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl px-6 py-10 flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-300 font-medium">Saving descriptions…</p>
+        <div className="space-y-4">
+          <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl px-6 py-5 flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <p className="text-sm text-gray-300 font-medium">Saving descriptions…</p>
+              <span className="ml-auto text-xs text-gray-500">{saveProgress.done} / {saveProgress.total}</span>
+            </div>
+            <div className="w-full bg-gray-800 rounded-full h-2">
+              <div className="bg-purple-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${saveProgress.total > 0 ? (saveProgress.done / saveProgress.total) * 100 : 0}%` }} />
+            </div>
+          </div>
+          {log.length > 0 && (
+            <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-4 h-72 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
+              {log.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          )}
         </div>
       )}
 
@@ -596,7 +652,7 @@ function ProgressCard({
         <p className="text-xs text-gray-500 text-center">{subtitle}</p>
       </div>
       {log.length > 0 && (
-        <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-4 h-40 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
+        <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-4 h-72 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
           {log.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}

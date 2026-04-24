@@ -91,6 +91,18 @@ export async function applyAiDescriptions(
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
+export async function applyAiDescriptionOne(
+  auctionId: string,
+  update: { id: string; description: string; estimateLow: number | null; estimateHigh: number | null }
+) {
+  await requireCataloguer()
+  await prisma.catalogueLot.update({
+    where: { id: update.id },
+    data: { description: update.description, estimateLow: update.estimateLow, estimateHigh: update.estimateHigh, aiUpgraded: true },
+  })
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+}
+
 export async function togglePublished(id: string, published: boolean) {
   await requireCataloguer()
   await prisma.catalogueAuction.update({ where: { id }, data: { published } })
