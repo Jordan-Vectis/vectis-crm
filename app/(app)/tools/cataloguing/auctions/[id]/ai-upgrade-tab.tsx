@@ -58,6 +58,8 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
   const [preset,       setPreset]       = useState(PRESET_KEYS[0] ?? "")
   const [model,        setModel]        = useState(DEFAULT_MODEL)
   const [modelList,    setModelList]    = useState<string[]>([DEFAULT_MODEL])
+  const [modelStatus,  setModelStatus]  = useState<Record<string, { ok: boolean; ms: number; error?: string } | "testing">>({})
+  const [testingAll,   setTestingAll]   = useState(false)
   const [sendDesc,     setSendDesc]     = useState(true)
   const [contextField, setContextField] = useState<"keyPoints" | "description">("keyPoints")
   const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(
@@ -109,6 +111,29 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
       abortRef.current.abort()
       abortRef.current = null
     }
+  }
+
+  async function testAllModels() {
+    setTestingAll(true)
+    const initial: Record<string, "testing"> = {}
+    modelList.forEach(m => { initial[m] = "testing" })
+    setModelStatus(initial)
+
+    await Promise.all(modelList.map(async (m) => {
+      try {
+        const res  = await fetch("/api/auction-ai/model-test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: m }),
+        })
+        const data = await res.json()
+        setModelStatus(prev => ({ ...prev, [m]: data }))
+      } catch (e: any) {
+        setModelStatus(prev => ({ ...prev, [m]: { ok: false, ms: 0, error: e.message } }))
+      }
+    }))
+
+    setTestingAll(false)
   }
 
   // Wait while paused (called inside the run loop)
@@ -398,11 +423,44 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
 
           {/* Model */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1.5 uppercase tracking-wider">Model</label>
-            <select value={model} onChange={e => setModel(e.target.value)}
-              className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500">
-              {modelList.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-gray-500 uppercase tracking-wider">Model</label>
+              <button onClick={testAllModels} disabled={testingAll}
+                className="text-xs text-purple-400 hover:text-purple-300 disabled:opacity-50 transition-colors">
+                {testingAll ? "Testing…" : "⚡ Test all models"}
+              </button>
+            </div>
+
+            {/* Model list with inline status */}
+            <div className="border border-gray-700 rounded-lg overflow-hidden">
+              {modelList.map((m, i) => {
+                const status = modelStatus[m]
+                const isSelected = model === m
+                return (
+                  <button key={m} onClick={() => setModel(m)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors border-b border-gray-800 last:border-0 ${
+                      isSelected ? "bg-purple-900/20" : "hover:bg-[#1a1a1e]"
+                    }`}>
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                      isSelected ? "bg-purple-500" : "bg-gray-700"
+                    }`} />
+                    <span className={`text-sm flex-1 font-mono ${isSelected ? "text-purple-200" : "text-gray-400"}`}>{m}</span>
+                    {status === "testing" && (
+                      <span className="text-xs text-gray-500 animate-pulse">testing…</span>
+                    )}
+                    {status && status !== "testing" && (
+                      status.ok
+                        ? <span className={`text-xs font-medium ${status.ms < 5000 ? "text-green-400" : status.ms < 12000 ? "text-yellow-400" : "text-orange-400"}`}>
+                            ✓ {(status.ms / 1000).toFixed(1)}s
+                          </span>
+                        : <span className="text-xs text-red-400 truncate max-w-[200px]" title={status.error}>
+                            ✗ {status.error?.match(/\[(\d{3}[^\]]*)\]/)?.[1] ?? "error"}
+                          </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Options */}
