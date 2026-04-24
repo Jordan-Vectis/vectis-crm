@@ -32,43 +32,6 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     ...lots.filter(l => l.barcode).map(l => [l.barcode!.toLowerCase().trim(), l.id] as [string, string]),
   ])
 
-  async function decodeBarcode(file: File): Promise<string | null> {
-    try {
-      const [{ BrowserMultiFormatReader }, { DecodeHintType }] = await Promise.all([
-        import("@zxing/browser"),
-        import("@zxing/library"),
-      ])
-
-      const hints = new Map()
-      hints.set(DecodeHintType.TRY_HARDER, true)
-      const reader = new BrowserMultiFormatReader(hints)
-
-      // Phone photos can be 12MP+. Scale to a width ZXing reliably handles
-      // while keeping enough resolution for the barcode to be readable.
-      const img = await createImageBitmap(file)
-      const TARGET_W = 1200
-      const scale = Math.min(1, TARGET_W / img.width)
-      const w = Math.round(img.width * scale)
-      const h = Math.round(img.height * scale)
-
-      const canvas = document.createElement("canvas")
-      canvas.width = w
-      canvas.height = h
-      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h)
-
-      const blob = await new Promise<Blob>(res => canvas.toBlob(b => res(b!), "image/jpeg", 0.92))
-      const url  = URL.createObjectURL(blob)
-      try {
-        const result = await reader.decodeFromImageUrl(url)
-        return result.getText()
-      } finally {
-        URL.revokeObjectURL(url)
-      }
-    } catch {
-      return null
-    }
-  }
-
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null)
     const files = Array.from(e.target.files ?? []).filter(
@@ -81,6 +44,45 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
 
     setPhase("scanning")
     setScanProgress({ done: 0, total: files.length })
+
+    // Create ZXing reader once for the whole batch — avoids per-image overhead
+    const { MultiFormatReader, BinaryBitmap, HybridBinarizer, RGBLuminanceSource, DecodeHintType } =
+      await import("@zxing/library")
+    const hints = new Map()
+    hints.set(DecodeHintType.TRY_HARDER, true)
+    const zxing = new MultiFormatReader()
+    zxing.setHints(hints)
+
+    async function decodeBarcode(file: File): Promise<string | null> {
+      try {
+        const img = await createImageBitmap(file)
+
+        // Scale so the longest dimension is ≤2000px — keeps barcodes legible
+        // even in tall portrait phone photos
+        const MAX_DIM = 2000
+        const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height))
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+
+        const canvas = document.createElement("canvas")
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext("2d")!
+        ctx.drawImage(img, 0, 0, w, h)
+        const { data } = ctx.getImageData(0, 0, w, h)
+
+        // Build ARGB Int32Array for RGBLuminanceSource
+        const argb = new Int32Array(w * h)
+        for (let i = 0; i < w * h; i++) {
+          argb[i] = (data[i * 4 + 3] << 24) | (data[i * 4] << 16) | (data[i * 4 + 1] << 8) | data[i * 4 + 2]
+        }
+
+        const bitmap = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(argb, w, h)))
+        return zxing.decode(bitmap).getText()
+      } catch {
+        return null
+      }
+    }
 
     const result: LotGroup[] = []
     let current: LotGroup | null = null
