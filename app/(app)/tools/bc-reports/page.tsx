@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import Logo from "@/components/logo"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   LabelList, ResponsiveContainer, Cell,
@@ -174,6 +175,86 @@ function SubTabs({ tabs, active, onChange }: { tabs: string[]; active: string; o
   )
 }
 
+// ─── Packing icon nav ─────────────────────────────────────────────────────────
+
+const PACKING_NAV_ITEMS = [
+  {
+    id: "Overview",
+    label: "Overview",
+    desc: "Summary stats & trend",
+    icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+  },
+  {
+    id: "Capacity",
+    label: "Capacity",
+    desc: "Throughput & catch-up",
+    icon: "M13 10V3L4 14h7v7l9-11h-7z",
+  },
+  {
+    id: "Collection Dockets Daily Avg",
+    label: "Dockets Daily Avg",
+    desc: "Avg dockets per person",
+    icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+  },
+  {
+    id: "Collection Dockets Total",
+    label: "Dockets Total",
+    desc: "Total dockets by person",
+    icon: "M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2",
+  },
+  {
+    id: "Lots Daily Avg",
+    label: "Lots Daily Avg",
+    desc: "Avg lots packed per day",
+    icon: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
+  },
+  {
+    id: "Total Lots",
+    label: "Total Lots",
+    desc: "Total lots by person",
+    icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+  },
+  {
+    id: "Lots Over Time",
+    label: "Lots Over Time",
+    desc: "Daily / weekly / monthly",
+    icon: "M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4v16",
+  },
+  {
+    id: "Raw Data",
+    label: "Raw Data",
+    desc: "Full shipment records",
+    icon: "M4 6h16M4 10h16M4 14h16M4 18h16",
+  },
+]
+
+function PackingSubNav({ active, onChange }: { active: string; onChange: (t: string) => void }) {
+  return (
+    <div className="grid grid-cols-4 gap-2 mb-6">
+      {PACKING_NAV_ITEMS.map(item => (
+        <button
+          key={item.id}
+          onClick={() => onChange(item.id)}
+          className={`flex flex-col items-start gap-1.5 p-3 rounded-xl border text-left transition-all ${
+            active === item.id
+              ? "bg-blue-950/40 border-blue-600"
+              : "bg-[#0d0f1a] border-gray-800 hover:border-gray-600"
+          }`}
+        >
+          <svg
+            className={`w-5 h-5 flex-shrink-0 ${active === item.id ? "text-blue-400" : "text-gray-500"}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+          </svg>
+          <p className={`text-xs font-semibold leading-tight ${active === item.id ? "text-white" : "text-gray-300"}`}>{item.label}</p>
+          <p className="text-xs text-gray-500 leading-tight">{item.desc}</p>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Meta bar ─────────────────────────────────────────────────────────────────
 
 function MetaBar({ text }: { text: string }) {
@@ -195,18 +276,22 @@ function LoadBtn({ loading, onClick }: { loading: boolean; onClick: () => void }
 
 // ─── Progress bar ─────────────────────────────────────────────────────────────
 
-function ProgressBar({ done, total }: { done: number; total: number }) {
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+function ProgressBar({ done, total, label, unit }: { done: number; total: number; label?: string; unit?: string }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : null
   return (
-    <div className="mb-5">
+    <div className="mb-3">
       <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-        <span>Fetching data…</span>
-        <span>{done} / {total} chunks ({pct}%)</span>
+        <span>{label ?? "Fetching data…"}</span>
+        <span>
+          {pct !== null
+            ? `${done.toLocaleString()} / ${total.toLocaleString()} ${unit ?? "records"} (${pct}%)`
+            : `${done.toLocaleString()} ${unit ?? "records"}…`}
+        </span>
       </div>
       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
         <div
           className="h-full bg-[#0078D4] rounded-full transition-all duration-300"
-          style={{ width: `${pct}%` }}
+          style={{ width: pct !== null ? `${pct}%` : "40%" }}
         />
       </div>
     </div>
@@ -274,8 +359,7 @@ function CataloguingTab() {
       <h2 className="text-lg font-semibold text-white mb-4">Cataloguing Report</h2>
       <DateRange from={from} to={to} onChange={handleManualChange} onPreset={handlePreset} />
 
-      {/* Progress bar sits above results — old data stays visible underneath */}
-      {loading && progress && <ProgressBar done={progress.done} total={progress.total} />}
+      {loading && progress && <ProgressBar done={progress.done} total={progress.total} unit="chunks" />}
       {loading && !progress && <p className="text-xs text-gray-500 mb-4">Connecting…</p>}
       {!loading && <LoadBtn loading={loading} onClick={() => load(from, to)} />}
 
@@ -300,21 +384,42 @@ function PackingTab() {
   const [from, setFrom] = useState(daysAgo(29))
   const [to, setTo]     = useState(today())
   const [data, setData] = useState<PackData | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState<string | null>(null)
-  const [subTab, setSubTab]   = useState("Overview")
+  const [loading, setLoading]   = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [error, setError]       = useState<string | null>(null)
+  const [subTab, setSubTab]     = useState("Overview")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async (f: string, t: string) => {
     if (!f || !t) return
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setProgress(null)
     try {
-      const res  = await window.fetch(`/api/bc/packing?from=${f}&to=${t}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? res.statusText)
-      setData(json)
+      const res = await window.fetch(`/api/bc/packing?from=${f}&to=${t}`)
+      if (!res.ok) {
+        let msg = res.statusText
+        try { const j = await res.json(); msg = j.error ?? msg } catch {}
+        throw new Error(msg)
+      }
+
+      const reader  = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop()!
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "progress") setProgress({ done: msg.done, total: msg.total })
+          else if (msg.type === "result") setData(msg.data)
+        }
+      }
     } catch (e: any) { setError(e.message) }
-    finally { setLoading(false) }
+    finally { setLoading(false); setProgress(null) }
   }, [])
 
   useEffect(() => { load(from, to) }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -331,8 +436,6 @@ function PackingTab() {
     load(f, t)
   }
 
-  const subTabs = ["Overview", "Collections Daily Avg", "Collections Total", "Lots Daily Avg", "Total Lots", "Lots Over Time", "Raw Data"]
-
   // Derive daily totals from raw for stats + chart
   const lotsPerDay = data
     ? data.raw.reduce((acc, r) => { acc[r.date] = (acc[r.date] ?? 0) + r.lotCount; return acc }, {} as Record<string, number>)
@@ -342,20 +445,160 @@ function PackingTab() {
   const avgLotsPerDay = timelineDates.length > 0 ? Math.round(totalLotsPacked / timelineDates.length) : 0
   const timelineData = timelineDates.map(d => ({ date: d, lots: lotsPerDay[d] }))
 
+  // Collected lots count (BC change log — movements TO COLLECTED in date range)
+  const [collectedLots, setCollectedLots] = useState<number | null>(null)
+  const [collectedProgress, setCollectedProgress] = useState<{ done: number; total: number } | null>(null)
+  const [collectedError, setCollectedError] = useState<string | null>(null)
+
+  function fetchCollected(f: string, t: string) {
+    setCollectedLots(null)
+    setCollectedProgress(null)
+    setCollectedError(null)
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/packing/collected-count?from=${f}&to=${t}`)
+        const reader = res.body!.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ""
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done || cancelled) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split("\n"); buffer = lines.pop()!
+          for (const line of lines) {
+            if (!line.trim()) continue
+            const msg = JSON.parse(line)
+            if (msg.type === "progress") setCollectedProgress({ done: msg.done, total: msg.total })
+            else if (msg.type === "result") { setCollectedLots(msg.count ?? null); setCollectedProgress(null) }
+            else if (msg.type === "error") { setCollectedError(msg.error); setCollectedProgress(null) }
+          }
+        }
+      } catch (e: any) { setCollectedError(e.message ?? "Failed"); setCollectedProgress(null) }
+    })()
+    return () => { cancelled = true }
+  }
+
+  useEffect(() => fetchCollected(from, to), [from, to]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Chart grouping
+  const [chartGrouping, setChartGrouping] = useState<"daily" | "weekly" | "monthly">("daily")
+  function groupedTimeline(raw: { date: string; lots: number }[]) {
+    if (chartGrouping === "daily") return raw
+    const grouped: Record<string, number> = {}
+    for (const row of raw) {
+      let key: string
+      if (chartGrouping === "weekly") {
+        const d = new Date(row.date + "T00:00:00Z")
+        const mon = new Date(d); mon.setUTCDate(d.getUTCDate() - (d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1))
+        key = mon.toISOString().split("T")[0]
+      } else {
+        key = row.date.slice(0, 7)
+      }
+      grouped[key] = (grouped[key] ?? 0) + row.lots
+    }
+    return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([date, lots]) => ({ date, lots }))
+  }
+
+  // Monthly receipt lines (last 3 months)
+  const [monthlyLots, setMonthlyLots] = useState<{ months: { month: string; count: number; auctions: number; avgPerAuction: number }[]; avgLots: number; avgPerAuction: number } | null>(null)
+  const [monthlyLotsLoading, setMonthlyLotsLoading] = useState(true)
+  const [monthlyLotsProgress, setMonthlyLotsProgress] = useState<{ done: number; total: number } | null>(null)
+  const [monthlyLotsError, setMonthlyLotsError] = useState<string | null>(null)
+  const [monthlyCollected, setMonthlyCollected] = useState<Record<string, number> | null>(null)
+  const [monthlyCollectedLoading, setMonthlyCollectedLoading] = useState(true)
+  const [monthlyCollectedProgress, setMonthlyCollectedProgress] = useState<{ done: number; total: number } | null>(null)
+  const [monthlyCollectedError, setMonthlyCollectedError] = useState<string | null>(null)
+
+  async function readStream(
+    url: string,
+    onProgress: (done: number, total: number) => void,
+    onResult: (msg: any) => void,
+    onError: (err: string) => void
+  ) {
+    const res = await fetch(url)
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ""
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n"); buffer = lines.pop()!
+      for (const line of lines) {
+        if (!line.trim()) continue
+        const msg = JSON.parse(line)
+        if (msg.type === "progress") onProgress(msg.done, msg.total)
+        else if (msg.type === "result") onResult(msg)
+        else if (msg.type === "error") onError(msg.error ?? "Unknown error")
+      }
+    }
+  }
+
+  function fetchMonthlyLots() {
+    setMonthlyLotsLoading(true)
+    setMonthlyLotsError(null)
+    setMonthlyLotsProgress(null)
+    readStream(
+      "/api/bc/receipt-monthly",
+      (done, total) => setMonthlyLotsProgress({ done, total }),
+      (msg) => { setMonthlyLots(msg.data); setMonthlyLotsProgress(null) },
+      (err) => { setMonthlyLotsError(err); setMonthlyLotsProgress(null) }
+    )
+      .catch(e => setMonthlyLotsError(e.message))
+      .finally(() => setMonthlyLotsLoading(false))
+  }
+
+  function fetchMonthlyCollected() {
+    setMonthlyCollectedLoading(true)
+    setMonthlyCollectedError(null)
+    setMonthlyCollectedProgress(null)
+    setMonthlyCollected(null)
+    readStream(
+      "/api/packing/collected-monthly",
+      (done, total) => setMonthlyCollectedProgress({ done, total }),
+      (msg) => { setMonthlyCollected(msg.byMonth); setMonthlyCollectedProgress(null) },
+      (err) => { setMonthlyCollectedError(err); setMonthlyCollectedProgress(null) }
+    )
+      .catch(e => setMonthlyCollectedError(e.message))
+      .finally(() => setMonthlyCollectedLoading(false))
+  }
+
+  useEffect(() => { fetchMonthlyLots(); fetchMonthlyCollected() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Capacity dashboard inputs
+  const [capStaff,           setCapStaff]           = useState(11)
+  const [capSalesMonth,      setCapSalesMonth]       = useState(14)
+  const [capLotsPerSale,     setCapLotsPerSale]      = useState(550)
+  const [capWorkDays,        setCapWorkDays]         = useState(22)
+  const [capCollectedPerDay, setCapCollectedPerDay]  = useState(0)
+  const [capBacklog,         setCapBacklog]          = useState(0)
+  const [capHelpOpen,        setCapHelpOpen]         = useState(false)
+  // Lock per-person rate once when data first loads so changing capStaff only affects throughput
+  const [lockedRate, setLockedRate] = useState(0)
+  const rateLockedRef = useRef(false)
+  useEffect(() => {
+    if (avgLotsPerDay > 0 && capStaff > 0 && !rateLockedRef.current) {
+      setLockedRate(avgLotsPerDay / capStaff)
+      rateLockedRef.current = true
+    }
+  }, [avgLotsPerDay]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div>
       <h2 className="text-lg font-semibold text-white mb-4">Packing Report</h2>
       <DateRange from={from} to={to} onChange={handleManualChange} onPreset={handlePreset} />
+      {loading && progress && <ProgressBar done={progress.done} total={progress.total} unit="chunks" />}
+      {loading && !progress && <p className="text-xs text-gray-500 mb-4">Connecting…</p>}
       {!loading && <LoadBtn loading={loading} onClick={() => load(from, to)} />}
-      {loading && <p className="text-xs text-gray-500 mb-5">Loading…</p>}
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
       {data && (
         <div className={loading ? "opacity-40 pointer-events-none transition-opacity" : "transition-opacity"}>
           <MetaBar text={`${from} — ${to}  ·  ${data.meta.total.toLocaleString()} shipments  ·  ${data.meta.staffCount} staff`} />
-          <SubTabs tabs={subTabs} active={subTab} onChange={setSubTab} />
+          <PackingSubNav active={subTab} onChange={setSubTab} />
           {subTab === "Overview" && (
             <div className="space-y-5">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
                   <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Total Lots Packed</p>
                   <p className="text-2xl font-bold text-white">{totalLotsPacked.toLocaleString()}</p>
@@ -368,57 +611,295 @@ function PackingTab() {
                   <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Active Days</p>
                   <p className="text-2xl font-bold text-white">{timelineDates.length}</p>
                 </div>
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Lots Collected</p>
+                  {collectedError ? (
+                    <div className="mt-2">
+                      <p className="text-xs text-red-400 mb-1">Failed — BC dropped connection</p>
+                      <button onClick={() => fetchCollected(from, to)} className="text-xs text-blue-400 hover:text-blue-300 underline">Retry</button>
+                    </div>
+                  ) : collectedLots === null ? (
+                    <div className="mt-3">
+                      {collectedProgress
+                        ? <ProgressBar done={collectedProgress.done} total={collectedProgress.total} label="Fetching from BC…" />
+                        : <p className="text-xs text-gray-600">Connecting…</p>}
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-white">{collectedLots.toLocaleString()}</p>
+                  )}
+                </div>
               </div>
               <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots Packed Per Day</p>
-                {timelineData.length > 0 ? (
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Lots Packed Over Time</p>
+                  <div className="flex gap-1">
+                    {(["daily", "weekly", "monthly"] as const).map(g => (
+                      <button key={g} onClick={() => setChartGrouping(g)}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${chartGrouping === g ? "bg-[#0078D4] text-white" : "bg-[#07070f] border border-gray-700 text-gray-400 hover:text-white"}`}>
+                        {g.charAt(0).toUpperCase() + g.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {timelineData.length > 0 ? (() => { const cd = groupedTimeline(timelineData); return (
                   <ResponsiveContainer width="100%" height={240}>
-                    <LineChart data={timelineData} margin={{ top: 4, right: 16, left: 0, bottom: 20 }}>
+                    <LineChart data={cd} margin={{ top: 4, right: 16, left: 0, bottom: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e2130" />
                       <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false}
-                        interval={Math.max(0, Math.floor(timelineData.length / 8) - 1)}
+                        interval={Math.max(0, Math.floor(cd.length / 8) - 1)}
                         angle={-35} textAnchor="end" height={40} />
                       <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} />
-                      <Tooltip
-                        contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }}
-                        cursor={{ stroke: "#374151" }}
-                      />
+                      <Tooltip contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }} cursor={{ stroke: "#374151" }} />
                       <Line type="monotone" dataKey="lots" stroke="#0078D4" strokeWidth={2} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
-                ) : (
+                )})() : (
                   <p className="text-gray-500 text-sm py-6 text-center">No data</p>
                 )}
               </div>
             </div>
           )}
-          {subTab === "Collections Daily Avg" && <><HBar data={data.dailyAvgCollections} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgCollections, "packing_daily_avg")} /></>}
-          {subTab === "Collections Total"     && <><HBar data={data.totalCollections} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalCollections, "packing_total")} /></>}
+          {subTab === "Capacity" && (() => {
+            const perPersonRate   = lockedRate || (avgLotsPerDay / capStaff)
+            const dailyThroughput = Math.round(capStaff * perPersonRate)
+            const dailyIncoming   = (capSalesMonth * capLotsPerSale) / capWorkDays
+            const effectiveDemand = Math.max(0, dailyIncoming - capCollectedPerDay)
+            const netPerDay       = dailyThroughput - effectiveDemand
+            const catchingUp      = netPerDay > 0
+            const staffBreakEven  = perPersonRate > 0 ? Math.ceil(effectiveDemand / perPersonRate) : null
+            const extraNeeded     = staffBreakEven !== null ? Math.max(0, staffBreakEven - capStaff) : null
+            const statusColor     = catchingUp ? "#22c55e" : netPerDay > -10 ? "#f59e0b" : "#ef4444"
+            const backlogLots     = capBacklog * capLotsPerSale
+            const daysToClean     = capBacklog > 0 && netPerDay > 0 ? Math.ceil(backlogLots / netPerDay) : null
+            const catchupDate     = daysToClean != null
+              ? new Date(Date.now() + daysToClean * 24 * 60 * 60 * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+              : null
+
+            return (
+              <div className="space-y-6">
+                {/* Help modal */}
+                {capHelpOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setCapHelpOpen(false)}>
+                    <div className="bg-[#0d0f1a] border border-gray-700 rounded-xl p-6 max-w-lg w-full mx-4 space-y-3" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm font-semibold text-white">How the Capacity tab works</p>
+                        <button onClick={() => setCapHelpOpen(false)} className="text-gray-500 hover:text-white text-lg leading-none">✕</button>
+                      </div>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Assumptions</span> — Enter your inputs: staff, sales per month, average lots per sale, working days, average collections per day, and how many auctions you're currently behind.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Throughput</span> — Based on your actual historical packing rate from BC, it calculates how many lots your team processes per day. Adjust the staff number to model adding or removing people.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Demand vs. Capacity</span> — Works out how many lots are coming in each day (sales × lots per sale ÷ working days), subtracts collections offsetting that demand, and compares to throughput. If throughput exceeds demand you're catching up; if not, you're falling behind.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Estimated Catch-Up</span> — Enter a backlog (in auctions) and it multiplies by your average lots per sale, then divides by your daily surplus to give a projected date when the backlog will be cleared.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Lots by Month</span> — Actual auction lines received from BC over the last three months so you can see volume trends.</p>
+                      <p className="text-xs text-gray-400"><span className="text-gray-200 font-medium">Collections by Month</span> — How many lots were marked as collected each month, with a daily average, pulled from the BC change log.</p>
+                    </div>
+                  </div>
+                )}
+                {/* Inputs */}
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Assumptions</p>
+                    <button onClick={() => setCapHelpOpen(true)} className="text-xs text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 rounded px-2 py-0.5 transition-colors">? Help</button>
+                  </div>
+                  <div className="flex flex-wrap gap-5">
+                    <NumInput label="Staff" value={capStaff} onChange={setCapStaff} />
+                    <NumInput label="Sales / month" value={capSalesMonth} onChange={setCapSalesMonth} />
+                    <NumInput label="Lots / sale" value={capLotsPerSale} onChange={setCapLotsPerSale} />
+                    <NumInput label="Working days / month" value={capWorkDays} onChange={setCapWorkDays} />
+                    <NumInput label="Avg collections / day" value={capCollectedPerDay} onChange={setCapCollectedPerDay} />
+                    <NumInput label="Current backlog (auctions)" value={capBacklog} onChange={setCapBacklog} />
+                  </div>
+                </div>
+
+                {/* Status banner */}
+                <div className="rounded-xl border p-4 flex items-center gap-4" style={{ borderColor: statusColor + "44", background: statusColor + "11" }}>
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: statusColor }} />
+                  <div className="flex-1">
+                    <p className="font-semibold text-white text-sm">{catchingUp ? "Keeping up" : "Falling behind"}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {catchingUp
+                        ? `Packing ${netPerDay.toFixed(0)} more lots/day than incoming`
+                        : `${Math.abs(netPerDay).toFixed(0)} more lots/day coming in than being packed`}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-2xl font-bold" style={{ color: statusColor }}>{netPerDay > 0 ? "+" : ""}{netPerDay.toFixed(0)}</p>
+                    <p className="text-xs text-gray-500">lots/day net</p>
+                  </div>
+                </div>
+
+                {/* Stats grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Modelled Throughput</p>
+                    <p className="text-2xl font-bold text-white">{dailyThroughput}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">{perPersonRate.toFixed(1)} lots/person · observed avg: {avgLotsPerDay}/day</p>
+                  </div>
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Effective Demand</p>
+                    <p className="text-2xl font-bold text-white">{effectiveDemand.toFixed(0)}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">{dailyIncoming.toFixed(0)} incoming − {capCollectedPerDay} collected/day</p>
+                  </div>
+                </div>
+
+                {/* Staff to break even */}
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Staff needed to break even</p>
+                  <p className="text-3xl font-bold text-white">{staffBreakEven ?? "—"}</p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {extraNeeded !== null && extraNeeded > 0
+                      ? `+${extraNeeded} more on top of your current ${capStaff} staff`
+                      : `Current ${capStaff} staff is enough to keep up with demand`}
+                  </p>
+                </div>
+
+                {/* Estimated catch-up */}
+                {capBacklog > 0 && (
+                  <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Estimated catch-up</p>
+                    {daysToClean != null && catchupDate ? (
+                      <>
+                        <p className="text-3xl font-bold text-white">{catchupDate}</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          {daysToClean} calendar {daysToClean === 1 ? "day" : "days"} to clear {capBacklog.toLocaleString()} {capBacklog === 1 ? "auction" : "auctions"} (~{backlogLots.toLocaleString()} lots) at +{netPerDay.toFixed(0)} lots/day net
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-amber-400">Cannot catch up — throughput is not exceeding demand</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Monthly lots from receipt lines */}
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Lots by Month (Auction Lines · Last 3 Months + Current)</p>
+                  {monthlyLotsError ? (
+                    <div className="flex items-center gap-3">
+                      <p className="text-red-400 text-sm">{monthlyLotsError}</p>
+                      <button onClick={fetchMonthlyLots} className="text-xs text-blue-400 hover:text-blue-300 underline">Retry</button>
+                    </div>
+                  ) : monthlyLotsLoading ? (
+                    monthlyLotsProgress
+                      ? <ProgressBar done={monthlyLotsProgress.done} total={monthlyLotsProgress.total} label="Fetching auction lines…" />
+                      : <p className="text-xs text-gray-600">Connecting…</p>
+                  ) : !monthlyLots || monthlyLots.months.length === 0 ? (
+                    <p className="text-gray-600 text-sm">No data</p>
+                  ) : (
+                    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${monthlyLots.months.length + 1}, 1fr)` }}>
+                      {monthlyLots.months.map(({ month, count, auctions, avgPerAuction }) => {
+                        const [yr, mo] = month.split("-")
+                        const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
+                        return (
+                          <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-2">{label}</p>
+                            <p className="text-2xl font-bold text-white">{count.toLocaleString()}</p>
+                            <p className="text-xs text-gray-600 mt-0.5">lots</p>
+                            <div className="mt-2 pt-2 border-t border-gray-800">
+                              <p className="text-xs text-gray-500">{auctions} auctions · {avgPerAuction}/auction</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      <div className="bg-blue-950/40 border border-blue-800/40 rounded-lg p-3 text-center">
+                        <p className="text-xs text-blue-400 mb-2">Avg</p>
+                        <p className="text-2xl font-bold text-blue-300">{monthlyLots.avgLots.toLocaleString()}</p>
+                        <p className="text-xs text-blue-500 mt-0.5">lots/month</p>
+                        <div className="mt-2 pt-2 border-t border-blue-900/40">
+                          <p className="text-xs text-blue-400">{monthlyLots.avgPerAuction} lots/auction</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Collections by month — separate section */}
+                <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Lots Collected by Month (Change Log · Last 3 Months + Current)</p>
+                    {!monthlyCollectedLoading && (
+                      <button onClick={fetchMonthlyCollected} className="text-xs text-gray-600 hover:text-gray-400 underline">↺ Refresh</button>
+                    )}
+                  </div>
+                  {monthlyCollectedError ? (
+                    <div className="flex items-center gap-3">
+                      <p className="text-red-400 text-sm">{monthlyCollectedError}</p>
+                      <button onClick={fetchMonthlyCollected} className="text-xs text-blue-400 hover:text-blue-300 underline">Retry</button>
+                    </div>
+                  ) : monthlyCollectedLoading ? (
+                    monthlyCollectedProgress
+                      ? <ProgressBar done={monthlyCollectedProgress.done} total={monthlyCollectedProgress.total} label="Fetching from BC change log…" />
+                      : <p className="text-xs text-gray-600">Connecting…</p>
+                  ) : !monthlyCollected || Object.keys(monthlyCollected).length === 0 ? (
+                    <p className="text-gray-600 text-sm">No collections found in this period</p>
+                  ) : (() => {
+                    const now = new Date()
+                    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+                    const months = Object.entries(monthlyCollected)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                    const total = months.reduce((s, [, v]) => s + v, 0)
+                    const avg = months.length > 0 ? Math.round(total / months.length) : 0
+                    return (
+                      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${months.length + 1}, 1fr)` }}>
+                        {months.map(([month, count]) => {
+                          const [yr, mo] = month.split("-")
+                          const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" })
+                          const isCurrentMonth = month === currentMonthKey
+                          const daysInMo = isCurrentMonth ? now.getDate() : new Date(Number(yr), Number(mo), 0).getDate()
+                          const dailyAvg = daysInMo > 0 ? Math.round(count / daysInMo) : 0
+                          return (
+                            <div key={month} className="bg-[#07070f] border border-gray-800 rounded-lg p-3 text-center">
+                              <p className="text-xs text-gray-500 mb-2">{label}</p>
+                              <p className="text-2xl font-bold text-green-400">{count.toLocaleString()}</p>
+                              <p className="text-xs text-gray-600 mt-0.5">collected</p>
+                              <div className="mt-2 pt-2 border-t border-gray-800">
+                                <p className="text-xs text-green-600">{dailyAvg}/day avg{isCurrentMonth ? " so far" : ""}</p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <div className="bg-green-950/30 border border-green-800/30 rounded-lg p-3 text-center">
+                          <p className="text-xs text-green-500 mb-2">Avg</p>
+                          <p className="text-2xl font-bold text-green-300">{avg.toLocaleString()}</p>
+                          <p className="text-xs text-green-600 mt-0.5">collected/month</p>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </div>
+            )
+          })()}
+          {subTab === "Collection Dockets Daily Avg" && <><HBar data={data.dailyAvgCollections} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgCollections, "packing_daily_avg")} /></>}
+          {subTab === "Collection Dockets Total"     && <><HBar data={data.totalCollections} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalCollections, "packing_total")} /></>}
           {subTab === "Lots Daily Avg"        && <><HBar data={data.dailyAvgLots} valueKey="avg" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.dailyAvgLots, "packing_lots_avg")} /></>}
           {subTab === "Total Lots"            && <><HBar data={data.totalLots} valueKey="total" labelKey="staff" /><ExportBtn onClick={() => exportXlsx(data.totalLots, "packing_total_lots")} /></>}
-          {subTab === "Lots Over Time" && (
+          {subTab === "Lots Over Time" && (() => { const cd = groupedTimeline(timelineData); return (
             <>
-              {timelineData.length > 0 ? (
+              <div className="flex justify-end mb-3 gap-1">
+                {(["daily", "weekly", "monthly"] as const).map(g => (
+                  <button key={g} onClick={() => setChartGrouping(g)}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${chartGrouping === g ? "bg-[#0078D4] text-white" : "bg-[#07070f] border border-gray-700 text-gray-400 hover:text-white"}`}>
+                    {g.charAt(0).toUpperCase() + g.slice(1)}
+                  </button>
+                ))}
+              </div>
+              {cd.length > 0 ? (
                 <ResponsiveContainer width="100%" height={320}>
-                  <LineChart data={timelineData} margin={{ top: 4, right: 16, left: 0, bottom: 30 }}>
+                  <LineChart data={cd} margin={{ top: 4, right: 16, left: 0, bottom: 30 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e2130" />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false}
-                      interval={Math.max(0, Math.floor(timelineData.length / 10) - 1)}
+                      interval={Math.max(0, Math.floor(cd.length / 10) - 1)}
                       angle={-40} textAnchor="end" height={50} />
                     <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }}
-                      cursor={{ stroke: "#374151" }}
-                    />
+                    <Tooltip contentStyle={{ background: "#1c1f27", border: "1px solid #2d3047", borderRadius: 6, fontSize: 13, color: "#fff" }} cursor={{ stroke: "#374151" }} />
                     <Line type="monotone" dataKey="lots" stroke="#0078D4" strokeWidth={2} dot={{ r: 3, fill: "#0078D4" }} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
                 <p className="text-gray-500 text-sm py-6 text-center">No data</p>
               )}
-              <ExportBtn onClick={() => exportXlsx(timelineData, "packing_lots_over_time")} />
+              <ExportBtn onClick={() => exportXlsx(cd, "packing_lots_over_time")} />
             </>
-          )}
+          )})()}
           {subTab === "Raw Data" && (
             <>
               <div className="overflow-x-auto rounded border border-gray-800">
@@ -639,6 +1120,16 @@ function DataExplorerTab() {
           <ExportBtn onClick={() => exportXlsx(rows, ENDPOINTS[endpoint])} />
         </>
       )}
+    </div>
+  )
+}
+
+function NumInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">{label}</label>
+      <input type="number" value={value} onChange={e => onChange(Number(e.target.value))}
+        className="w-20 bg-[#07070f] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500 text-right" />
     </div>
   )
 }
@@ -982,14 +1473,52 @@ function ShippingTab() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const reports: { id: Report; label: string; color: string; dot: string }[] = [
-  { id: "cataloguing", label: "Cataloguing",   color: "text-red-400",    dot: "bg-red-500"    },
-  { id: "packing",     label: "Packing",       color: "text-orange-400", dot: "bg-orange-500" },
-  { id: "warehouse",   label: "Warehouse",     color: "text-green-400",  dot: "bg-green-500"  },
-  { id: "explorer",    label: "Data Explorer", color: "text-purple-400", dot: "bg-purple-500" },
-  { id: "location",    label: "Loc. History",  color: "text-blue-400",   dot: "bg-blue-500"   },
-  { id: "shipping",    label: "Shipping",      color: "text-cyan-400",   dot: "bg-cyan-500"   },
+type NavItem = { id: Report; label: string; activeColor: string; icon: string }
+
+const reports: NavItem[] = [
+  {
+    id: "cataloguing", label: "Cataloguing", activeColor: "text-red-400",
+    icon: "M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z",
+  },
+  {
+    id: "packing", label: "Packing", activeColor: "text-orange-400",
+    icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+  },
+  {
+    id: "warehouse", label: "Warehouse", activeColor: "text-green-400",
+    icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+  },
+  {
+    id: "shipping", label: "Shipping", activeColor: "text-cyan-400",
+    icon: "M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0zM13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0",
+  },
 ]
+const toolReports: NavItem[] = [
+  {
+    id: "location", label: "Location History", activeColor: "text-blue-400",
+    icon: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z",
+  },
+  {
+    id: "explorer", label: "Data Explorer", activeColor: "text-purple-400",
+    icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
+  },
+]
+
+function SidebarBtn({ r, active, onClick }: { r: NavItem; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all ${
+        active ? "bg-white/8 text-white" : "text-gray-500 hover:text-gray-200 hover:bg-white/5"
+      }`}
+    >
+      <svg className={`w-4 h-4 flex-shrink-0 ${active ? r.activeColor : "text-gray-600"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d={r.icon} />
+      </svg>
+      <span className={`text-sm ${active ? "font-medium text-white" : "font-normal"}`}>{r.label}</span>
+    </button>
+  )
+}
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -999,6 +1528,20 @@ export default function BCReportsPage() {
   const [bcError, setBcError]           = useState<string | null>(null)
   const [debugReason, setDebugReason]   = useState<string | null>(null)
   const [refreshKey, setRefreshKey]     = useState(0)
+  const [allowedSections, setAllowedSections] = useState<string[] | null>(null)
+
+  useEffect(() => {
+    fetch("/api/user/section-access/BC_REPORTS")
+      .then(r => r.json())
+      .then(({ allowed }: { allowed: string[] | null }) => {
+        setAllowedSections(allowed)
+        if (allowed && !allowed.includes(activeReport)) {
+          setActiveReport((allowed[0] as Report) ?? "cataloguing")
+        }
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -1019,28 +1562,25 @@ export default function BCReportsPage() {
       <aside className="w-44 bg-[#0b0d14] border-r border-gray-800 flex flex-col flex-shrink-0">
         {/* Logo */}
         <div className="px-4 py-5 border-b border-gray-800">
-          <p className="text-white font-bold text-base">Vectis</p>
-          <p className="text-gray-600 text-xs mt-0.5">BC Reports</p>
+          <Logo variant="compact" />
+          <p className="text-gray-600 text-xs mt-1">BC Reports</p>
         </div>
 
         {/* Reports nav */}
-        <div className="flex-1 px-3 py-4">
-          <p className="text-gray-600 text-xs uppercase tracking-wider mb-2 px-1">Reports</p>
+        <div className="flex-1 px-2 py-4 flex flex-col">
+          <p className="text-gray-600 text-[10px] uppercase tracking-widest mb-1.5 px-2">Reports</p>
           <div className="space-y-0.5">
-            {reports.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => setActiveReport(r.id)}
-                className={`w-full flex items-center gap-2 px-2 py-2 rounded text-sm font-medium transition-colors text-left ${
-                  activeReport === r.id
-                    ? "bg-gray-800 text-white"
-                    : "text-gray-400 hover:text-white hover:bg-gray-800/50"
-                }`}
-              >
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${r.dot}`} />
-                <span className={activeReport === r.id ? "text-white" : r.color}>{r.label.toUpperCase()}</span>
-              </button>
+            {reports.filter(r => !allowedSections || allowedSections.includes(r.id)).map(r => (
+              <SidebarBtn key={r.id} r={r} active={activeReport === r.id} onClick={() => setActiveReport(r.id)} />
             ))}
+          </div>
+          <div className="mt-auto pt-4 border-t border-gray-800/50">
+            <p className="text-gray-600 text-[10px] uppercase tracking-widest mb-1.5 px-2">Tools</p>
+            <div className="space-y-0.5">
+              {toolReports.filter(r => !allowedSections || allowedSections.includes(r.id)).map(r => (
+                <SidebarBtn key={r.id} r={r} active={activeReport === r.id} onClick={() => setActiveReport(r.id)} />
+              ))}
+            </div>
           </div>
         </div>
 
@@ -1051,7 +1591,10 @@ export default function BCReportsPage() {
             <p className="text-gray-600 text-xs">Company: Vectis</p>
           </div>
           <button
-            onClick={() => setRefreshKey((k) => k + 1)}
+            onClick={async () => {
+              await fetch("/api/bc/cache-bust", { method: "POST" }).catch(() => {})
+              setRefreshKey((k) => k + 1)
+            }}
             className="w-full bg-red-700 hover:bg-red-600 text-white text-xs font-bold py-1.5 px-2 rounded transition-colors"
           >
             ■ REFRESH ALL DATA

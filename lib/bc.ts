@@ -129,3 +129,66 @@ export async function bcFetchAll(
   }
   return all
 }
+
+async function bcPageJson(
+  token: string,
+  url: string,
+  retries = 3
+): Promise<any> {
+  let lastErr: Error | null = null
+  for (let attempt = 0; attempt < retries; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt))
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: "application/json", "OData-MaxVersion": "4.0", Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (!res.ok) throw new Error(`BC API ${res.status}: ${await res.text()}`)
+      return await res.json()
+    } catch (e: any) {
+      lastErr = e
+    }
+  }
+  throw lastErr
+}
+
+export async function bcFetchAllWithProgress(
+  token: string,
+  endpoint: string,
+  filter: string | undefined,
+  select: string | undefined,
+  batchSize: number,
+  onProgress: (done: number, total: number) => void
+): Promise<any[]> {
+  const all: any[] = []
+  let skip = 0
+  let knownTotal = 0
+  let firstPage = true
+
+  while (true) {
+    const params: Record<string, string | number> = { $top: batchSize, $skip: skip }
+    if (filter) params.$filter = filter
+    if (select) params.$select = select
+    if (firstPage) params["$count"] = "true"
+
+    const base = baseUrl() + endpoint
+    const qs = Object.entries(params)
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+      .join("&")
+
+    const json = await bcPageJson(token, `${base}?${qs}`)
+    const rows: any[] = json.value ?? []
+
+    if (firstPage) {
+      knownTotal = json["@odata.count"] ?? 0
+      firstPage = false
+    }
+
+    all.push(...rows)
+    onProgress(all.length, Math.max(knownTotal, all.length))
+
+    if (rows.length < batchSize) break
+    skip += batchSize
+  }
+  return all
+}
