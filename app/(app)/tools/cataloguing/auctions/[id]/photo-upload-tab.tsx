@@ -59,27 +59,41 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     const zxing = new MultiFormatReader()
     zxing.setHints(hints)
 
+    // Load a File into an HTMLImageElement (respects EXIF rotation)
+    function loadImgElement(file: File): Promise<HTMLImageElement> {
+      return new Promise((res, rej) => {
+        const url = URL.createObjectURL(file)
+        const el  = new Image()
+        el.onload  = () => { URL.revokeObjectURL(url); res(el) }
+        el.onerror = () => { URL.revokeObjectURL(url); rej(new Error("load failed")) }
+        el.src = url
+      })
+    }
+
     async function decodeBarcode(file: File): Promise<string | null> {
       try {
-        const img = await createImageBitmap(file)
+        // Load via <img> so EXIF rotation is applied before scanning
+        const imgEl = await loadImgElement(file)
 
-        // Native BarcodeDetector — uses Chrome's built-in image analysis
+        // Native BarcodeDetector — pass the img element directly at full resolution
         if (nativeDetector) {
           try {
-            const results = await nativeDetector.detect(img)
+            const results = await nativeDetector.detect(imgEl)
             if (results.length > 0) return results[0].rawValue as string
           } catch {}
         }
 
-        // ZXing fallback — try at multiple scales to maximise detection rate
+        // ZXing fallback — draw to canvas and try at multiple scales
+        const naturalW = imgEl.naturalWidth
+        const naturalH = imgEl.naturalHeight
         for (const maxDim of [2000, 1200, 3000]) {
-          const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
-          const w = Math.round(img.width * scale)
-          const h = Math.round(img.height * scale)
+          const scale = Math.min(1, maxDim / Math.max(naturalW, naturalH))
+          const w = Math.round(naturalW * scale)
+          const h = Math.round(naturalH * scale)
           const canvas = document.createElement("canvas")
           canvas.width = w
           canvas.height = h
-          canvas.getContext("2d")!.drawImage(img, 0, 0, w, h)
+          canvas.getContext("2d")!.drawImage(imgEl, 0, 0, w, h)
           try {
             const luminance = new HTMLCanvasElementLuminanceSource(canvas)
             const bitmap = new BinaryBitmap(new HybridBinarizer(luminance))
