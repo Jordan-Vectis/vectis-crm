@@ -6,7 +6,7 @@ import { PRESETS } from "@/lib/auction-ai-presets"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "instructions"
+type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "instructions" | "kpcheck"
 
 type ChatMessage = {
   role: "user" | "model"
@@ -1325,6 +1325,256 @@ function InstructionsTab() {
   )
 }
 
+// ─── Key Points Check Tab ────────────────────────────────────────────────────
+
+type KPLot = {
+  label: string
+  keyPoints: string
+  description: string
+  revised?: string
+  changed?: boolean
+  status?: "idle" | "checking" | "ok" | "fixed" | "error"
+}
+
+function KeyPointsCheckTab({ model }: { model: string }) {
+  const [code,         setCode]         = useState("")
+  const [loading,      setLoading]      = useState(false)
+  const [error,        setError]        = useState<string | null>(null)
+  const [lots,         setLots]         = useState<KPLot[]>([])
+  const [checking,     setChecking]     = useState(false)
+  const [progress,     setProgress]     = useState<{ done: number; total: number } | null>(null)
+  const [expandedLot,  setExpandedLot]  = useState<string | null>(null)
+
+  async function handleLoad() {
+    if (!code.trim()) return
+    setLoading(true); setError(null); setLots([])
+    try {
+      // 1. Load catalogue lots (key points)
+      const catRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(code.trim().toUpperCase())}`)
+      if (!catRes.ok) throw new Error((await catRes.json()).error ?? "Catalogue not found")
+      const catData = await catRes.json()
+
+      // 2. Load matching saved run (AI descriptions) — find by code
+      const runsRes = await fetch("/api/auction-ai/runs")
+      const allRuns: { id: string; code: string }[] = runsRes.ok ? await runsRes.json() : []
+      const matchingRun = allRuns.find(r => r.code.toUpperCase() === code.trim().toUpperCase())
+      let runLots: { lot: string; description: string }[] = []
+      if (matchingRun) {
+        const runRes = await fetch(`/api/auction-ai/runs/${matchingRun.id}`)
+        if (runRes.ok) {
+          const runData = await runRes.json()
+          runLots = runData.lots ?? []
+        }
+      }
+
+      // 3. Match by lot number
+      const descMap = new Map(runLots.map(r => [r.lot.toString(), r.description]))
+      const merged: KPLot[] = catData.lots
+        .filter((l: any) => l.keyPoints?.trim())
+        .map((l: any) => ({
+          label:       l.lotNumber,
+          keyPoints:   l.keyPoints,
+          description: descMap.get(l.lotNumber) ?? descMap.get(l.barcode ?? "") ?? "",
+          status:      "idle" as const,
+        }))
+        .filter((l: KPLot) => l.description)
+
+      if (merged.length === 0 && catData.lots.length > 0) {
+        throw new Error(
+          matchingRun
+            ? "Lots loaded but no AI descriptions matched lot numbers. Run the Batch tab first."
+            : `No saved AI run found for "${code.toUpperCase()}". Run the Batch tab first, then come back.`
+        )
+      }
+
+      setLots(merged)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function runCheck() {
+    const toCheck = lots.filter(l => l.keyPoints && l.description)
+    if (!toCheck.length || checking) return
+    setChecking(true)
+    setProgress({ done: 0, total: toCheck.length })
+    setLots(prev => prev.map(l => ({ ...l, status: "checking", revised: undefined, changed: undefined })))
+
+    try {
+      const res = await fetch("/api/auction-ai/key-points-check", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ lots: toCheck.map(l => ({ label: l.label, keyPoints: l.keyPoints, description: l.description })), model }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed")
+
+      const reader  = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n"); buffer = lines.pop()!
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "progress") {
+            setProgress({ done: msg.index, total: toCheck.length })
+          } else if (msg.type === "result") {
+            setLots(prev => prev.map(l =>
+              l.label === msg.label
+                ? { ...l, revised: msg.revised, changed: msg.changed, status: msg.changed ? "fixed" : "ok" }
+                : l
+            ))
+            setProgress({ done: msg.index + 1, total: toCheck.length })
+          } else if (msg.type === "error") {
+            setLots(prev => prev.map(l => l.label === msg.label ? { ...l, status: "error" } : l))
+          }
+        }
+      }
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setChecking(false)
+      setProgress(null)
+    }
+  }
+
+  function copyAll() {
+    const text = lots
+      .filter(l => l.description)
+      .map(l => `Lot ${l.label}:\n${l.revised ?? l.description}`)
+      .join("\n\n---\n\n")
+    navigator.clipboard.writeText(text)
+  }
+
+  const checkedCount = lots.filter(l => l.status === "ok" || l.status === "fixed").length
+  const fixedCount   = lots.filter(l => l.status === "fixed").length
+  const inp = "w-full bg-[#1C1C1E] border border-gray-700 rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#C8A96E]"
+
+  return (
+    <div className="space-y-5 max-w-5xl">
+      <div>
+        <h2 className="text-xl font-semibold text-white mb-1">Key Points Checker</h2>
+        <p className="text-sm text-gray-400">
+          Loads your cataloguer key points alongside the AI-generated descriptions and runs a second AI pass to
+          verify every key point is included — fixing any that are missing.
+        </p>
+      </div>
+
+      {/* Load */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-3">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">Auction code</p>
+        <div className="flex gap-2">
+          <input
+            value={code}
+            onChange={e => setCode(e.target.value.toUpperCase())}
+            onKeyDown={e => e.key === "Enter" && handleLoad()}
+            placeholder="e.g. F051"
+            className={inp}
+          />
+          <button onClick={handleLoad} disabled={!code.trim() || loading}
+            className="bg-[#C8A96E] hover:bg-[#b8944f] text-black text-sm font-semibold px-5 py-2 rounded disabled:opacity-40 transition-colors whitespace-nowrap">
+            {loading ? "Loading…" : "Load"}
+          </button>
+        </div>
+        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {lots.length > 0 && (
+          <p className="text-xs text-[#C8A96E]">
+            ✓ {lots.length} lots loaded with key points and AI descriptions
+          </p>
+        )}
+      </div>
+
+      {/* Results table */}
+      {lots.length > 0 && (
+        <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl overflow-hidden">
+          {/* Table header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 gap-3">
+            <div className="flex items-center gap-3">
+              <p className="text-sm font-medium text-white">{lots.length} lots</p>
+              {checkedCount > 0 && (
+                <span className="text-xs text-gray-400">
+                  {checkedCount}/{lots.length} checked · <span className={fixedCount > 0 ? "text-[#C8A96E]" : "text-green-400"}>{fixedCount} fixed</span>
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {checkedCount > 0 && (
+                <button onClick={copyAll}
+                  className="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded transition-colors">
+                  Copy all descriptions
+                </button>
+              )}
+              <button onClick={runCheck} disabled={checking}
+                className="bg-[#C8A96E] hover:bg-[#b8944f] text-black text-xs font-semibold px-4 py-1.5 rounded disabled:opacity-40 transition-colors whitespace-nowrap">
+                {checking
+                  ? `Checking… ${progress?.done ?? 0}/${progress?.total ?? 0}`
+                  : checkedCount > 0 ? "Re-run Check" : "▶ Run Key Points Check"}
+              </button>
+            </div>
+          </div>
+
+          {/* Lot rows */}
+          <div className="divide-y divide-gray-800 max-h-[65vh] overflow-y-auto">
+            {lots.map(lot => {
+              const isExpanded = expandedLot === lot.label
+              return (
+                <div key={lot.label} className="px-4 py-3">
+                  {/* Row summary */}
+                  <button
+                    onClick={() => setExpandedLot(isExpanded ? null : lot.label)}
+                    className="w-full flex items-center gap-3 text-left"
+                  >
+                    <span className="text-sm font-medium text-white w-14 shrink-0">Lot {lot.label}</span>
+                    <span className="flex-1 text-xs text-gray-500 truncate">{lot.keyPoints.split("\n")[0]}</span>
+                    {lot.status === "idle"     && <span className="text-xs text-gray-600">Not checked</span>}
+                    {lot.status === "checking" && <span className="text-xs text-gray-500 animate-pulse">Checking…</span>}
+                    {lot.status === "ok"       && <span className="text-xs text-green-400">✓ All included</span>}
+                    {lot.status === "fixed"    && <span className="text-xs text-[#C8A96E]">⚑ Fixed</span>}
+                    {lot.status === "error"    && <span className="text-xs text-red-400">Error</span>}
+                    <span className="text-gray-600 text-xs ml-1">{isExpanded ? "▲" : "▼"}</span>
+                  </button>
+
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Key Points</p>
+                        <pre className="text-xs text-gray-300 whitespace-pre-wrap bg-[#1C1C1E] rounded-lg p-3 font-sans leading-relaxed">{lot.keyPoints}</pre>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">
+                          {lot.status === "fixed" ? "Fixed Description" : "AI Description"}
+                        </p>
+                        <pre className={`text-xs whitespace-pre-wrap rounded-lg p-3 font-sans leading-relaxed ${
+                          lot.status === "fixed"
+                            ? "text-[#C8A96E] bg-[#1C1C1E] border border-[#C8A96E]/25"
+                            : "text-gray-300 bg-[#1C1C1E]"
+                        }`}>{lot.revised ?? lot.description}</pre>
+                        {lot.status === "fixed" && (
+                          <button onClick={() => navigator.clipboard.writeText(lot.revised ?? "")}
+                            className="mt-1.5 text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
+                            Copy description
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
@@ -1333,6 +1583,7 @@ const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
   { id: "runs",         label: "Saved Runs",         icon: "🗂" },
   { id: "barcode",      label: "Barcode Sorter",     icon: "▦"  },
   { id: "copier",       label: "Description Copier", icon: "📋" },
+  { id: "kpcheck",      label: "Key Points Check",   icon: "✓"  },
   { id: "instructions", label: "Instructions",       icon: "📝" },
 ]
 
@@ -1415,6 +1666,7 @@ export default function AuctionAIPage() {
         <div className={tab === "runs"         ? "" : "hidden"}><SavedRunsTab /></div>
         <div className={tab === "barcode"      ? "" : "hidden"}><BarcodeTab /></div>
         <div className={tab === "copier"       ? "" : "hidden"}><CopierTab /></div>
+        <div className={tab === "kpcheck"      ? "" : "hidden"}><KeyPointsCheckTab model={model} /></div>
         <div className={tab === "instructions" ? "" : "hidden"}><InstructionsTab /></div>
       </main>
     </div>
