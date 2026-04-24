@@ -59,8 +59,8 @@ const STATUS_STYLES: Record<string, string> = {
 
 const ACCENT = "#2AB4A6"
 
-const inp = "w-full rounded-xl border border-gray-700 bg-[#2C2C2E] px-4 py-3 text-base text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6]"
-const lbl = "block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"
+const inp = "w-full rounded-xl border border-gray-700 bg-[#2C2C2E] px-4 py-3.5 text-base text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#2AB4A6]"
+const lbl = "block text-sm font-semibold uppercase tracking-wider text-gray-400 mb-2"
 
 // ─── Root component ───────────────────────────────────────────────────────────
 
@@ -82,19 +82,19 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
     >
 
       {/* Header bar */}
-      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-[#1C1C1E]">
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-4 border-b border-gray-800 bg-[#1C1C1E]">
         <button
           onClick={() => router.push("/tools/cataloguing/tablet/auctions")}
-          className="text-[#2AB4A6] text-sm font-medium p-2 -ml-2"
+          className="text-[#2AB4A6] text-lg font-medium p-2 -ml-2"
           style={{ touchAction: "manipulation" }}
         >
           ←
         </button>
         <div className="min-w-0 flex-1">
-          <span className="font-mono font-bold text-[#2AB4A6] text-base">{auction.code}</span>
-          <span className="text-gray-400 text-sm ml-2 truncate">{auction.name}</span>
+          <span className="font-mono font-bold text-[#2AB4A6] text-lg">{auction.code}</span>
+          <span className="text-gray-400 text-base ml-2 truncate">{auction.name}</span>
         </div>
-        <span className="text-xs text-gray-500 flex-shrink-0">{lots.length} lots</span>
+        <span className="text-sm text-gray-500 flex-shrink-0">{lots.length} lots</span>
       </div>
 
       {/* Tab bar */}
@@ -108,7 +108,7 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
             key={t.id}
             onClick={() => { setTab(t.id); setEditingLotId(null) }}
             style={{ touchAction: "manipulation" }}
-            className={`flex-1 py-4 text-sm font-semibold border-b-2 transition-colors ${
+            className={`flex-1 py-5 text-base font-semibold border-b-2 transition-colors ${
               tab === t.id
                 ? "border-[#2AB4A6] text-[#2AB4A6]"
                 : "border-transparent text-gray-500"
@@ -241,19 +241,19 @@ function TabletManageLots({ lots, auctionId, onEdit, onDelete }: {
             onClick={() => onEdit(lot.id)}
           >
             <div className="flex items-start gap-3 mb-2">
-              <span className="font-mono font-bold text-[#2AB4A6] text-lg leading-none">
+              <span className="font-mono font-bold text-[#2AB4A6] text-xl leading-none">
                 {lot.lotNumber || "—"}
               </span>
-              <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_STYLES[lot.status] ?? "bg-gray-700 text-gray-300"}`}>
+              <span className={`ml-auto text-sm px-3 py-1 rounded-full font-medium flex-shrink-0 ${STATUS_STYLES[lot.status] ?? "bg-gray-700 text-gray-300"}`}>
                 {lot.status}
               </span>
             </div>
 
-            <p className="text-white font-medium text-sm leading-snug mb-2">
+            <p className="text-white font-medium text-base leading-snug mb-2">
               {lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}
             </p>
 
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-gray-400">
               {lot.barcode && <span className="font-mono">{lot.barcode}</span>}
               {lot.vendor  && <span>Vendor: {lot.vendor}</span>}
               {lot.tote    && <span>Tote: {lot.tote}</span>}
@@ -272,7 +272,7 @@ function TabletManageLots({ lots, auctionId, onEdit, onDelete }: {
               onClick={() => handleDelete(lot)}
               disabled={deleting === lot.id || pending}
               style={{ touchAction: "manipulation" }}
-              className="text-xs text-red-500 hover:text-red-400 py-2 px-3 disabled:opacity-40"
+              className="text-sm text-red-500 hover:text-red-400 py-3 px-4 disabled:opacity-40"
             >
               {deleting === lot.id ? "Deleting…" : "Delete"}
             </button>
@@ -379,7 +379,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
       <button
         onClick={onDone}
         style={{ touchAction: "manipulation" }}
-        className="flex items-center gap-2 text-[#2AB4A6] text-sm font-medium mb-5 p-1 -ml-1"
+        className="flex items-center gap-2 text-[#2AB4A6] text-base font-medium mb-6 p-2 -ml-2"
       >
         ← Back to lots
       </button>
@@ -407,7 +407,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
         </button>
 
         {imageKeys.length > 0 && (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {imageKeys.map((key, i) => (
               <div key={key} className="relative aspect-square">
                 {signedUrls[key] ? (
@@ -418,13 +418,13 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
                   />
                 ) : (
                   <div className="w-full h-full rounded-xl border border-gray-700 bg-[#2C2C2E] flex items-center justify-center">
-                    <span className="text-gray-600 text-xs">Loading…</span>
+                    <span className="text-gray-600 text-sm">Loading…</span>
                   </div>
                 )}
                 <button
                   onClick={() => handlePhotoDelete(key)}
                   style={{ touchAction: "manipulation" }}
-                  className="absolute -top-1.5 -right-1.5 w-7 h-7 bg-red-600 rounded-full text-white text-sm flex items-center justify-center"
+                  className="absolute -top-2 -right-2 w-9 h-9 bg-red-600 rounded-full text-white text-base flex items-center justify-center"
                 >
                   ✕
                 </button>
@@ -565,7 +565,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
             </select>
           </div>
           {condValue && (
-            <p className="text-xs text-[#2AB4A6] mt-1 px-1">Condition: {condValue}</p>
+            <p className="text-sm text-[#2AB4A6] mt-2 px-1">Condition: {condValue}</p>
           )}
         </div>
 
@@ -617,7 +617,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
               type="button"
               onClick={onDone}
               style={{ touchAction: "manipulation" }}
-              className="flex-1 py-3 rounded-xl border border-gray-700 text-gray-300 text-sm font-medium"
+              className="flex-1 py-4 rounded-xl border border-gray-700 text-gray-300 text-base font-medium"
             >
               ← Back to lots
             </button>
