@@ -144,6 +144,7 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
               auctionId={auction.id}
               auction={auction}
               onCreated={() => router.refresh()}
+              tablet
             />
           </div>
         </div>
@@ -155,6 +156,7 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
               auctionId={auction.id}
               auctionCode={auction.code}
               onCreated={() => router.refresh()}
+              tablet
             />
           </div>
         )}
