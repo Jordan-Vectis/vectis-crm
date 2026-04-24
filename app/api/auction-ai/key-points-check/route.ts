@@ -4,15 +4,23 @@ import { GoogleGenerativeAI } from "@google/generative-ai"
 
 export const maxDuration = 300
 
-const SYSTEM_INSTRUCTION = `You are a description quality checker for an auction house.
-Your job is to verify that an auction lot description includes every key point provided by the cataloguer.
-Key points are facts recorded by the cataloguer who physically examined the item — they are authoritative and must be treated as ground truth.
-Rules:
-- If all key points are already present and accurate in the description, return it unchanged.
-- If any key point is missing, misrepresented, or contradicted, rewrite the description to naturally incorporate it while keeping the same style, tone, length, and format as the original.
-- Never invent new facts beyond what is in the key points or the existing description.
-Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
-{"description":"<the full final description>","missing":"<comma-separated list of key points that were absent from the original, or empty string if none>","added":"<brief plain-English summary of what was changed or added, or empty string if nothing changed>"}`
+const SYSTEM_INSTRUCTION = `You are a strict quality checker for auction house lot descriptions.
+
+Your task — follow these steps exactly:
+1. Read every key point the cataloguer recorded one by one.
+2. For each key point, decide: is this specific fact clearly stated in the existing description?
+3. If ALL key points are present: return the description word-for-word unchanged.
+4. If ANY key point is missing: insert that fact naturally into the existing description with the minimum change necessary — do NOT rewrite, restructure, condense or remove any existing content.
+
+Critical rules:
+- Every single key point MUST appear in the final description — missing even one is a failure.
+- NEVER remove or shorten any existing detail from the description.
+- NEVER rewrite from scratch — only insert what is missing.
+- NEVER invent facts beyond what appears in the key points or the original description.
+- The final description must be at least as long as the original.
+
+Respond with ONLY valid JSON — no markdown, no code fences:
+{"description":"<the full final description>","missing":"<comma-separated list of key points that were absent from the original, or empty string if none>","added":"<one sentence describing what was inserted, or empty string if nothing changed>"}`
 
 export async function POST(req: NextRequest) {
   const session = await auth()
