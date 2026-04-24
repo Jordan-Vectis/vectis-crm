@@ -137,7 +137,7 @@ export default function PhotoOnlyTab({ auctionId, auctionCode, onCreated, tablet
       </div>
 
       {/* Phase indicator */}
-      <div className={`flex items-center gap-1 mb-6 ${tablet ? "text-sm" : "text-xs"}`}
+      <div className={`flex items-center gap-1 mb-6 ${tablet ? "text-sm" : "text-xs"}`}>
         {[["scan", "1. Barcode"], ["photos", "2. Photos"]].map(([p, label]) => (
           <div key={p} className={`flex items-center gap-1 ${phase === p ? "text-[#2AB4A6] font-semibold" : phase === "saving" || (p === "scan" && phase === "photos") ? "text-[#2AB4A6]/50" : "text-gray-600"}`}>
             <span>{label}</span>
