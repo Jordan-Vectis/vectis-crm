@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     where: { code },
     include: {
       lots: {
-        select: { lotNumber: true, title: true, keyPoints: true, description: true, barcode: true },
+        select: { id: true, lotNumber: true, title: true, keyPoints: true, description: true, barcode: true },
         orderBy: { lotNumber: "asc" },
       },
     },
@@ -29,11 +29,13 @@ export async function GET(req: NextRequest) {
   })
 
   return NextResponse.json({
-    code: auction.code,
-    lots: auction.lots.map(l => ({
+    auctionId: auction.id,
+    code:      auction.code,
+    lots:      auction.lots.map(l => ({
+      id:        l.id,
       lotNumber: l.lotNumber,
       title:     l.title,
-      keyPoints: l.keyPoints ?? l.description ?? "", // keyPoints field, fallback to description for legacy lots
+      keyPoints: l.keyPoints ?? l.description ?? "",
       barcode:   l.barcode ?? null,
     })),
   })

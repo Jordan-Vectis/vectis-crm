@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { PRESETS } from "@/lib/auction-ai-presets"
+import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1376,20 +1377,24 @@ function HowItWorksPanel() {
 }
 
 type KPLot = {
+  id: string
   label: string
   keyPoints: string
   description: string
   revised?: string
   changed?: boolean
   status?: "idle" | "checking" | "ok" | "fixed" | "error"
+  accepted?: boolean
 }
 
 function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
   const [code,         setCode]         = useState("")
+  const [auctionId,    setAuctionId]    = useState<string | null>(null)
   const [loading,      setLoading]      = useState(false)
   const [error,        setError]        = useState<string | null>(null)
   const [lots,         setLots]         = useState<KPLot[]>([])
   const [checking,     setChecking]     = useState(false)
+  const [accepting,    setAccepting]    = useState(false)
   const [progress,     setProgress]     = useState<{ done: number; total: number; current?: string } | null>(null)
   const [expandedLot,  setExpandedLot]  = useState<string | null>(null)
   const [localModel,   setLocalModel]   = useState(globalModel)
@@ -1457,14 +1462,41 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
     addLog("▶ Resumed")
   }
 
+  async function acceptLot(lot: KPLot) {
+    if (!auctionId || !lot.revised) return
+    setLots(prev => prev.map(l => l.id === lot.id ? { ...l, accepted: true } : l))
+    try {
+      await applyAiDescriptionOne(auctionId, {
+        id:           lot.id,
+        description:  lot.revised,
+        estimateLow:  null,
+        estimateHigh: null,
+      })
+    } catch (e: any) {
+      setLots(prev => prev.map(l => l.id === lot.id ? { ...l, accepted: false } : l))
+      setError(`Failed to save Lot ${lot.label}: ${e.message}`)
+    }
+  }
+
+  async function acceptAll() {
+    const toAccept = lots.filter(l => l.status === "fixed" && !l.accepted && l.revised)
+    if (!auctionId || toAccept.length === 0) return
+    setAccepting(true)
+    for (const lot of toAccept) {
+      await acceptLot(lot)
+    }
+    setAccepting(false)
+  }
+
   async function handleLoad() {
     if (!code.trim()) return
-    setLoading(true); setError(null); setLots([])
+    setLoading(true); setError(null); setLots([]); setAuctionId(null)
     try {
       // 1. Load catalogue lots (key points)
       const catRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(code.trim().toUpperCase())}`)
       if (!catRes.ok) throw new Error((await catRes.json()).error ?? "Catalogue not found")
       const catData = await catRes.json()
+      setAuctionId(catData.auctionId ?? null)
 
       // 2. Load matching saved run (AI descriptions) — find by code
       const runsRes = await fetch("/api/auction-ai/runs")
@@ -1484,6 +1516,7 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
       const merged: KPLot[] = catData.lots
         .filter((l: any) => l.keyPoints?.trim())
         .map((l: any) => ({
+          id:          l.id,
           label:       l.lotNumber,
           keyPoints:   l.keyPoints,
           description: descMap.get(l.lotNumber) ?? descMap.get(l.barcode ?? "") ?? "",
@@ -1738,16 +1771,31 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
               </div>
               {fixedCount > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider">Lots that were fixed</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Lots that were fixed</p>
+                    <button onClick={acceptAll} disabled={accepting || lots.filter(l => l.status === "fixed" && !l.accepted).length === 0}
+                      className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] disabled:opacity-40 text-black font-semibold px-3 py-1 rounded transition-colors">
+                      {accepting ? "Saving…" : `Accept all ${lots.filter(l => l.status === "fixed" && !l.accepted).length} fixes`}
+                    </button>
+                  </div>
                   {lots.filter(l => l.status === "fixed").map(l => (
-                    <div key={l.label} className="bg-[#2C2C2E] rounded-lg overflow-hidden border border-[#C8A96E]/20">
+                    <div key={l.label} className={`rounded-lg overflow-hidden border ${l.accepted ? "border-green-700/50 bg-green-900/10" : "border-[#C8A96E]/20 bg-[#2C2C2E]"}`}>
                       {/* Lot header */}
                       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
                         <span className="text-xs font-mono font-bold text-[#C8A96E]">Lot {l.label}</span>
-                        <button onClick={() => navigator.clipboard.writeText(l.revised ?? "")}
-                          className="text-[10px] text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-0.5 rounded transition-colors">
-                          Copy fixed description
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {l.accepted
+                            ? <span className="text-xs text-green-400 font-medium">✓ Saved to catalogue</span>
+                            : <button onClick={() => acceptLot(l)}
+                                className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] text-black font-semibold px-3 py-0.5 rounded transition-colors">
+                                Accept & save
+                              </button>
+                          }
+                          <button onClick={() => navigator.clipboard.writeText(l.revised ?? "")}
+                            className="text-[10px] text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-0.5 rounded transition-colors">
+                            Copy
+                          </button>
+                        </div>
                       </div>
                       {/* Three columns: key points | before | after */}
                       <div className="grid grid-cols-3 divide-x divide-gray-700">
