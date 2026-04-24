@@ -1332,10 +1332,10 @@ const KP_SYSTEM_PROMPT = `You are a description quality checker for an auction h
 Your job is to verify that an auction lot description includes every key point provided by the cataloguer.
 Key points are facts recorded by the cataloguer who physically examined the item — they are authoritative and must be treated as ground truth.
 Rules:
-- If all key points are already present and accurate in the description, return the description unchanged.
+- If all key points are already present and accurate in the description, return it unchanged.
 - If any key point is missing, misrepresented, or contradicted, rewrite the description to naturally incorporate it while keeping the same style, tone, length, and format as the original.
 - Never invent new facts beyond what is in the key points or the existing description.
-- Respond with ONLY the final description text — no commentary, no preamble, no explanation.`
+Responds as JSON: { "description": "...", "missing": "key points that were absent", "added": "summary of what changed" }`
 
 function HowItWorksPanel() {
   const [open,        setOpen]        = useState(false)
@@ -1383,6 +1383,8 @@ type KPLot = {
   description: string
   revised?: string
   changed?: boolean
+  missing?: string
+  added?: string
   status?: "idle" | "checking" | "ok" | "fixed" | "error"
   accepted?: boolean
 }
@@ -1594,10 +1596,10 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
           } else if (msg.type === "result") {
             const ms = lotStartTimes[msg.label] ? Date.now() - lotStartTimes[msg.label] : 0
             const outcome = msg.changed ? "⚑ fixed" : "✓ all included"
-            addLog(`  ${outcome} — Lot ${msg.label} (${(ms / 1000).toFixed(1)}s)`)
+            addLog(`  ${outcome} — Lot ${msg.label} (${(ms / 1000).toFixed(1)}s)${msg.missing ? ` · missing: ${msg.missing}` : ""}`)
             setLots(prev => prev.map(l =>
               l.label === msg.label
-                ? { ...l, revised: msg.revised, changed: msg.changed, status: msg.changed ? "fixed" : "ok" }
+                ? { ...l, revised: msg.revised, changed: msg.changed, missing: msg.missing, added: msg.added, status: msg.changed ? "fixed" : "ok" }
                 : l
             ))
             setProgress({ done: msg.index + 1, total: toCheck.length })
@@ -1797,6 +1799,24 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
                           </button>
                         </div>
                       </div>
+                      {/* Missing / added summary */}
+                      {(l.missing || l.added) && (
+                        <div className="flex gap-4 px-3 py-2 border-b border-gray-700 bg-[#1C1C1E]">
+                          {l.missing && (
+                            <div className="flex-1">
+                              <p className="text-[10px] text-red-400 uppercase tracking-wider mb-0.5">Was missing</p>
+                              <p className="text-xs text-red-300">{l.missing}</p>
+                            </div>
+                          )}
+                          {l.added && (
+                            <div className="flex-1">
+                              <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-0.5">What changed</p>
+                              <p className="text-xs text-[#C8A96E]">{l.added}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Three columns: key points | before | after */}
                       <div className="grid grid-cols-3 divide-x divide-gray-700">
                         <div className="px-3 py-2">

@@ -8,10 +8,11 @@ const SYSTEM_INSTRUCTION = `You are a description quality checker for an auction
 Your job is to verify that an auction lot description includes every key point provided by the cataloguer.
 Key points are facts recorded by the cataloguer who physically examined the item — they are authoritative and must be treated as ground truth.
 Rules:
-- If all key points are already present and accurate in the description, return the description unchanged.
+- If all key points are already present and accurate in the description, return it unchanged.
 - If any key point is missing, misrepresented, or contradicted, rewrite the description to naturally incorporate it while keeping the same style, tone, length, and format as the original.
 - Never invent new facts beyond what is in the key points or the existing description.
-- Respond with ONLY the final description text — no commentary, no preamble, no explanation.`
+Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
+{"description":"<the full final description>","missing":"<comma-separated list of key points that were absent from the original, or empty string if none>","added":"<brief plain-English summary of what was changed or added, or empty string if nothing changed>"}`
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -56,10 +57,22 @@ export async function POST(req: NextRequest) {
               `Current description:\n${lot.description}`
 
             const result = await ai.generateContent(prompt)
-            const revised = result.response.text().trim()
+            const raw = result.response.text().trim().replace(/^```json\s*/i, "").replace(/```$/,"")
+            let revised = lot.description.trim()
+            let missing  = ""
+            let added    = ""
+            try {
+              const parsed = JSON.parse(raw)
+              revised = parsed.description?.trim() || revised
+              missing = parsed.missing?.trim()  || ""
+              added   = parsed.added?.trim()    || ""
+            } catch {
+              // Gemini didn't return valid JSON — treat whole response as the description
+              revised = raw
+            }
             const changed = revised !== lot.description.trim()
 
-            send({ type: "result", index: i, label: lot.label, revised, changed })
+            send({ type: "result", index: i, label: lot.label, revised, changed, missing, added })
             success = true
           } catch (e: any) {
             const msg: string = e.message ?? ""
