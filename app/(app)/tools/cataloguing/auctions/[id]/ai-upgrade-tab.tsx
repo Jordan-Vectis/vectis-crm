@@ -196,7 +196,15 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
             if (ctx.trim()) fd.set(`lot_${lot.lotNumber}_context`, ctx.trim())
           }
 
-          const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
+          // Abort after 3 minutes so the retry loop can kick in if the server hangs
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), 3 * 60 * 1000)
+          let res: Response
+          try {
+            res = await fetch("/api/auction-ai/batch", { method: "POST", body: fd, signal: controller.signal })
+          } finally {
+            clearTimeout(timer)
+          }
           // Guard against non-JSON responses (e.g. "first byte timeout" from Railway)
           const text = await res.text()
           let json: any
