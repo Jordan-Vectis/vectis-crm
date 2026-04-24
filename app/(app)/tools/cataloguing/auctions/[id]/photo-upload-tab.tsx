@@ -46,8 +46,8 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     setScanProgress({ done: 0, total: files.length })
 
     // Create ZXing reader once for the whole batch — avoids per-image overhead
-    const { MultiFormatReader, BinaryBitmap, HybridBinarizer, RGBLuminanceSource, DecodeHintType } =
-      await import("@zxing/library")
+    const [{ HTMLCanvasElementLuminanceSource }, { MultiFormatReader, BinaryBitmap, HybridBinarizer, DecodeHintType }] =
+      await Promise.all([import("@zxing/browser"), import("@zxing/library")])
     const hints = new Map()
     hints.set(DecodeHintType.TRY_HARDER, true)
     const zxing = new MultiFormatReader()
@@ -67,18 +67,12 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
         const canvas = document.createElement("canvas")
         canvas.width = w
         canvas.height = h
-        const ctx = canvas.getContext("2d")!
-        ctx.drawImage(img, 0, 0, w, h)
-        const { data } = ctx.getImageData(0, 0, w, h)
+        canvas.getContext("2d")!.drawImage(img, 0, 0, w, h)
 
-        // Build ARGB Int32Array for RGBLuminanceSource
-        const argb = new Int32Array(w * h)
-        for (let i = 0; i < w * h; i++) {
-          argb[i] = (data[i * 4 + 3] << 24) | (data[i * 4] << 16) | (data[i * 4 + 1] << 8) | data[i * 4 + 2]
-        }
-
-        const bitmap = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(argb, w, h)))
-        return zxing.decode(bitmap).getText()
+        // HTMLCanvasElementLuminanceSource handles RGBA→grayscale conversion correctly
+        const luminance = new HTMLCanvasElementLuminanceSource(canvas)
+        const bitmap = new BinaryBitmap(new HybridBinarizer(luminance))
+        return zxing.decodeWithState(bitmap).getText()
       } catch {
         return null
       }
