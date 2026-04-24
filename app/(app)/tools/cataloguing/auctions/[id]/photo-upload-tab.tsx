@@ -45,7 +45,13 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     setPhase("scanning")
     setScanProgress({ done: 0, total: files.length })
 
-    // Create ZXing reader once for the whole batch — avoids per-image overhead
+    // Prefer native BarcodeDetector (Chrome/Edge) — far more reliable for real photos.
+    // Fall back to ZXing for browsers that don't support it.
+    const nativeDetector = "BarcodeDetector" in window
+      ? new (window as any).BarcodeDetector()
+      : null
+
+    // ZXing fallback — load once for the batch
     const [{ HTMLCanvasElementLuminanceSource }, { MultiFormatReader, BinaryBitmap, HybridBinarizer, DecodeHintType }] =
       await Promise.all([import("@zxing/browser"), import("@zxing/library")])
     const hints = new Map()
@@ -57,22 +63,30 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
       try {
         const img = await createImageBitmap(file)
 
-        // Scale so the longest dimension is ≤2000px — keeps barcodes legible
-        // even in tall portrait phone photos
-        const MAX_DIM = 2000
-        const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height))
-        const w = Math.round(img.width * scale)
-        const h = Math.round(img.height * scale)
+        // Native BarcodeDetector — uses Chrome's built-in image analysis
+        if (nativeDetector) {
+          try {
+            const results = await nativeDetector.detect(img)
+            if (results.length > 0) return results[0].rawValue as string
+          } catch {}
+        }
 
-        const canvas = document.createElement("canvas")
-        canvas.width = w
-        canvas.height = h
-        canvas.getContext("2d")!.drawImage(img, 0, 0, w, h)
-
-        // HTMLCanvasElementLuminanceSource handles RGBA→grayscale conversion correctly
-        const luminance = new HTMLCanvasElementLuminanceSource(canvas)
-        const bitmap = new BinaryBitmap(new HybridBinarizer(luminance))
-        return zxing.decodeWithState(bitmap).getText()
+        // ZXing fallback — try at multiple scales to maximise detection rate
+        for (const maxDim of [2000, 1200, 3000]) {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+          const w = Math.round(img.width * scale)
+          const h = Math.round(img.height * scale)
+          const canvas = document.createElement("canvas")
+          canvas.width = w
+          canvas.height = h
+          canvas.getContext("2d")!.drawImage(img, 0, 0, w, h)
+          try {
+            const luminance = new HTMLCanvasElementLuminanceSource(canvas)
+            const bitmap = new BinaryBitmap(new HybridBinarizer(luminance))
+            return zxing.decodeWithState(bitmap).getText()
+          } catch {}
+        }
+        return null
       } catch {
         return null
       }
