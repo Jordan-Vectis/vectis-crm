@@ -1473,16 +1473,52 @@ function ShippingTab() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const reports: { id: Report; label: string; color: string; dot: string }[] = [
-  { id: "cataloguing", label: "Cataloguing",   color: "text-red-400",    dot: "bg-red-500"    },
-  { id: "packing",     label: "Packing",       color: "text-orange-400", dot: "bg-orange-500" },
-  { id: "warehouse",   label: "Warehouse",     color: "text-green-400",  dot: "bg-green-500"  },
-  { id: "shipping",    label: "Shipping",      color: "text-cyan-400",   dot: "bg-cyan-500"   },
+type NavItem = { id: Report; label: string; activeColor: string; icon: string }
+
+const reports: NavItem[] = [
+  {
+    id: "cataloguing", label: "Cataloguing", activeColor: "text-red-400",
+    icon: "M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z",
+  },
+  {
+    id: "packing", label: "Packing", activeColor: "text-orange-400",
+    icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+  },
+  {
+    id: "warehouse", label: "Warehouse", activeColor: "text-green-400",
+    icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+  },
+  {
+    id: "shipping", label: "Shipping", activeColor: "text-cyan-400",
+    icon: "M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0zM13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0",
+  },
 ]
-const toolReports: { id: Report; label: string; color: string; dot: string }[] = [
-  { id: "location",    label: "Loc. History",  color: "text-blue-400",   dot: "bg-blue-500"   },
-  { id: "explorer",    label: "Data Explorer", color: "text-purple-400", dot: "bg-purple-500" },
+const toolReports: NavItem[] = [
+  {
+    id: "location", label: "Location History", activeColor: "text-blue-400",
+    icon: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z",
+  },
+  {
+    id: "explorer", label: "Data Explorer", activeColor: "text-purple-400",
+    icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
+  },
 ]
+
+function SidebarBtn({ r, active, onClick }: { r: NavItem; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all ${
+        active ? "bg-white/8 text-white" : "text-gray-500 hover:text-gray-200 hover:bg-white/5"
+      }`}
+    >
+      <svg className={`w-4 h-4 flex-shrink-0 ${active ? r.activeColor : "text-gray-600"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d={r.icon} />
+      </svg>
+      <span className={`text-sm ${active ? "font-medium text-white" : "font-normal"}`}>{r.label}</span>
+    </button>
+  )
+}
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -1531,42 +1567,18 @@ export default function BCReportsPage() {
         </div>
 
         {/* Reports nav */}
-        <div className="flex-1 px-3 py-4 flex flex-col gap-4">
-          <div>
-            <p className="text-gray-600 text-xs uppercase tracking-wider mb-2 px-1">Reports</p>
-            <div className="space-y-0.5">
-              {reports.filter(r => !allowedSections || allowedSections.includes(r.id)).map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => setActiveReport(r.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-2 rounded text-sm font-medium transition-colors text-left ${
-                    activeReport === r.id
-                      ? "bg-gray-800 text-white"
-                      : "text-gray-400 hover:text-white hover:bg-gray-800/50"
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${r.dot}`} />
-                  <span className={activeReport === r.id ? "text-white" : r.color}>{r.label.toUpperCase()}</span>
-                </button>
-              ))}
-            </div>
+        <div className="flex-1 px-2 py-4 flex flex-col">
+          <p className="text-gray-600 text-[10px] uppercase tracking-widest mb-1.5 px-2">Reports</p>
+          <div className="space-y-0.5">
+            {reports.filter(r => !allowedSections || allowedSections.includes(r.id)).map(r => (
+              <SidebarBtn key={r.id} r={r} active={activeReport === r.id} onClick={() => setActiveReport(r.id)} />
+            ))}
           </div>
-          <div className="mt-auto pt-4 border-t border-gray-800/60">
-            <p className="text-gray-600 text-xs uppercase tracking-wider mb-2 px-1">Tools</p>
+          <div className="mt-auto pt-4 border-t border-gray-800/50">
+            <p className="text-gray-600 text-[10px] uppercase tracking-widest mb-1.5 px-2">Tools</p>
             <div className="space-y-0.5">
-              {toolReports.filter(r => !allowedSections || allowedSections.includes(r.id)).map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => setActiveReport(r.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-2 rounded text-sm font-medium transition-colors text-left ${
-                    activeReport === r.id
-                      ? "bg-gray-800 text-white"
-                      : "text-gray-400 hover:text-white hover:bg-gray-800/50"
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${r.dot}`} />
-                  <span className={activeReport === r.id ? "text-white" : r.color}>{r.label.toUpperCase()}</span>
-                </button>
+              {toolReports.filter(r => !allowedSections || allowedSections.includes(r.id)).map(r => (
+                <SidebarBtn key={r.id} r={r} active={activeReport === r.id} onClick={() => setActiveReport(r.id)} />
               ))}
             </div>
           </div>
