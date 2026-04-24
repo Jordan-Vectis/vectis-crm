@@ -24,6 +24,11 @@ export default async function TabletAuctionDetailPage({
 
   if (!auction) notFound()
 
+  auction.lots.sort((a, b) => {
+    const na = parseInt(a.lotNumber), nb = parseInt(b.lotNumber)
+    return (!isNaN(na) && !isNaN(nb)) ? na - nb : a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+  })
+
   return (
     <TabletTabs
       auction={{

@@ -203,6 +203,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         {tab === "ai-upgrade" && (
           <AiUpgradeTab
             auctionId={auction.id}
+            auctionCode={auction.code}
             lots={lots}
             onDone={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)}
           />

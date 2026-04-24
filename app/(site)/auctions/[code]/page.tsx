@@ -54,6 +54,11 @@ export default async function AuctionDetailPage({
 
   if (!auction) notFound()
 
+  auction.lots.sort((a, b) => {
+    const na = parseInt(a.lotNumber), nb = parseInt(b.lotNumber)
+    return (!isNaN(na) && !isNaN(nb)) ? na - nb : a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+  })
+
   // Dedupe categories
   const categories = [...new Set(auction.lots.map(l => l.category).filter(Boolean))] as string[]
 

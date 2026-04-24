@@ -33,9 +33,8 @@ export async function POST(req: NextRequest) {
     systemInstruction: systemInstruction || undefined,
   })
 
-  const MAX_BACKOFF_MS = 60_000
-
   // Retries forever on rate-limit / service errors — only throws on real failures
+  // Uncapped exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s…
   async function generateWithRetry(contents: any[]): Promise<string> {
     let attempt = 0
     while (true) {
@@ -48,7 +47,7 @@ export async function POST(req: NextRequest) {
                             msg.includes("503") || msg.includes("Service Unavailable") ||
                             msg.includes("high demand")
         if (!isRetryable) throw e
-        const backoff = Math.min(MAX_BACKOFF_MS, Math.pow(2, attempt) * 1000) + Math.random() * 1500
+        const backoff = Math.pow(2, attempt) * 1000 + Math.random() * 1500
         await new Promise((r) => setTimeout(r, backoff))
         attempt++
       }

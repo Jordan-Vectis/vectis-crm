@@ -23,6 +23,11 @@ export default async function LiveAuctionPage({
 
   if (!auction) notFound()
 
+  auction.lots.sort((a, b) => {
+    const na = parseInt(a.lotNumber), nb = parseInt(b.lotNumber)
+    return (!isNaN(na) && !isNaN(nb)) ? na - nb : a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+  })
+
   // Customer session + registration check
   const session = await getCustomerSession()
   const isLoggedIn = !!session

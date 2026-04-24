@@ -7,6 +7,7 @@ import { PRESETS } from "@/lib/auction-ai-presets"
 interface Lot {
   id: string
   lotNumber: string
+  barcode: string | null
   title: string
   keyPoints: string
   description: string
@@ -18,6 +19,7 @@ interface Lot {
 
 interface Props {
   auctionId: string
+  auctionCode: string
   lots: Lot[]
   onDone: () => void
 }
@@ -51,7 +53,7 @@ function parseEstimate(est: string): { low: number | null; high: number | null }
 const DEFAULT_MODEL = "gemini-3-flash-preview"
 const PRESET_KEYS   = Object.keys(PRESETS).filter(k => k !== "Custom (paste my own)")
 
-export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
+export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: Props) {
   const [phase,        setPhase]        = useState<Phase>("idle")
   const [preset,       setPreset]       = useState(PRESET_KEYS[0] ?? "")
   const [model,        setModel]        = useState(DEFAULT_MODEL)
@@ -176,58 +178,69 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
 
       const lot    = eligibleLots[i]
       const photos = photoMap[lot.id] ?? []
-      addLog(`Processing ${i + 1}/${runTotal} — Lot ${lot.lotNumber} (${photos.length} photo${photos.length !== 1 ? "s" : ""})`)
+      addLog(`Processing ${i + 1}/${runTotal} — ${lot.barcode || lot.lotNumber} (${photos.length} photo${photos.length !== 1 ? "s" : ""})`)
 
-      try {
-        const fd = new FormData()
-        fd.set("systemInstruction", systemInstruction)
-        fd.set("model", model)
-        photos.forEach((blob, j) => {
-          fd.append(`lot_${lot.lotNumber}_image_${j}`, blob, `photo_${j}.jpg`)
-        })
-        if (sendDesc) {
-          const ctx = contextField === "description" ? lot.description : lot.keyPoints
-          if (ctx.trim()) fd.set(`lot_${lot.lotNumber}_context`, ctx.trim())
+      // Retry loop — keeps trying until success, with uncapped exponential backoff
+      let attempt = 0
+      let succeeded = false
+      while (!succeeded) {
+        try {
+          const fd = new FormData()
+          fd.set("systemInstruction", systemInstruction)
+          fd.set("model", model)
+          photos.forEach((blob, j) => {
+            fd.append(`lot_${lot.lotNumber}_image_${j}`, blob, `photo_${j}.jpg`)
+          })
+          if (sendDesc) {
+            const ctx = contextField === "description" ? lot.description : lot.keyPoints
+            if (ctx.trim()) fd.set(`lot_${lot.lotNumber}_context`, ctx.trim())
+          }
+
+          const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
+          // Guard against non-JSON responses (e.g. "first byte timeout" from Railway)
+          const text = await res.text()
+          let json: any
+          try { json = JSON.parse(text) } catch { throw new Error(text.slice(0, 120)) }
+          if (!res.ok) throw new Error(json.error ?? res.statusText)
+
+          const r = json.results?.[0]
+          if (!r || r.status !== "OK") throw new Error(r?.error ?? "No result")
+
+          const { low, high } = parseEstimate(r.estimate)
+          collected.push({
+            lotId:           lot.id,
+            lotNumber:       lot.lotNumber,
+            oldDescription:  lot.keyPoints,
+            oldEstimateLow:  lot.estimateLow,
+            oldEstimateHigh: lot.estimateHigh,
+            newDescription:  r.description,
+            newEstimateLow:  low,
+            newEstimateHigh: high,
+            newEstimateRaw:  r.estimate,
+            status:          "ok",
+            approved:        true,
+          })
+          // Save to Auction AI runs so it appears in Saved Runs
+          fetch("/api/auction-ai/runs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              code:        auctionCode,
+              preset,
+              lot:         lot.barcode || lot.lotNumber,
+              description: r.description,
+              estimate:    r.estimate ?? "",
+            }),
+          }).catch(() => {})
+          addLog(`✓ ${lot.barcode || lot.lotNumber} — done`)
+          succeeded = true
+        } catch (e: any) {
+          const delayMs = Math.pow(2, attempt) * 5000 + Math.random() * 2000
+          const delaySec = Math.round(delayMs / 1000)
+          addLog(`⚠ ${lot.barcode || lot.lotNumber} — ${e.message} — retrying in ${delaySec}s (attempt ${attempt + 1})`)
+          await new Promise(r => setTimeout(r, delayMs))
+          attempt++
         }
-
-        const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.error ?? res.statusText)
-
-        const r = json.results?.[0]
-        if (!r || r.status !== "OK") throw new Error(r?.error ?? "No result")
-
-        const { low, high } = parseEstimate(r.estimate)
-        collected.push({
-          lotId:           lot.id,
-          lotNumber:       lot.lotNumber,
-          oldDescription:  lot.keyPoints,
-          oldEstimateLow:  lot.estimateLow,
-          oldEstimateHigh: lot.estimateHigh,
-          newDescription:  r.description,
-          newEstimateLow:  low,
-          newEstimateHigh: high,
-          newEstimateRaw:  r.estimate,
-          status:          "ok",
-          approved:        true,
-        })
-        addLog(`✓ Lot ${lot.lotNumber} — done`)
-      } catch (e: any) {
-        collected.push({
-          lotId:           lot.id,
-          lotNumber:       lot.lotNumber,
-          oldDescription:  lot.keyPoints,
-          oldEstimateLow:  lot.estimateLow,
-          oldEstimateHigh: lot.estimateHigh,
-          newDescription:  "",
-          newEstimateLow:  null,
-          newEstimateHigh: null,
-          newEstimateRaw:  "",
-          status:          "failed",
-          error:           e.message,
-          approved:        false,
-        })
-        addLog(`✗ Lot ${lot.lotNumber} — failed: ${e.message}`)
       }
 
       setResults([...collected])

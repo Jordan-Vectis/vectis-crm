@@ -39,6 +39,11 @@ export async function GET(req: NextRequest) {
       orderBy: { lotNumber: "asc" },
     })
 
+    lots.sort((a, b) => {
+      const na = parseInt(a.lotNumber), nb = parseInt(b.lotNumber)
+      return (!isNaN(na) && !isNaN(nb)) ? na - nb : a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+    })
+
     const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
     const auctionDate = auction.auctionDate
       ? auction.auctionDate.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })

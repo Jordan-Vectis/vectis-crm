@@ -55,5 +55,10 @@ export async function GET(req: NextRequest) {
     select: { id: true, name: true, code: true, auctionDate: true },
   })
 
+  lots.sort((a, b) => {
+    const na = parseInt(a.lotNumber), nb = parseInt(b.lotNumber)
+    return (!isNaN(na) && !isNaN(nb)) ? na - nb : a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+  })
+
   return NextResponse.json({ auction, lots })
 }
