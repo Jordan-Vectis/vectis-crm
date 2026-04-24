@@ -199,11 +199,18 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
           // Abort after 3 minutes so the retry loop can kick in if the server hangs
           const controller = new AbortController()
           const timer = setTimeout(() => controller.abort(), 3 * 60 * 1000)
+          // Heartbeat: log every 30s so the UI doesn't look frozen
+          let elapsed = 0
+          const heartbeat = setInterval(() => {
+            elapsed += 30
+            addLog(`⏳ ${lot.barcode || lot.lotNumber} — waiting for Gemini… (${elapsed}s)`)
+          }, 30_000)
           let res: Response
           try {
             res = await fetch("/api/auction-ai/batch", { method: "POST", body: fd, signal: controller.signal })
           } finally {
             clearTimeout(timer)
+            clearInterval(heartbeat)
           }
           // Guard against non-JSON responses (e.g. "first byte timeout" from Railway)
           const text = await res.text()
