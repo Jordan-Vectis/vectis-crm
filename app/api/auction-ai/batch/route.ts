@@ -33,25 +33,11 @@ export async function POST(req: NextRequest) {
     systemInstruction: systemInstruction || undefined,
   })
 
-  // Retries forever on rate-limit / service errors — only throws on real failures
-  // Uncapped exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s…
+  // No retries here — throw immediately so the real Gemini error surfaces in the
+  // client log and the client's own backoff loop handles retrying.
   async function generateWithRetry(contents: any[]): Promise<string> {
-    let attempt = 0
-    while (true) {
-      try {
-        const result = await model.generateContent(contents)
-        return result.response.text()
-      } catch (e: any) {
-        const msg: string = e?.message ?? String(e)
-        const isRetryable = msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") ||
-                            msg.includes("503") || msg.includes("Service Unavailable") ||
-                            msg.includes("high demand")
-        if (!isRetryable) throw e
-        const backoff = Math.pow(2, attempt) * 1000 + Math.random() * 1500
-        await new Promise((r) => setTimeout(r, backoff))
-        attempt++
-      }
-    }
+    const result = await model.generateContent(contents)
+    return result.response.text()
   }
 
   const results: { lot: string; description: string; estimate: string; status: string; error?: string }[] = []
