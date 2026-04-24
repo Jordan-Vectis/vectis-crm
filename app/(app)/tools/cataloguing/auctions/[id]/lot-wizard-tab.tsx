@@ -541,7 +541,7 @@ export default function LotWizardTab({
     fd.append("lotNumber",    barcode)   // kept as temp lot ID until auto-lotter assigns a number
     fd.append("barcode",      barcode)   // stored separately — auto-lotter only changes lotNumber
     fd.append("title",        title)
-    fd.append("description",  keyPoints)
+    fd.append("keyPoints",    keyPoints)
     fd.append("estimateLow",  estLow.replace(/[£,]/g, "").trim())
     fd.append("estimateHigh", estHigh.replace(/[£,]/g, "").trim())
     fd.append("condition",    condition)

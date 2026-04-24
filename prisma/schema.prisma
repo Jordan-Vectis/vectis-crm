@@ -292,6 +292,7 @@ model CatalogueLot {
   id           String           @id @default(cuid())
   lotNumber    String
   title        String
+  keyPoints    String           @db.Text @default("")
   description  String           @db.Text @default("")
   barcode      String?
   estimateLow  Int?

@@ -22,7 +22,7 @@ interface Auction {
 }
 
 interface Lot {
-  id: string; lotNumber: string; barcode: string | null; title: string; description: string
+  id: string; lotNumber: string; barcode: string | null; title: string; keyPoints: string; description: string
   estimateLow: number | null; estimateHigh: number | null; startingBid: number | null; reserve: number | null
   hammerPrice: number | null; condition: string | null; vendor: string | null
   tote: string | null; receipt: string | null; category: string | null
@@ -1017,7 +1017,12 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
                 maxLength={TITLE_LIMIT} className={input} />
             </div>
             <div>
-              <label className={lbl}>Description</label>
+              <label className={lbl}>Key Points</label>
+              <textarea name="keyPoints" rows={4} defaultValue={lot.keyPoints}
+                className={`${input} resize-none`} />
+            </div>
+            <div>
+              <label className={lbl}>Description (AI-generated)</label>
               <textarea name="description" rows={4} defaultValue={lot.description}
                 className={`${input} resize-none`} />
             </div>

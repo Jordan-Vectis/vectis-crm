@@ -316,12 +316,12 @@ export default async function LotDetailPage({
               </div>
             )}
 
-            {/* Description */}
-            {lot.description && (
+            {/* Description — show AI description if available, otherwise key points */}
+            {(lot.description || lot.keyPoints) && (
               <div className="mt-6">
                 <h2 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Description</h2>
                 <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap border-t border-gray-200 pt-4">
-                  {lot.description}
+                  {lot.description || lot.keyPoints}
                 </div>
               </div>
             )}

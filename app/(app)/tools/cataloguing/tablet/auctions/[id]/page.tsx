@@ -36,6 +36,7 @@ export default async function TabletAuctionDetailPage({
         lotNumber: l.lotNumber,
         barcode: l.barcode,
         title: l.title,
+        keyPoints: l.keyPoints,
         description: l.description,
         estimateLow: l.estimateLow,
         estimateHigh: l.estimateHigh,

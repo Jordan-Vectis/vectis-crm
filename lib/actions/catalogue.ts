@@ -50,9 +50,9 @@ export async function deleteAuction(id: string) {
 
 export async function generateTitlesFromDescriptions(auctionId: string, lotIds: string[]) {
   await requireCataloguer()
-  const lots = await prisma.catalogueLot.findMany({ where: { id: { in: lotIds } }, select: { id: true, description: true } })
+  const lots = await prisma.catalogueLot.findMany({ where: { id: { in: lotIds } }, select: { id: true, keyPoints: true } })
   await Promise.all(lots.map(l => {
-    const title = l.description.trim().slice(0, 83).trimEnd()
+    const title = l.keyPoints.trim().slice(0, 83).trimEnd()
     if (!title) return Promise.resolve()
     return prisma.catalogueLot.update({ where: { id: l.id }, data: { title } })
   }))
@@ -387,7 +387,8 @@ export async function importLots(auctionId: string, rows: {
         createdByName,
         lotNumber:    r.lotNumber,
         title:        r.title || "",
-        description:  r.description || "",
+        keyPoints:    r.description || "",
+        description:  "",
         estimateLow:  r.estimateLow  ? parseInt(r.estimateLow)  : null,
         estimateHigh: r.estimateHigh ? parseInt(r.estimateHigh) : null,
         reserve:      r.reserve      ? parseInt(r.reserve)      : null,
@@ -424,6 +425,7 @@ function extractLotData(formData: FormData) {
     lotNumber:   (formData.get("lotNumber") as string) || "",
     barcode:     (formData.get("barcode") as string) || null,
     title:       (formData.get("title") as string) || "",
+    keyPoints:   (formData.get("keyPoints") as string) || "",
     description: (formData.get("description") as string) || "",
     estimateLow:  formData.get("estimateLow")  ? parseInt(formData.get("estimateLow") as string)  : null,
     estimateHigh: formData.get("estimateHigh") ? parseInt(formData.get("estimateHigh") as string) : null,

@@ -8,6 +8,7 @@ interface Lot {
   id: string
   lotNumber: string
   title: string
+  keyPoints: string
   description: string
   estimateLow: number | null
   estimateHigh: number | null
@@ -183,8 +184,8 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
         photos.forEach((blob, j) => {
           fd.append(`lot_${lot.lotNumber}_image_${j}`, blob, `photo_${j}.jpg`)
         })
-        if (sendDesc && lot.description.trim()) {
-          fd.set(`lot_${lot.lotNumber}_context`, lot.description.trim())
+        if (sendDesc && lot.keyPoints.trim()) {
+          fd.set(`lot_${lot.lotNumber}_context`, lot.keyPoints.trim())
         }
 
         const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
@@ -198,7 +199,7 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
         collected.push({
           lotId:           lot.id,
           lotNumber:       lot.lotNumber,
-          oldDescription:  lot.description,
+          oldDescription:  lot.keyPoints,
           oldEstimateLow:  lot.estimateLow,
           oldEstimateHigh: lot.estimateHigh,
           newDescription:  r.description,
@@ -213,7 +214,7 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
         collected.push({
           lotId:           lot.id,
           lotNumber:       lot.lotNumber,
-          oldDescription:  lot.description,
+          oldDescription:  lot.keyPoints,
           oldEstimateLow:  lot.estimateLow,
           oldEstimateHigh: lot.estimateHigh,
           newDescription:  "",

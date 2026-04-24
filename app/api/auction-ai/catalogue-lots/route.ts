@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     where: { code },
     include: {
       lots: {
-        select: { lotNumber: true, title: true, description: true, barcode: true },
+        select: { lotNumber: true, title: true, keyPoints: true, description: true, barcode: true },
         orderBy: { lotNumber: "asc" },
       },
     },
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     lots: auction.lots.map(l => ({
       lotNumber: l.lotNumber,
       title:     l.title,
-      keyPoints: l.description ?? "", // key points are stored as description in cataloguing wizard
+      keyPoints: l.keyPoints ?? l.description ?? "", // keyPoints field, fallback to description for legacy lots
       barcode:   l.barcode ?? null,
     })),
   })

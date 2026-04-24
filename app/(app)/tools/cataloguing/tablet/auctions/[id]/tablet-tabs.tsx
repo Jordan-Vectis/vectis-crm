@@ -26,6 +26,7 @@ interface Lot {
   lotNumber: string
   barcode: string | null
   title: string
+  keyPoints: string
   description: string
   estimateLow: number | null
   estimateHigh: number | null
@@ -475,9 +476,19 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
           </div>
         </div>
 
+        {/* Key Points */}
+        <div>
+          <label className={lbl}>Key Points</label>
+          <textarea
+            name="keyPoints"
+            defaultValue={lot.keyPoints}
+            rows={4}
+            className={`${inp} resize-none`}
+          />
+        </div>
         {/* Description */}
         <div>
-          <label className={lbl}>Description / Key Points</label>
+          <label className={lbl}>Description (AI-generated)</label>
           <textarea
             name="description"
             defaultValue={lot.description}
