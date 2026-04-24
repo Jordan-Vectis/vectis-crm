@@ -1737,23 +1737,33 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
                 )}
               </div>
               {fixedCount > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Lots that were fixed</p>
                   {lots.filter(l => l.status === "fixed").map(l => (
-                    <div key={l.label} className="flex items-start gap-3 bg-[#2C2C2E] rounded-lg px-3 py-2">
-                      <span className="text-xs font-mono text-[#C8A96E] w-14 flex-shrink-0 pt-0.5">Lot {l.label}</span>
-                      <div className="flex-1 min-w-0 grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-[10px] text-gray-600 uppercase mb-1">Before</p>
-                          <p className="text-xs text-gray-400 line-clamp-3">{l.description}</p>
+                    <div key={l.label} className="bg-[#2C2C2E] rounded-lg overflow-hidden border border-[#C8A96E]/20">
+                      {/* Lot header */}
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
+                        <span className="text-xs font-mono font-bold text-[#C8A96E]">Lot {l.label}</span>
+                        <button onClick={() => navigator.clipboard.writeText(l.revised ?? "")}
+                          className="text-[10px] text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-0.5 rounded transition-colors">
+                          Copy fixed description
+                        </button>
+                      </div>
+                      {/* Three columns: key points | before | after */}
+                      <div className="grid grid-cols-3 divide-x divide-gray-700">
+                        <div className="px-3 py-2">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Key Points</p>
+                          <pre className="text-xs text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">{l.keyPoints}</pre>
                         </div>
-                        <div>
-                          <p className="text-[10px] text-[#C8A96E] uppercase mb-1">After</p>
-                          <p className="text-xs text-gray-200 line-clamp-3">{l.revised}</p>
+                        <div className="px-3 py-2">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Before</p>
+                          <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{l.description}</p>
+                        </div>
+                        <div className="px-3 py-2">
+                          <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-1.5">After (fixed)</p>
+                          <p className="text-xs text-gray-200 leading-relaxed whitespace-pre-wrap">{l.revised}</p>
                         </div>
                       </div>
-                      <button onClick={() => navigator.clipboard.writeText(l.revised ?? "")}
-                        className="text-[10px] text-gray-600 hover:text-gray-300 flex-shrink-0 transition-colors">Copy</button>
                     </div>
                   ))}
                 </div>
