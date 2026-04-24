@@ -488,7 +488,7 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
         </div>
         {/* Description */}
         <div>
-          <label className={lbl}>Description (AI-generated)</label>
+          <label className={lbl}>Description</label>
           <textarea
             name="description"
             defaultValue={lot.description}

@@ -1022,7 +1022,7 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
                 className={`${input} resize-none`} />
             </div>
             <div>
-              <label className={lbl}>Description (AI-generated)</label>
+              <label className={lbl}>Description</label>
               <textarea name="description" rows={4} defaultValue={lot.description}
                 className={`${input} resize-none`} />
             </div>

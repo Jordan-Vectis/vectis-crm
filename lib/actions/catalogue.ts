@@ -360,6 +360,7 @@ export async function deleteLotPhoto(lotId: string, auctionId: string, key: stri
 
 export async function importLots(auctionId: string, rows: {
   lotNumber: string; title: string; description: string
+  keyPoints?: string; barcode?: string
   estimateLow: string; estimateHigh: string; reserve: string
   condition: string; status: string; vendor: string
   tote: string; receipt: string; category: string
@@ -387,7 +388,8 @@ export async function importLots(auctionId: string, rows: {
         createdByName,
         lotNumber:    r.lotNumber,
         title:        r.title || "",
-        keyPoints:    r.description || "",
+        keyPoints:    r.keyPoints || r.description || "",
+        barcode:      r.barcode || null,
         description:  "",
         estimateLow:  r.estimateLow  ? parseInt(r.estimateLow)  : null,
         estimateHigh: r.estimateHigh ? parseInt(r.estimateHigh) : null,
