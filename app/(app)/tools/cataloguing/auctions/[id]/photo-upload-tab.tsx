@@ -48,7 +48,7 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     // Prefer native BarcodeDetector (Chrome/Edge) — far more reliable for real photos.
     // Fall back to ZXing for browsers that don't support it.
     const nativeDetector = "BarcodeDetector" in window
-      ? new (window as any).BarcodeDetector()
+      ? new (window as any).BarcodeDetector({ formats: ["code_128", "code_39", "qr_code", "ean_13"] })
       : null
 
     // ZXing fallback — load once for the batch
@@ -75,10 +75,16 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
         // Load via <img> so EXIF rotation is applied before scanning
         const imgEl = await loadImgElement(file)
 
-        // Native BarcodeDetector — pass the img element directly at full resolution
+        // Native BarcodeDetector — try via img element first, then ImageBitmap (different
+        // internal code paths in Chrome, one may succeed where the other fails)
         if (nativeDetector) {
           try {
             const results = await nativeDetector.detect(imgEl)
+            if (results.length > 0) return results[0].rawValue as string
+          } catch {}
+          try {
+            const bmp = await createImageBitmap(imgEl)
+            const results = await nativeDetector.detect(bmp)
             if (results.length > 0) return results[0].rawValue as string
           } catch {}
         }
