@@ -1327,6 +1327,54 @@ function InstructionsTab() {
 
 // ─── Key Points Check Tab ────────────────────────────────────────────────────
 
+const KP_SYSTEM_PROMPT = `You are a description quality checker for an auction house.
+Your job is to verify that an auction lot description includes every key point provided by the cataloguer.
+Key points are facts recorded by the cataloguer who physically examined the item — they are authoritative and must be treated as ground truth.
+Rules:
+- If all key points are already present and accurate in the description, return the description unchanged.
+- If any key point is missing, misrepresented, or contradicted, rewrite the description to naturally incorporate it while keeping the same style, tone, length, and format as the original.
+- Never invent new facts beyond what is in the key points or the existing description.
+- Respond with ONLY the final description text — no commentary, no preamble, no explanation.`
+
+function HowItWorksPanel() {
+  const [open,        setOpen]        = useState(false)
+  const [showPrompt,  setShowPrompt]  = useState(false)
+
+  return (
+    <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl overflow-hidden">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#1a1a1e] transition-colors">
+        <span className="text-sm font-medium text-gray-300">ℹ How does this work?</span>
+        <span className="text-gray-600 text-xs">{open ? "▲ Hide" : "▼ Show"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-gray-700">
+          <ol className="mt-3 space-y-2 text-sm text-gray-400 list-decimal list-inside">
+            <li>You enter an auction code and click <span className="text-white font-medium">Load</span> — it pulls every lot that has both a cataloguer key points entry and a saved AI description from a previous Batch Run.</li>
+            <li>You click <span className="text-white font-medium">Run Key Points Check</span> — each lot is sent to Gemini one at a time with its key points and AI description.</li>
+            <li>Gemini reads both and checks whether every key point is mentioned in the description. If they're all there, it returns the description unchanged. If anything is missing or wrong, it rewrites just enough to include it.</li>
+            <li>Lots marked <span className="text-[#C8A96E] font-medium">⚑ Fixed</span> had something missing — expand them to see what changed. Lots marked <span className="text-green-400 font-medium">✓ All included</span> were fine.</li>
+            <li>Use <span className="text-white font-medium">Copy all descriptions</span> to copy everything out at once.</li>
+          </ol>
+
+          <div>
+            <button onClick={() => setShowPrompt(p => !p)}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+              {showPrompt ? "▲ Hide system prompt" : "▼ Show exact instructions sent to Gemini"}
+            </button>
+            {showPrompt && (
+              <pre className="mt-2 text-xs text-gray-400 bg-[#1C1C1E] rounded-lg p-3 whitespace-pre-wrap leading-relaxed font-mono">
+                {KP_SYSTEM_PROMPT}
+              </pre>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 type KPLot = {
   label: string
   keyPoints: string
@@ -1336,14 +1384,78 @@ type KPLot = {
   status?: "idle" | "checking" | "ok" | "fixed" | "error"
 }
 
-function KeyPointsCheckTab({ model }: { model: string }) {
+function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
   const [code,         setCode]         = useState("")
   const [loading,      setLoading]      = useState(false)
   const [error,        setError]        = useState<string | null>(null)
   const [lots,         setLots]         = useState<KPLot[]>([])
   const [checking,     setChecking]     = useState(false)
-  const [progress,     setProgress]     = useState<{ done: number; total: number } | null>(null)
+  const [progress,     setProgress]     = useState<{ done: number; total: number; current?: string } | null>(null)
   const [expandedLot,  setExpandedLot]  = useState<string | null>(null)
+  const [localModel,   setLocalModel]   = useState(globalModel)
+  const [modelList,    setModelList]    = useState<string[]>([globalModel])
+  const [modelStatus,  setModelStatus]  = useState<Record<string, { ok: boolean; ms: number; error?: string } | "testing">>({})
+  const [testingAll,   setTestingAll]   = useState(false)
+  const [log,          setLog]          = useState<string[]>([])
+  const [paused,       setPaused]       = useState(false)
+  const [showResults,  setShowResults]  = useState(false)
+  const logRef    = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef(false)
+  const pauseRef  = useRef(false)
+  const abortRef  = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    fetch("/api/auction-ai/models")
+      .then(r => r.json())
+      .then(j => { if (j.models?.length) setModelList(j.models) })
+      .catch(() => {})
+  }, [])
+
+  function addLog(msg: string) {
+    const ts = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    setLog(l => [...l, `[${ts}]  ${msg}`])
+    setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 50)
+  }
+
+  async function testAllModels() {
+    setTestingAll(true)
+    const initial: Record<string, "testing"> = {}
+    modelList.forEach(m => { initial[m] = "testing" })
+    setModelStatus(initial)
+    await Promise.all(modelList.map(async (m) => {
+      try {
+        const res  = await fetch("/api/auction-ai/model-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
+        const data = await res.json()
+        setModelStatus(prev => ({ ...prev, [m]: data }))
+      } catch (e: any) {
+        setModelStatus(prev => ({ ...prev, [m]: { ok: false, ms: 0, error: e.message } }))
+      }
+    }))
+    setTestingAll(false)
+  }
+
+  function handleStop() {
+    cancelRef.current = true
+    pauseRef.current  = false
+    setPaused(false)
+    if (abortRef.current) {
+      addLog("⛔ Stopped — showing results so far")
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+  }
+
+  function handlePause() {
+    pauseRef.current = true
+    setPaused(true)
+    addLog("⏸ Paused — finishing current lot…")
+  }
+
+  function handleResume() {
+    pauseRef.current = false
+    setPaused(false)
+    addLog("▶ Resumed")
+  }
 
   async function handleLoad() {
     if (!code.trim()) return
@@ -1398,23 +1510,43 @@ function KeyPointsCheckTab({ model }: { model: string }) {
   async function runCheck() {
     const toCheck = lots.filter(l => l.keyPoints && l.description)
     if (!toCheck.length || checking) return
+    cancelRef.current = false
+    pauseRef.current  = false
+    setPaused(false)
+    setShowResults(false)
     setChecking(true)
+    setLog([])
     setProgress({ done: 0, total: toCheck.length })
     setLots(prev => prev.map(l => ({ ...l, status: "checking", revised: undefined, changed: undefined })))
+    addLog(`── Starting check: ${toCheck.length} lots · model: ${localModel}`)
+
+    const lotStartTimes: Record<string, number> = {}
+    const controller = new AbortController()
+    abortRef.current = controller
 
     try {
       const res = await fetch("/api/auction-ai/key-points-check", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ lots: toCheck.map(l => ({ label: l.label, keyPoints: l.keyPoints, description: l.description })), model }),
+        body:    JSON.stringify({ lots: toCheck.map(l => ({ label: l.label, keyPoints: l.keyPoints, description: l.description })), model: localModel }),
+        signal:  controller.signal,
       })
-      if (!res.ok) throw new Error((await res.json()).error ?? "Failed")
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error ?? res.statusText)
+      }
 
       const reader  = res.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ""
 
-      while (true) {
+      outer: while (true) {
+        // Pause: stop reading until resumed or cancelled
+        while (pauseRef.current && !cancelRef.current) {
+          await new Promise(r => setTimeout(r, 200))
+        }
+        if (cancelRef.current) { reader.cancel(); break }
+
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
@@ -1423,8 +1555,13 @@ function KeyPointsCheckTab({ model }: { model: string }) {
           if (!line.trim()) continue
           const msg = JSON.parse(line)
           if (msg.type === "progress") {
-            setProgress({ done: msg.index, total: toCheck.length })
+            lotStartTimes[msg.label] = Date.now()
+            setProgress({ done: msg.index, total: toCheck.length, current: msg.label })
+            addLog(`  · ${msg.index + 1}/${toCheck.length} Lot ${msg.label} — sending to Gemini…`)
           } else if (msg.type === "result") {
+            const ms = lotStartTimes[msg.label] ? Date.now() - lotStartTimes[msg.label] : 0
+            const outcome = msg.changed ? "⚑ fixed" : "✓ all included"
+            addLog(`  ${outcome} — Lot ${msg.label} (${(ms / 1000).toFixed(1)}s)`)
             setLots(prev => prev.map(l =>
               l.label === msg.label
                 ? { ...l, revised: msg.revised, changed: msg.changed, status: msg.changed ? "fixed" : "ok" }
@@ -1432,15 +1569,23 @@ function KeyPointsCheckTab({ model }: { model: string }) {
             ))
             setProgress({ done: msg.index + 1, total: toCheck.length })
           } else if (msg.type === "error") {
+            addLog(`  ✗ Lot ${msg.label} — error: ${msg.error}`)
             setLots(prev => prev.map(l => l.label === msg.label ? { ...l, status: "error" } : l))
+          } else if (msg.type === "done") {
+            addLog(`── Complete`)
           }
         }
       }
     } catch (e: any) {
-      setError(e.message)
+      if (!cancelRef.current) {
+        addLog(`✗ Failed: ${e.message}`)
+        setError(e.message)
+      }
     } finally {
+      abortRef.current = null
       setChecking(false)
       setProgress(null)
+      setShowResults(true)
     }
   }
 
@@ -1464,6 +1609,39 @@ function KeyPointsCheckTab({ model }: { model: string }) {
           Loads your cataloguer key points alongside the AI-generated descriptions and runs a second AI pass to
           verify every key point is included — fixing any that are missing.
         </p>
+      </div>
+
+      {/* How it works */}
+      <HowItWorksPanel />
+
+      {/* Model selector */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Model</p>
+          <button onClick={testAllModels} disabled={testingAll}
+            className="text-xs text-[#C8A96E] hover:text-[#b8944f] disabled:opacity-50 transition-colors">
+            {testingAll ? "Testing…" : "⚡ Test all models"}
+          </button>
+        </div>
+        <div className="border border-gray-700 rounded-lg overflow-hidden">
+          {modelList.map(m => {
+            const status = modelStatus[m]
+            const isSelected = localModel === m
+            return (
+              <button key={m} onClick={() => setLocalModel(m)}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors border-b border-gray-800 last:border-0 ${isSelected ? "bg-[#C8A96E]/10" : "hover:bg-[#1a1a1e]"}`}>
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isSelected ? "bg-[#C8A96E]" : "bg-gray-700"}`} />
+                <span className={`text-sm flex-1 font-mono ${isSelected ? "text-[#C8A96E]" : "text-gray-400"}`}>{m}</span>
+                {status === "testing" && <span className="text-xs text-gray-500 animate-pulse">testing…</span>}
+                {status && status !== "testing" && (
+                  status.ok
+                    ? <span className={`text-xs font-medium ${status.ms < 5000 ? "text-green-400" : status.ms < 12000 ? "text-yellow-400" : "text-orange-400"}`}>✓ {(status.ms / 1000).toFixed(1)}s</span>
+                    : <span className="text-xs text-red-400 truncate max-w-[200px]" title={status.error}>✗ {status.error?.match(/\[(\d{3}[^\]]*)\]/)?.[1] ?? "error"}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Load */}
@@ -1490,6 +1668,13 @@ function KeyPointsCheckTab({ model }: { model: string }) {
         )}
       </div>
 
+      {/* Log panel — visible while checking */}
+      {log.length > 0 && (
+        <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-4 h-52 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
+          {log.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+      )}
+
       {/* Results table */}
       {lots.length > 0 && (
         <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl overflow-hidden">
@@ -1503,21 +1688,78 @@ function KeyPointsCheckTab({ model }: { model: string }) {
                 </span>
               )}
             </div>
-            <div className="flex gap-2">
-              {checkedCount > 0 && (
+            <div className="flex gap-2 items-center">
+              {checkedCount > 0 && !checking && (
                 <button onClick={copyAll}
                   className="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded transition-colors">
-                  Copy all descriptions
+                  Copy all
                 </button>
+              )}
+              {checking && (
+                <>
+                  {paused
+                    ? <button onClick={handleResume} className="text-xs text-green-400 hover:text-green-300 font-medium transition-colors">▶ Resume</button>
+                    : <button onClick={handlePause}  className="text-xs text-yellow-500 hover:text-yellow-400 font-medium transition-colors">⏸ Pause</button>
+                  }
+                  <button onClick={handleStop} className="text-xs text-gray-500 hover:text-red-400 transition-colors">Stop & results</button>
+                </>
               )}
               <button onClick={runCheck} disabled={checking}
                 className="bg-[#C8A96E] hover:bg-[#b8944f] text-black text-xs font-semibold px-4 py-1.5 rounded disabled:opacity-40 transition-colors whitespace-nowrap">
                 {checking
-                  ? `Checking… ${progress?.done ?? 0}/${progress?.total ?? 0}`
+                  ? `${paused ? "Paused" : "Checking"} ${progress?.done ?? 0}/${progress?.total ?? 0}${progress?.current ? ` · Lot ${progress.current}` : ""}`
                   : checkedCount > 0 ? "Re-run Check" : "▶ Run Key Points Check"}
               </button>
             </div>
           </div>
+
+          {/* Results summary */}
+          {showResults && checkedCount > 0 && (
+            <div className="border-b border-gray-700 px-4 py-3 bg-[#1C1C1E] space-y-3">
+              <div className="flex gap-4">
+                <div className="text-center">
+                  <p className="text-lg font-bold text-white">{checkedCount}</p>
+                  <p className="text-xs text-gray-500">Checked</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-green-400">{checkedCount - fixedCount - lots.filter(l => l.status === "error").length}</p>
+                  <p className="text-xs text-gray-500">All good</p>
+                </div>
+                <div className="text-center">
+                  <p className={`text-lg font-bold ${fixedCount > 0 ? "text-[#C8A96E]" : "text-gray-600"}`}>{fixedCount}</p>
+                  <p className="text-xs text-gray-500">Fixed</p>
+                </div>
+                {lots.filter(l => l.status === "error").length > 0 && (
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-red-400">{lots.filter(l => l.status === "error").length}</p>
+                    <p className="text-xs text-gray-500">Errors</p>
+                  </div>
+                )}
+              </div>
+              {fixedCount > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Lots that were fixed</p>
+                  {lots.filter(l => l.status === "fixed").map(l => (
+                    <div key={l.label} className="flex items-start gap-3 bg-[#2C2C2E] rounded-lg px-3 py-2">
+                      <span className="text-xs font-mono text-[#C8A96E] w-14 flex-shrink-0 pt-0.5">Lot {l.label}</span>
+                      <div className="flex-1 min-w-0 grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-[10px] text-gray-600 uppercase mb-1">Before</p>
+                          <p className="text-xs text-gray-400 line-clamp-3">{l.description}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-[#C8A96E] uppercase mb-1">After</p>
+                          <p className="text-xs text-gray-200 line-clamp-3">{l.revised}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => navigator.clipboard.writeText(l.revised ?? "")}
+                        className="text-[10px] text-gray-600 hover:text-gray-300 flex-shrink-0 transition-colors">Copy</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Lot rows */}
           <div className="divide-y divide-gray-800 max-h-[65vh] overflow-y-auto">
