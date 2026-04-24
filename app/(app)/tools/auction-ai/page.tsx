@@ -1395,6 +1395,7 @@ type KPLot = {
   added?: string
   status?: "idle" | "checking" | "ok" | "fixed" | "error"
   accepted?: boolean
+  selected?: boolean
 }
 
 function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
@@ -1489,13 +1490,27 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
   }
 
   async function acceptAll() {
-    const toAccept = lots.filter(l => l.status === "fixed" && !l.accepted && l.revised)
+    const toAccept = lots.filter(l => l.status === "fixed" && l.selected && !l.accepted && l.revised)
     if (!auctionId || toAccept.length === 0) return
     setAccepting(true)
     for (const lot of toAccept) {
       await acceptLot(lot)
     }
     setAccepting(false)
+  }
+
+  function toggleSelected(id: string) {
+    setLots(prev => prev.map(l => l.id === id ? { ...l, selected: !l.selected } : l))
+  }
+
+  function toggleSelectAll() {
+    const fixedLots = lots.filter(l => l.status === "fixed" && !l.accepted)
+    const allSelected = fixedLots.every(l => l.selected)
+    setLots(prev => prev.map(l => l.status === "fixed" && !l.accepted ? { ...l, selected: !allSelected } : l))
+  }
+
+  function updateRevised(id: string, text: string) {
+    setLots(prev => prev.map(l => l.id === id ? { ...l, revised: text } : l))
   }
 
   async function handleLoad() {
@@ -1607,7 +1622,7 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
             addLog(`  ${outcome} — Lot ${msg.label} (${(ms / 1000).toFixed(1)}s)${msg.missing ? ` · missing: ${msg.missing}` : ""}`)
             setLots(prev => prev.map(l =>
               l.label === msg.label
-                ? { ...l, revised: msg.revised, changed: msg.changed, missing: msg.missing, added: msg.added, status: msg.changed ? "fixed" : "ok" }
+                ? { ...l, revised: msg.revised, changed: msg.changed, missing: msg.missing, added: msg.added, status: msg.changed ? "fixed" : "ok", selected: msg.changed ? true : undefined }
                 : l
             ))
             setProgress({ done: msg.index + 1, total: toCheck.length })
@@ -1779,71 +1794,100 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
                   </div>
                 )}
               </div>
-              {fixedCount > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Lots that were fixed</p>
-                    <button onClick={acceptAll} disabled={accepting || lots.filter(l => l.status === "fixed" && !l.accepted).length === 0}
-                      className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] disabled:opacity-40 text-black font-semibold px-3 py-1 rounded transition-colors">
-                      {accepting ? "Saving…" : `Accept all ${lots.filter(l => l.status === "fixed" && !l.accepted).length} fixes`}
-                    </button>
-                  </div>
-                  {lots.filter(l => l.status === "fixed").map(l => (
-                    <div key={l.label} className={`rounded-lg overflow-hidden border ${l.accepted ? "border-green-700/50 bg-green-900/10" : "border-[#C8A96E]/20 bg-[#2C2C2E]"}`}>
-                      {/* Lot header */}
-                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
-                        <span className="text-xs font-mono font-bold text-[#C8A96E]">Lot {l.label}</span>
-                        <div className="flex items-center gap-2">
-                          {l.accepted
-                            ? <span className="text-xs text-green-400 font-medium">✓ Saved to catalogue</span>
-                            : <button onClick={() => acceptLot(l)}
-                                className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] text-black font-semibold px-3 py-0.5 rounded transition-colors">
-                                Accept & save
-                              </button>
-                          }
-                          <button onClick={() => navigator.clipboard.writeText(l.revised ?? "")}
-                            className="text-[10px] text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-0.5 rounded transition-colors">
-                            Copy
-                          </button>
-                        </div>
-                      </div>
-                      {/* Missing / added summary */}
-                      {(l.missing || l.added) && (
-                        <div className="flex gap-4 px-3 py-2 border-b border-gray-700 bg-[#1C1C1E]">
-                          {l.missing && (
-                            <div className="flex-1">
-                              <p className="text-[10px] text-red-400 uppercase tracking-wider mb-0.5">Was missing</p>
-                              <p className="text-xs text-red-300">{l.missing}</p>
-                            </div>
-                          )}
-                          {l.added && (
-                            <div className="flex-1">
-                              <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-0.5">What changed</p>
-                              <p className="text-xs text-[#C8A96E]">{l.added}</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Three columns: key points | before | after */}
-                      <div className="grid grid-cols-3 divide-x divide-gray-700">
-                        <div className="px-3 py-2">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Key Points</p>
-                          <pre className="text-xs text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">{l.keyPoints}</pre>
-                        </div>
-                        <div className="px-3 py-2">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Before</p>
-                          <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{l.description}</p>
-                        </div>
-                        <div className="px-3 py-2">
-                          <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-1.5">After (fixed)</p>
-                          <p className="text-xs text-gray-200 leading-relaxed whitespace-pre-wrap">{l.revised}</p>
-                        </div>
-                      </div>
+              {fixedCount > 0 && (() => {
+                const pendingFixed = lots.filter(l => l.status === "fixed" && !l.accepted)
+                const selectedCount = pendingFixed.filter(l => l.selected).length
+                const allSelected = pendingFixed.length > 0 && pendingFixed.every(l => l.selected)
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
+                        className="w-3.5 h-3.5 rounded accent-[#C8A96E]" />
+                      <p className="text-xs text-gray-500 uppercase tracking-wider flex-1">
+                        {pendingFixed.length} fixed · {selectedCount} selected
+                      </p>
+                      <button onClick={acceptAll} disabled={accepting || selectedCount === 0}
+                        className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] disabled:opacity-40 text-black font-semibold px-3 py-1 rounded transition-colors">
+                        {accepting ? "Saving…" : `Apply ${selectedCount} selected`}
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    {lots.filter(l => l.status === "fixed").map(l => (
+                      <div key={l.label} className={`rounded-lg overflow-hidden border transition-colors ${
+                        l.accepted ? "border-green-700/50 bg-green-900/10"
+                        : l.selected ? "border-[#C8A96E]/50 bg-[#2C2C2E]"
+                        : "border-gray-700 bg-[#2C2C2E] opacity-60"
+                      }`}>
+                        {/* Lot header */}
+                        <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-700">
+                          {!l.accepted && (
+                            <input type="checkbox" checked={!!l.selected} onChange={() => toggleSelected(l.id)}
+                              className="w-3.5 h-3.5 rounded accent-[#C8A96E] flex-shrink-0" />
+                          )}
+                          <span className="text-xs font-mono font-bold text-[#C8A96E]">Lot {l.label}</span>
+                          <div className="flex items-center gap-2 ml-auto">
+                            {l.accepted
+                              ? <span className="text-xs text-green-400 font-medium">✓ Saved to catalogue</span>
+                              : <button onClick={() => acceptLot(l)} disabled={!l.selected}
+                                  className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] disabled:opacity-40 text-black font-semibold px-3 py-0.5 rounded transition-colors">
+                                  Apply
+                                </button>
+                            }
+                            <button onClick={() => navigator.clipboard.writeText(l.revised ?? "")}
+                              className="text-[10px] text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-0.5 rounded transition-colors">
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Missing / added summary */}
+                        {(l.missing || l.added) && (
+                          <div className="flex gap-4 px-3 py-2 border-b border-gray-700 bg-[#1C1C1E]">
+                            {l.missing && (
+                              <div className="flex-1">
+                                <p className="text-[10px] text-red-400 uppercase tracking-wider mb-0.5">Was missing</p>
+                                <p className="text-xs text-red-300">{l.missing}</p>
+                              </div>
+                            )}
+                            {l.added && (
+                              <div className="flex-1">
+                                <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-0.5">What changed</p>
+                                <p className="text-xs text-[#C8A96E]">{l.added}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Three columns: key points | before | editable after */}
+                        <div className="grid grid-cols-3 divide-x divide-gray-700">
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Key Points</p>
+                            <pre className="text-xs text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">{l.keyPoints}</pre>
+                          </div>
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Before</p>
+                            <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{l.description}</p>
+                          </div>
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-1.5">
+                              After (fixed){!l.accepted && <span className="text-gray-600 normal-case ml-1">· editable</span>}
+                            </p>
+                            {l.accepted
+                              ? <p className="text-xs text-gray-200 leading-relaxed whitespace-pre-wrap">{l.revised}</p>
+                              : <textarea
+                                  value={l.revised ?? ""}
+                                  onChange={e => updateRevised(l.id, e.target.value)}
+                                  rows={8}
+                                  className="w-full text-xs text-gray-200 bg-[#1C1C1E] border border-gray-700 rounded p-2 leading-relaxed resize-y focus:outline-none focus:border-[#C8A96E]"
+                                />
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
           )}
 
