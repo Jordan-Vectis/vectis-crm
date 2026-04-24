@@ -389,7 +389,7 @@ export async function importLots(auctionId: string, rows: {
         lotNumber:    r.lotNumber,
         title:        r.title || "",
         keyPoints:    r.keyPoints || r.description || "",
-        barcode:      r.barcode || null,
+        barcode:      r.barcode?.toUpperCase() || null,
         description:  "",
         estimateLow:  r.estimateLow  ? parseInt(r.estimateLow)  : null,
         estimateHigh: r.estimateHigh ? parseInt(r.estimateHigh) : null,
@@ -398,7 +398,7 @@ export async function importLots(auctionId: string, rows: {
         condition:    r.condition    || null,
         status:       r.status       || "ENTERED",
         vendor:       r.vendor       || null,
-        tote:         r.tote         || null,
+        tote:         r.tote?.toUpperCase()    || null,
         receipt,
         category:     r.category     || null,
         subCategory:  r.subCategory  || null,
@@ -423,9 +423,11 @@ async function sequencedReceipt(base: string, extra = 0): Promise<string> {
 }
 
 function extractLotData(formData: FormData) {
+  const str = (key: string) => (formData.get(key) as string)?.trim() || null
+  const up  = (key: string) => str(key)?.toUpperCase() || null
   return {
     lotNumber:   (formData.get("lotNumber") as string) || "",
-    barcode:     (formData.get("barcode") as string) || null,
+    barcode:     up("barcode"),
     title:       (formData.get("title") as string) || "",
     keyPoints:   (formData.get("keyPoints") as string) || "",
     description: (formData.get("description") as string) || "",
@@ -434,14 +436,14 @@ function extractLotData(formData: FormData) {
     startingBid:  formData.get("startingBid")  ? parseInt(formData.get("startingBid") as string)  : null,
     reserve:      formData.get("reserve")      ? parseInt(formData.get("reserve") as string)      : null,
     hammerPrice:  formData.get("hammerPrice")  ? parseInt(formData.get("hammerPrice") as string)  : null,
-    condition:   (formData.get("condition") as string) || null,
-    vendor:      (formData.get("vendor") as string) || null,
-    tote:        (formData.get("tote") as string) || null,
-    receipt:     (formData.get("receipt") as string) || null,
-    category:    (formData.get("category") as string) || null,
-    subCategory: (formData.get("subCategory") as string) || null,
-    brand:       (formData.get("brand") as string) || null,
-    notes:       (formData.get("notes") as string) || null,
+    condition:   str("condition"),
+    vendor:      str("vendor"),
+    tote:        up("tote"),
+    receipt:     up("receipt"),
+    category:    str("category"),
+    subCategory: str("subCategory"),
+    brand:       str("brand"),
+    notes:       str("notes"),
     status:      (formData.get("status") as string) || "ENTERED",
   }
 }

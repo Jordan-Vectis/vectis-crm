@@ -71,7 +71,7 @@ export default function ImportTab({ auctionId, auctionCode, onImported }: Props)
               title,
               description:  "",
               keyPoints:    kp,
-              barcode:      col(r, "Internal Barcode"),
+              barcode:      col(r, "Internal Barcode").toUpperCase(),
               estimateLow:  money(col(r, "Estimate Low")),
               estimateHigh: money(col(r, "Estimate High")),
               reserve:      "",
