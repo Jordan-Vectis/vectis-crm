@@ -34,9 +34,30 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
 
   async function decodeBarcode(file: File): Promise<string | null> {
     try {
-      const { BrowserMultiFormatReader } = await import("@zxing/browser")
-      const reader = new BrowserMultiFormatReader()
-      const url    = URL.createObjectURL(file)
+      const [{ BrowserMultiFormatReader }, { DecodeHintType }] = await Promise.all([
+        import("@zxing/browser"),
+        import("@zxing/library"),
+      ])
+
+      const hints = new Map()
+      hints.set(DecodeHintType.TRY_HARDER, true)
+      const reader = new BrowserMultiFormatReader(hints)
+
+      // Phone photos can be 12MP+. Scale to a width ZXing reliably handles
+      // while keeping enough resolution for the barcode to be readable.
+      const img = await createImageBitmap(file)
+      const TARGET_W = 1200
+      const scale = Math.min(1, TARGET_W / img.width)
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+
+      const canvas = document.createElement("canvas")
+      canvas.width = w
+      canvas.height = h
+      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h)
+
+      const blob = await new Promise<Blob>(res => canvas.toBlob(b => res(b!), "image/jpeg", 0.92))
+      const url  = URL.createObjectURL(blob)
       try {
         const result = await reader.decodeFromImageUrl(url)
         return result.getText()
