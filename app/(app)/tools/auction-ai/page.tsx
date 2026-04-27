@@ -3,10 +3,11 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { PRESETS } from "@/lib/auction-ai-presets"
+import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "instructions"
+type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "instructions" | "kpcheck"
 
 type ChatMessage = {
   role: "user" | "model"
@@ -1325,6 +1326,674 @@ function InstructionsTab() {
   )
 }
 
+// ─── Key Points Check Tab ────────────────────────────────────────────────────
+
+const KP_SYSTEM_PROMPT = `You are a strict quality checker for auction house lot descriptions.
+
+Your task — follow these steps exactly:
+1. Read every key point the cataloguer recorded one by one.
+2. For each key point, decide: is this specific fact clearly stated in the existing description?
+3. If ALL key points are present: return the description word-for-word unchanged.
+4. If ANY key point is missing: insert that fact naturally into the existing description with the minimum change necessary — do NOT rewrite, restructure, condense or remove any existing content.
+
+Critical rules:
+- Every single key point MUST appear in the final description — missing even one is a failure.
+- NEVER remove or shorten any existing detail from the description.
+- NEVER rewrite from scratch — only insert what is missing.
+- NEVER invent facts beyond what appears in the key points or the original description.
+- The final description must be at least as long as the original.
+
+Responds as JSON: { "description": "...", "missing": "key points that were absent", "added": "one sentence on what was inserted" }`
+
+function HowItWorksPanel() {
+  const [open,        setOpen]        = useState(false)
+  const [showPrompt,  setShowPrompt]  = useState(false)
+
+  return (
+    <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl overflow-hidden">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#1a1a1e] transition-colors">
+        <span className="text-sm font-medium text-gray-300">ℹ How does this work?</span>
+        <span className="text-gray-600 text-xs">{open ? "▲ Hide" : "▼ Show"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-gray-700">
+          <ol className="mt-3 space-y-2 text-sm text-gray-400 list-decimal list-inside">
+            <li>You enter an auction code and click <span className="text-white font-medium">Load</span> — it pulls every lot that has both a cataloguer key points entry and a saved AI description from a previous Batch Run.</li>
+            <li>You click <span className="text-white font-medium">Run Key Points Check</span> — each lot is sent to Gemini one at a time with its key points and AI description.</li>
+            <li>Gemini reads both and checks whether every key point is mentioned in the description. If they're all there, it returns the description unchanged. If anything is missing or wrong, it rewrites just enough to include it.</li>
+            <li>Lots marked <span className="text-[#C8A96E] font-medium">⚑ Fixed</span> had something missing — expand them to see what changed. Lots marked <span className="text-green-400 font-medium">✓ All included</span> were fine.</li>
+            <li>Use <span className="text-white font-medium">Copy all descriptions</span> to copy everything out at once.</li>
+          </ol>
+
+          <div>
+            <button onClick={() => setShowPrompt(p => !p)}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+              {showPrompt ? "▲ Hide system prompt" : "▼ Show exact instructions sent to Gemini"}
+            </button>
+            {showPrompt && (
+              <pre className="mt-2 text-xs text-gray-400 bg-[#1C1C1E] rounded-lg p-3 whitespace-pre-wrap leading-relaxed font-mono">
+                {KP_SYSTEM_PROMPT}
+              </pre>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+type KPLot = {
+  id: string
+  label: string
+  keyPoints: string
+  description: string
+  revised?: string
+  changed?: boolean
+  missing?: string
+  added?: string
+  status?: "idle" | "checking" | "ok" | "fixed" | "error"
+  accepted?: boolean
+  selected?: boolean
+}
+
+function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
+  const [code,         setCode]         = useState("")
+  const [auctionId,    setAuctionId]    = useState<string | null>(null)
+  const [loading,      setLoading]      = useState(false)
+  const [error,        setError]        = useState<string | null>(null)
+  const [lots,         setLots]         = useState<KPLot[]>([])
+  const [checking,     setChecking]     = useState(false)
+  const [accepting,    setAccepting]    = useState(false)
+  const [progress,     setProgress]     = useState<{ done: number; total: number; current?: string } | null>(null)
+  const [expandedLot,  setExpandedLot]  = useState<string | null>(null)
+  const [localModel,   setLocalModel]   = useState(globalModel)
+  const [modelList,    setModelList]    = useState<string[]>([globalModel])
+  const [modelStatus,  setModelStatus]  = useState<Record<string, { ok: boolean; ms: number; error?: string } | "testing">>({})
+  const [testingAll,   setTestingAll]   = useState(false)
+  const [log,          setLog]          = useState<string[]>([])
+  const [paused,       setPaused]       = useState(false)
+  const [showResults,  setShowResults]  = useState(false)
+  const [auctionList,  setAuctionList]  = useState<{ code: string; name: string; auctionDate: string | null }[]>([])
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const logRef      = useRef<HTMLDivElement>(null)
+  const cancelRef   = useRef(false)
+  const pauseRef    = useRef(false)
+  const abortRef    = useRef<AbortController | null>(null)
+  const codeInputRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetch("/api/auction-ai/models")
+      .then(r => r.json())
+      .then(j => { if (j.models?.length) setModelList(j.models) })
+      .catch(() => {})
+    fetch("/api/auction-ai/auctions")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setAuctionList(data) })
+      .catch(() => {})
+  }, [])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (codeInputRef.current && !codeInputRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  function addLog(msg: string) {
+    const ts = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    setLog(l => [...l, `[${ts}]  ${msg}`])
+    setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 50)
+  }
+
+  async function testAllModels() {
+    setTestingAll(true)
+    const initial: Record<string, "testing"> = {}
+    modelList.forEach(m => { initial[m] = "testing" })
+    setModelStatus(initial)
+    await Promise.all(modelList.map(async (m) => {
+      try {
+        const res  = await fetch("/api/auction-ai/model-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
+        const data = await res.json()
+        setModelStatus(prev => ({ ...prev, [m]: data }))
+      } catch (e: any) {
+        setModelStatus(prev => ({ ...prev, [m]: { ok: false, ms: 0, error: e.message } }))
+      }
+    }))
+    setTestingAll(false)
+  }
+
+  function handleStop() {
+    cancelRef.current = true
+    pauseRef.current  = false
+    setPaused(false)
+    if (abortRef.current) {
+      addLog("⛔ Stopped — showing results so far")
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+  }
+
+  function handlePause() {
+    pauseRef.current = true
+    setPaused(true)
+    addLog("⏸ Paused — finishing current lot…")
+  }
+
+  function handleResume() {
+    pauseRef.current = false
+    setPaused(false)
+    addLog("▶ Resumed")
+  }
+
+  async function acceptLot(lot: KPLot) {
+    if (!auctionId || !lot.revised) return
+    setLots(prev => prev.map(l => l.id === lot.id ? { ...l, accepted: true } : l))
+    try {
+      await applyAiDescriptionOne(auctionId, {
+        id:           lot.id,
+        description:  lot.revised,
+        estimateLow:  null,
+        estimateHigh: null,
+      })
+    } catch (e: any) {
+      setLots(prev => prev.map(l => l.id === lot.id ? { ...l, accepted: false } : l))
+      setError(`Failed to save Lot ${lot.label}: ${e.message}`)
+    }
+  }
+
+  async function acceptAll() {
+    const toAccept = lots.filter(l => l.status === "fixed" && l.selected && !l.accepted && l.revised)
+    if (!auctionId || toAccept.length === 0) return
+    setAccepting(true)
+    for (const lot of toAccept) {
+      await acceptLot(lot)
+    }
+    setAccepting(false)
+  }
+
+  function toggleSelected(id: string) {
+    setLots(prev => prev.map(l => l.id === id ? { ...l, selected: !l.selected } : l))
+  }
+
+  function toggleSelectAll() {
+    const fixedLots = lots.filter(l => l.status === "fixed" && !l.accepted)
+    const allSelected = fixedLots.every(l => l.selected)
+    setLots(prev => prev.map(l => l.status === "fixed" && !l.accepted ? { ...l, selected: !allSelected } : l))
+  }
+
+  function updateRevised(id: string, text: string) {
+    setLots(prev => prev.map(l => l.id === id ? { ...l, revised: text } : l))
+  }
+
+  async function handleLoad() {
+    if (!code.trim()) return
+    setLoading(true); setError(null); setLots([]); setAuctionId(null)
+    try {
+      // 1. Load catalogue lots (key points)
+      const catRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(code.trim().toUpperCase())}`)
+      if (!catRes.ok) throw new Error((await catRes.json()).error ?? "Catalogue not found")
+      const catData = await catRes.json()
+      setAuctionId(catData.auctionId ?? null)
+
+      // 2. Load matching saved run (AI descriptions) — find by code
+      const runsRes = await fetch("/api/auction-ai/runs")
+      const allRuns: { id: string; code: string }[] = runsRes.ok ? await runsRes.json() : []
+      const matchingRun = allRuns.find(r => r.code.toUpperCase() === code.trim().toUpperCase())
+      let runLots: { lot: string; description: string }[] = []
+      if (matchingRun) {
+        const runRes = await fetch(`/api/auction-ai/runs/${matchingRun.id}`)
+        if (runRes.ok) {
+          const runData = await runRes.json()
+          runLots = runData.lots ?? []
+        }
+      }
+
+      // 3. Match by lot number
+      const descMap = new Map(runLots.map(r => [r.lot.toString(), r.description]))
+      const merged: KPLot[] = catData.lots
+        .filter((l: any) => l.keyPoints?.trim())
+        .map((l: any) => ({
+          id:          l.id,
+          label:       l.lotNumber,
+          keyPoints:   l.keyPoints,
+          description: descMap.get(l.lotNumber) ?? descMap.get(l.barcode ?? "") ?? "",
+          status:      "idle" as const,
+        }))
+        .filter((l: KPLot) => l.description)
+
+      if (merged.length === 0 && catData.lots.length > 0) {
+        throw new Error(
+          matchingRun
+            ? "Lots loaded but no AI descriptions matched lot numbers. Run the Batch tab first."
+            : `No saved AI run found for "${code.toUpperCase()}". Run the Batch tab first, then come back.`
+        )
+      }
+
+      setLots(merged)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function runCheck() {
+    const toCheck = lots.filter(l => l.keyPoints && l.description)
+    if (!toCheck.length || checking) return
+    cancelRef.current = false
+    pauseRef.current  = false
+    setPaused(false)
+    setShowResults(false)
+    setChecking(true)
+    setLog([])
+    setProgress({ done: 0, total: toCheck.length })
+    setLots(prev => prev.map(l => ({ ...l, status: "checking", revised: undefined, changed: undefined })))
+    addLog(`── Starting check: ${toCheck.length} lots · model: ${localModel}`)
+
+    const lotStartTimes: Record<string, number> = {}
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    try {
+      const res = await fetch("/api/auction-ai/key-points-check", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ lots: toCheck.map(l => ({ label: l.label, keyPoints: l.keyPoints, description: l.description })), model: localModel }),
+        signal:  controller.signal,
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error ?? res.statusText)
+      }
+
+      const reader  = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      outer: while (true) {
+        // Pause: stop reading until resumed or cancelled
+        while (pauseRef.current && !cancelRef.current) {
+          await new Promise(r => setTimeout(r, 200))
+        }
+        if (cancelRef.current) { reader.cancel(); break }
+
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n"); buffer = lines.pop()!
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "progress") {
+            lotStartTimes[msg.label] = Date.now()
+            setProgress({ done: msg.index, total: toCheck.length, current: msg.label })
+            addLog(`  · ${msg.index + 1}/${toCheck.length} Lot ${msg.label} — sending to Gemini…`)
+          } else if (msg.type === "result") {
+            const ms = lotStartTimes[msg.label] ? Date.now() - lotStartTimes[msg.label] : 0
+            const outcome = msg.changed ? "⚑ fixed" : "✓ all included"
+            addLog(`  ${outcome} — Lot ${msg.label} (${(ms / 1000).toFixed(1)}s)${msg.missing ? ` · missing: ${msg.missing}` : ""}`)
+            setLots(prev => prev.map(l =>
+              l.label === msg.label
+                ? { ...l, revised: msg.revised, changed: msg.changed, missing: msg.missing, added: msg.added, status: msg.changed ? "fixed" : "ok", selected: msg.changed ? true : undefined }
+                : l
+            ))
+            setProgress({ done: msg.index + 1, total: toCheck.length })
+          } else if (msg.type === "error") {
+            addLog(`  ✗ Lot ${msg.label} — error: ${msg.error}`)
+            setLots(prev => prev.map(l => l.label === msg.label ? { ...l, status: "error" } : l))
+          } else if (msg.type === "done") {
+            addLog(`── Complete`)
+          }
+        }
+      }
+    } catch (e: any) {
+      if (!cancelRef.current) {
+        addLog(`✗ Failed: ${e.message}`)
+        setError(e.message)
+      }
+    } finally {
+      abortRef.current = null
+      setChecking(false)
+      setProgress(null)
+      setShowResults(true)
+    }
+  }
+
+  function copyAll() {
+    const text = lots
+      .filter(l => l.description)
+      .map(l => `Lot ${l.label}:\n${l.revised ?? l.description}`)
+      .join("\n\n---\n\n")
+    navigator.clipboard.writeText(text)
+  }
+
+  const checkedCount = lots.filter(l => l.status === "ok" || l.status === "fixed").length
+  const fixedCount   = lots.filter(l => l.status === "fixed").length
+  const inp = "w-full bg-[#1C1C1E] border border-gray-700 rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#C8A96E]"
+
+  return (
+    <div className="space-y-5 max-w-5xl">
+      <div>
+        <h2 className="text-xl font-semibold text-white mb-1">Key Points Checker</h2>
+        <p className="text-sm text-gray-400">
+          Loads your cataloguer key points alongside the AI-generated descriptions and runs a second AI pass to
+          verify every key point is included — fixing any that are missing.
+        </p>
+      </div>
+
+      {/* How it works */}
+      <HowItWorksPanel />
+
+      {/* Model selector */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Model</p>
+          <button onClick={testAllModels} disabled={testingAll}
+            className="text-xs text-[#C8A96E] hover:text-[#b8944f] disabled:opacity-50 transition-colors">
+            {testingAll ? "Testing…" : "⚡ Test all models"}
+          </button>
+        </div>
+        <div className="border border-gray-700 rounded-lg overflow-hidden">
+          {modelList.map(m => {
+            const status = modelStatus[m]
+            const isSelected = localModel === m
+            return (
+              <button key={m} onClick={() => setLocalModel(m)}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors border-b border-gray-800 last:border-0 ${isSelected ? "bg-[#C8A96E]/10" : "hover:bg-[#1a1a1e]"}`}>
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isSelected ? "bg-[#C8A96E]" : "bg-gray-700"}`} />
+                <span className={`text-sm flex-1 font-mono ${isSelected ? "text-[#C8A96E]" : "text-gray-400"}`}>{m}</span>
+                {status === "testing" && <span className="text-xs text-gray-500 animate-pulse">testing…</span>}
+                {status && status !== "testing" && (
+                  status.ok
+                    ? <span className={`text-xs font-medium ${status.ms < 5000 ? "text-green-400" : status.ms < 12000 ? "text-yellow-400" : "text-orange-400"}`}>✓ {(status.ms / 1000).toFixed(1)}s</span>
+                    : <span className="text-xs text-red-400 truncate max-w-[200px]" title={status.error}>✗ {status.error?.match(/\[(\d{3}[^\]]*)\]/)?.[1] ?? "error"}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Load */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-3">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">Auction</p>
+        <div className="flex gap-2">
+          <div ref={codeInputRef} className="relative flex-1">
+            <input
+              value={code}
+              onChange={e => { setCode(e.target.value.toUpperCase()); setDropdownOpen(true) }}
+              onFocus={() => setDropdownOpen(true)}
+              onKeyDown={e => {
+                if (e.key === "Enter") { setDropdownOpen(false); handleLoad() }
+                if (e.key === "Escape") setDropdownOpen(false)
+              }}
+              placeholder="Type or select an auction…"
+              className={inp}
+              autoComplete="off"
+            />
+            {dropdownOpen && (() => {
+              const filtered = auctionList.filter(a =>
+                !code.trim() || a.code.includes(code.trim()) || a.name?.toLowerCase().includes(code.toLowerCase())
+              )
+              return filtered.length > 0 ? (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1C1C1E] border border-gray-700 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                  {filtered.map(a => (
+                    <button key={a.code}
+                      onMouseDown={e => { e.preventDefault(); setCode(a.code); setDropdownOpen(false) }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-[#2C2C2E] transition-colors border-b border-gray-800 last:border-0">
+                      <span className="font-mono text-sm text-[#C8A96E] w-14 flex-shrink-0">{a.code}</span>
+                      <span className="text-sm text-gray-300 truncate">{a.name}</span>
+                      {a.auctionDate && (
+                        <span className="text-xs text-gray-600 flex-shrink-0 ml-auto">
+                          {new Date(a.auctionDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : null
+            })()}
+          </div>
+          <button onClick={() => { setDropdownOpen(false); handleLoad() }} disabled={!code.trim() || loading}
+            className="bg-[#C8A96E] hover:bg-[#b8944f] text-black text-sm font-semibold px-5 py-2 rounded disabled:opacity-40 transition-colors whitespace-nowrap">
+            {loading ? "Loading…" : "Load"}
+          </button>
+        </div>
+        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {lots.length > 0 && (
+          <p className="text-xs text-[#C8A96E]">
+            ✓ {lots.length} lots loaded with key points and AI descriptions
+          </p>
+        )}
+      </div>
+
+      {/* Log panel — visible while checking */}
+      {log.length > 0 && (
+        <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-4 h-52 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
+          {log.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+      )}
+
+      {/* Results table */}
+      {lots.length > 0 && (
+        <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl overflow-hidden">
+          {/* Table header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 gap-3">
+            <div className="flex items-center gap-3">
+              <p className="text-sm font-medium text-white">{lots.length} lots</p>
+              {checkedCount > 0 && (
+                <span className="text-xs text-gray-400">
+                  {checkedCount}/{lots.length} checked · <span className={fixedCount > 0 ? "text-[#C8A96E]" : "text-green-400"}>{fixedCount} fixed</span>
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2 items-center">
+              {checkedCount > 0 && !checking && (
+                <button onClick={copyAll}
+                  className="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded transition-colors">
+                  Copy all
+                </button>
+              )}
+              {checking && (
+                <>
+                  {paused
+                    ? <button onClick={handleResume} className="text-xs text-green-400 hover:text-green-300 font-medium transition-colors">▶ Resume</button>
+                    : <button onClick={handlePause}  className="text-xs text-yellow-500 hover:text-yellow-400 font-medium transition-colors">⏸ Pause</button>
+                  }
+                  <button onClick={handleStop} className="text-xs text-gray-500 hover:text-red-400 transition-colors">Stop & results</button>
+                </>
+              )}
+              <button onClick={runCheck} disabled={checking}
+                className="bg-[#C8A96E] hover:bg-[#b8944f] text-black text-xs font-semibold px-4 py-1.5 rounded disabled:opacity-40 transition-colors whitespace-nowrap">
+                {checking
+                  ? `${paused ? "Paused" : "Checking"} ${progress?.done ?? 0}/${progress?.total ?? 0}${progress?.current ? ` · Lot ${progress.current}` : ""}`
+                  : checkedCount > 0 ? "Re-run Check" : "▶ Run Key Points Check"}
+              </button>
+            </div>
+          </div>
+
+          {/* Results summary */}
+          {showResults && checkedCount > 0 && (
+            <div className="border-b border-gray-700 px-4 py-3 bg-[#1C1C1E] space-y-3">
+              <div className="flex gap-4">
+                <div className="text-center">
+                  <p className="text-lg font-bold text-white">{checkedCount}</p>
+                  <p className="text-xs text-gray-500">Checked</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-green-400">{checkedCount - fixedCount - lots.filter(l => l.status === "error").length}</p>
+                  <p className="text-xs text-gray-500">All good</p>
+                </div>
+                <div className="text-center">
+                  <p className={`text-lg font-bold ${fixedCount > 0 ? "text-[#C8A96E]" : "text-gray-600"}`}>{fixedCount}</p>
+                  <p className="text-xs text-gray-500">Fixed</p>
+                </div>
+                {lots.filter(l => l.status === "error").length > 0 && (
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-red-400">{lots.filter(l => l.status === "error").length}</p>
+                    <p className="text-xs text-gray-500">Errors</p>
+                  </div>
+                )}
+              </div>
+              {fixedCount > 0 && (() => {
+                const pendingFixed = lots.filter(l => l.status === "fixed" && !l.accepted)
+                const selectedCount = pendingFixed.filter(l => l.selected).length
+                const allSelected = pendingFixed.length > 0 && pendingFixed.every(l => l.selected)
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
+                        className="w-3.5 h-3.5 rounded accent-[#C8A96E]" />
+                      <p className="text-xs text-gray-500 uppercase tracking-wider flex-1">
+                        {pendingFixed.length} fixed · {selectedCount} selected
+                      </p>
+                      <button onClick={acceptAll} disabled={accepting || selectedCount === 0}
+                        className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] disabled:opacity-40 text-black font-semibold px-3 py-1 rounded transition-colors">
+                        {accepting ? "Saving…" : `Apply ${selectedCount} selected`}
+                      </button>
+                    </div>
+
+                    {lots.filter(l => l.status === "fixed").map(l => (
+                      <div key={l.label} className={`rounded-lg overflow-hidden border transition-colors ${
+                        l.accepted ? "border-green-700/50 bg-green-900/10"
+                        : l.selected ? "border-[#C8A96E]/50 bg-[#2C2C2E]"
+                        : "border-gray-700 bg-[#2C2C2E] opacity-60"
+                      }`}>
+                        {/* Lot header */}
+                        <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-700">
+                          {!l.accepted && (
+                            <input type="checkbox" checked={!!l.selected} onChange={() => toggleSelected(l.id)}
+                              className="w-3.5 h-3.5 rounded accent-[#C8A96E] flex-shrink-0" />
+                          )}
+                          <span className="text-xs font-mono font-bold text-[#C8A96E]">Lot {l.label}</span>
+                          <div className="flex items-center gap-2 ml-auto">
+                            {l.accepted
+                              ? <span className="text-xs text-green-400 font-medium">✓ Saved to catalogue</span>
+                              : <button onClick={() => acceptLot(l)} disabled={!l.selected}
+                                  className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] disabled:opacity-40 text-black font-semibold px-3 py-0.5 rounded transition-colors">
+                                  Apply
+                                </button>
+                            }
+                            <button onClick={() => navigator.clipboard.writeText(l.revised ?? "")}
+                              className="text-[10px] text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-0.5 rounded transition-colors">
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Missing / added summary */}
+                        {(l.missing || l.added) && (
+                          <div className="flex gap-4 px-3 py-2 border-b border-gray-700 bg-[#1C1C1E]">
+                            {l.missing && (
+                              <div className="flex-1">
+                                <p className="text-[10px] text-red-400 uppercase tracking-wider mb-0.5">Was missing</p>
+                                <p className="text-xs text-red-300">{l.missing}</p>
+                              </div>
+                            )}
+                            {l.added && (
+                              <div className="flex-1">
+                                <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-0.5">What changed</p>
+                                <p className="text-xs text-[#C8A96E]">{l.added}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Three columns: key points | before | editable after */}
+                        <div className="grid grid-cols-3 divide-x divide-gray-700">
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Key Points</p>
+                            <pre className="text-xs text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">{l.keyPoints}</pre>
+                          </div>
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Before</p>
+                            <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{l.description}</p>
+                          </div>
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-1.5">
+                              After (fixed){!l.accepted && <span className="text-gray-600 normal-case ml-1">· editable</span>}
+                            </p>
+                            {l.accepted
+                              ? <p className="text-xs text-gray-200 leading-relaxed whitespace-pre-wrap">{l.revised}</p>
+                              : <textarea
+                                  value={l.revised ?? ""}
+                                  onChange={e => updateRevised(l.id, e.target.value)}
+                                  rows={8}
+                                  className="w-full text-xs text-gray-200 bg-[#1C1C1E] border border-gray-700 rounded p-2 leading-relaxed resize-y focus:outline-none focus:border-[#C8A96E]"
+                                />
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+          {/* Lot rows */}
+          <div className="divide-y divide-gray-800 max-h-[65vh] overflow-y-auto">
+            {lots.map(lot => {
+              const isExpanded = expandedLot === lot.label
+              return (
+                <div key={lot.label} className="px-4 py-3">
+                  {/* Row summary */}
+                  <button
+                    onClick={() => setExpandedLot(isExpanded ? null : lot.label)}
+                    className="w-full flex items-center gap-3 text-left"
+                  >
+                    <span className="text-sm font-medium text-white w-14 shrink-0">Lot {lot.label}</span>
+                    <span className="flex-1 text-xs text-gray-500 truncate">{lot.keyPoints.split("\n")[0]}</span>
+                    {lot.status === "idle"     && <span className="text-xs text-gray-600">Not checked</span>}
+                    {lot.status === "checking" && <span className="text-xs text-gray-500 animate-pulse">Checking…</span>}
+                    {lot.status === "ok"       && <span className="text-xs text-green-400">✓ All included</span>}
+                    {lot.status === "fixed"    && <span className="text-xs text-[#C8A96E]">⚑ Fixed</span>}
+                    {lot.status === "error"    && <span className="text-xs text-red-400">Error</span>}
+                    <span className="text-gray-600 text-xs ml-1">{isExpanded ? "▲" : "▼"}</span>
+                  </button>
+
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Key Points</p>
+                        <pre className="text-xs text-gray-300 whitespace-pre-wrap bg-[#1C1C1E] rounded-lg p-3 font-sans leading-relaxed">{lot.keyPoints}</pre>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">
+                          {lot.status === "fixed" ? "Fixed Description" : "AI Description"}
+                        </p>
+                        <pre className={`text-xs whitespace-pre-wrap rounded-lg p-3 font-sans leading-relaxed ${
+                          lot.status === "fixed"
+                            ? "text-[#C8A96E] bg-[#1C1C1E] border border-[#C8A96E]/25"
+                            : "text-gray-300 bg-[#1C1C1E]"
+                        }`}>{lot.revised ?? lot.description}</pre>
+                        {lot.status === "fixed" && (
+                          <button onClick={() => navigator.clipboard.writeText(lot.revised ?? "")}
+                            className="mt-1.5 text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
+                            Copy description
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
@@ -1333,6 +2002,7 @@ const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
   { id: "runs",         label: "Saved Runs",         icon: "🗂" },
   { id: "barcode",      label: "Barcode Sorter",     icon: "▦"  },
   { id: "copier",       label: "Description Copier", icon: "📋" },
+  { id: "kpcheck",      label: "Key Points Check",   icon: "✓"  },
   { id: "instructions", label: "Instructions",       icon: "📝" },
 ]
 
@@ -1415,6 +2085,7 @@ export default function AuctionAIPage() {
         <div className={tab === "runs"         ? "" : "hidden"}><SavedRunsTab /></div>
         <div className={tab === "barcode"      ? "" : "hidden"}><BarcodeTab /></div>
         <div className={tab === "copier"       ? "" : "hidden"}><CopierTab /></div>
+        <div className={tab === "kpcheck"      ? "" : "hidden"}><KeyPointsCheckTab model={model} /></div>
         <div className={tab === "instructions" ? "" : "hidden"}><InstructionsTab /></div>
       </main>
     </div>

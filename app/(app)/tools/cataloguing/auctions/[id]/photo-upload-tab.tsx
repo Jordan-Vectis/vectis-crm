@@ -32,22 +32,6 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     ...lots.filter(l => l.barcode).map(l => [l.barcode!.toLowerCase().trim(), l.id] as [string, string]),
   ])
 
-  async function decodeBarcode(file: File): Promise<string | null> {
-    try {
-      const { BrowserMultiFormatReader } = await import("@zxing/browser")
-      const reader = new BrowserMultiFormatReader()
-      const url    = URL.createObjectURL(file)
-      try {
-        const result = await reader.decodeFromImageUrl(url)
-        return result.getText()
-      } finally {
-        URL.revokeObjectURL(url)
-      }
-    } catch {
-      return null
-    }
-  }
-
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null)
     const files = Array.from(e.target.files ?? []).filter(
@@ -60,6 +44,99 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
 
     setPhase("scanning")
     setScanProgress({ done: 0, total: files.length })
+
+    // Prefer native BarcodeDetector (Chrome/Edge) — far more reliable for real photos.
+    // Fall back to ZXing for browsers that don't support it.
+    const nativeDetector = "BarcodeDetector" in window
+      ? new (window as any).BarcodeDetector({ formats: ["code_128", "code_39", "qr_code", "ean_13"] })
+      : null
+
+    // ZXing fallback — load once for the batch
+    const [{ HTMLCanvasElementLuminanceSource }, { MultiFormatReader, BinaryBitmap, HybridBinarizer, DecodeHintType }] =
+      await Promise.all([import("@zxing/browser"), import("@zxing/library")])
+    const hints = new Map()
+    hints.set(DecodeHintType.TRY_HARDER, true)
+    const zxing = new MultiFormatReader()
+    zxing.setHints(hints)
+
+    // Load a File into an HTMLImageElement (respects EXIF rotation)
+    function loadImgElement(file: File): Promise<HTMLImageElement> {
+      return new Promise((res, rej) => {
+        const url = URL.createObjectURL(file)
+        const el  = new Image()
+        el.onload  = () => { URL.revokeObjectURL(url); res(el) }
+        el.onerror = () => { URL.revokeObjectURL(url); rej(new Error("load failed")) }
+        el.src = url
+      })
+    }
+
+    async function decodeBarcode(file: File): Promise<string | null> {
+      try {
+        // Load via <img> so EXIF rotation is applied before scanning
+        const imgEl = await loadImgElement(file)
+
+        const naturalW = imgEl.naturalWidth
+        const naturalH = imgEl.naturalHeight
+
+        // Draw image to canvas at targetW, optionally with contrast boost or B&W threshold
+        function toCanvas(targetW: number, mode: "normal" | "contrast" | "bw" = "normal"): HTMLCanvasElement {
+          const scale = Math.min(1, targetW / naturalW)
+          const w = Math.round(naturalW * scale)
+          const h = Math.round(naturalH * scale)
+          const c = document.createElement("canvas")
+          c.width = w; c.height = h
+          const ctx = c.getContext("2d")!
+          ctx.fillStyle = "#ffffff"
+          ctx.fillRect(0, 0, w, h)
+          if (mode === "contrast") {
+            ctx.filter = "contrast(400%) grayscale(100%)"
+          }
+          ctx.drawImage(imgEl, 0, 0, w, h)
+          if (mode === "bw") {
+            // Hard threshold to pure black/white — maximises bar edge sharpness
+            const id = ctx.getImageData(0, 0, w, h)
+            for (let i = 0; i < id.data.length; i += 4) {
+              const v = 0.299 * id.data[i] + 0.587 * id.data[i+1] + 0.114 * id.data[i+2] > 128 ? 255 : 0
+              id.data[i] = id.data[i+1] = id.data[i+2] = v
+            }
+            ctx.putImageData(id, 0, 0)
+          }
+          return c
+        }
+
+        // Native BarcodeDetector — try normal, contrast-boosted and B&W at two scales
+        if (nativeDetector) {
+          for (const targetW of [naturalW, 900]) {
+            for (const mode of ["normal", "contrast", "bw"] as const) {
+              const c = toCanvas(targetW, mode)
+              try {
+                const bmp     = await createImageBitmap(c)
+                const results = await nativeDetector.detect(bmp)
+                if (results.length > 0) {
+                  const raw = (results[0].rawValue as string).replace(/[^\x20-\x7E]/g, "").trim()
+                  if (raw) return raw
+                }
+              } catch {}
+            }
+          }
+        }
+
+        // ZXing fallback — normal and B&W at multiple scales
+        for (const targetW of [2000, 1200]) {
+          for (const mode of ["normal", "bw"] as const) {
+            const c = toCanvas(targetW, mode)
+            try {
+              const luminance = new HTMLCanvasElementLuminanceSource(c)
+              const bitmap = new BinaryBitmap(new HybridBinarizer(luminance))
+              return zxing.decodeWithState(bitmap).getText().replace(/[^\x20-\x7E]/g, "").trim()
+            } catch {}
+          }
+        }
+        return null
+      } catch {
+        return null
+      }
+    }
 
     const result: LotGroup[] = []
     let current: LotGroup | null = null

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useRef } from "react"
+import { useState, useTransition, useRef, useEffect } from "react"
 import { createLot } from "@/lib/actions/catalogue"
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -322,16 +322,17 @@ export const BRANDS_LIST: string[] = [
 const CAT_ACCENT     = "#2AB4A6"
 const CONDITIONS     = ["Mint", "Near Mint", "Excellent", "Good Plus", "Good", "Fair", "Poor"]
 const PARCEL_OPTIONS = ["Small", "Medium", "Large", "Contact", "Collection Only"]
-const QUICK_RANGES   = [[20,40],[40,60],[60,80],[80,100],[100,140],[140,180],[180,220],[220,260],[260,300]]
+const ESTIMATE_VALUES = [5,10,15,20,25,30,35,40,45,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]
 const STEP_LABELS    = ["Vendor & Tote", "Barcode", "Key Points", "Categories", "Estimate", "Condition", "Parcel Size", "Photos"]
 
 // ─── Autocomplete ─────────────────────────────────────────────────────────────
 
-function Autocomplete({ value, onChange, options, placeholder }: {
+function Autocomplete({ value, onChange, options, placeholder, tablet }: {
   value: string
   onChange: (v: string) => void
   options: string[]
   placeholder?: string
+  tablet?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const filtered = options.filter(o => o.toLowerCase().includes(value.toLowerCase())).slice(0, 50)
@@ -341,16 +342,16 @@ function Autocomplete({ value, onChange, options, placeholder }: {
         <input value={value} onChange={e => { onChange(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder={placeholder}
-          className="flex-1 bg-[#2C2C2E] border border-r-0 border-gray-700 rounded-l px-3 py-2 text-sm text-gray-200 focus:outline-none"
+          className={`flex-1 bg-[#2C2C2E] border border-r-0 border-gray-700 rounded-l text-gray-200 focus:outline-none ${tablet ? "px-4 py-3.5 text-base" : "px-3 py-2 text-sm"}`}
           style={{ borderColor: value ? CAT_ACCENT + "66" : undefined }} />
         <button type="button" onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
-          className="px-2 bg-[#2C2C2E] border border-l-0 border-gray-700 rounded-r text-gray-500 text-xs">▼</button>
+          className={`bg-[#2C2C2E] border border-l-0 border-gray-700 rounded-r text-gray-500 ${tablet ? "px-3 text-sm" : "px-2 text-xs"}`}>▼</button>
       </div>
       {open && filtered.length > 0 && (
         <div className="absolute z-50 w-full bg-[#2C2C2E] border border-gray-700 rounded mt-0.5 max-h-48 overflow-y-auto shadow-xl">
           {filtered.map(opt => (
             <button key={opt} type="button" onMouseDown={() => { onChange(opt); setOpen(false) }}
-              className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-[#3A3A3C] transition-colors">
+              className={`w-full text-left px-3 text-gray-200 hover:bg-[#3A3A3C] transition-colors ${tablet ? "py-3 text-base" : "py-1.5 text-sm"}`}>
               {opt}
             </button>
           ))}
@@ -362,14 +363,15 @@ function Autocomplete({ value, onChange, options, placeholder }: {
 
 // ─── Condition button ─────────────────────────────────────────────────────────
 
-function CondBtn({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+function CondBtn({ label, selected, onClick, tablet }: { label: string; selected: boolean; onClick: () => void; tablet?: boolean }) {
   return (
     <button type="button" onClick={onClick}
-      className="px-3 py-2 rounded text-sm font-medium transition-colors"
+      className={`rounded font-medium transition-colors ${tablet ? "px-4 py-3 text-base" : "px-3 py-2 text-sm"}`}
       style={{
         background: selected ? CAT_ACCENT : "#2C2C2E",
         color: selected ? "#1C1C1E" : "#d1d5db",
         border: `1px solid ${selected ? CAT_ACCENT : "#374151"}`,
+        touchAction: tablet ? "manipulation" : undefined,
       }}>
       {label}
     </button>
@@ -378,13 +380,14 @@ function CondBtn({ label, selected, onClick }: { label: string; selected: boolea
 
 // ─── Pin button ───────────────────────────────────────────────────────────────
 
-function PinBtn({ pinned, onPin }: { pinned: boolean; onPin: () => void }) {
+function PinBtn({ pinned, onPin, tablet }: { pinned: boolean; onPin: () => void; tablet?: boolean }) {
   return (
     <button type="button" onClick={onPin}
-      className="text-xs px-2 py-0.5 rounded transition-colors flex-shrink-0"
+      className={`rounded transition-colors flex-shrink-0 ${tablet ? "text-sm px-3 py-1.5" : "text-xs px-2 py-0.5"}`}
       style={{
         color: pinned ? CAT_ACCENT : "#6b7280",
         border: `1px solid ${pinned ? CAT_ACCENT + "66" : "#374151"}`,
+        touchAction: tablet ? "manipulation" : undefined,
       }}>
       {pinned ? "📌 Pinned" : "Pin"}
     </button>
@@ -397,18 +400,48 @@ export default function LotWizardTab({
   auctionId,
   auction,
   onCreated,
+  tablet,
 }: {
   auctionId: string
   auction: { code: string; name: string }
   onCreated: () => void
+  tablet?: boolean
 }) {
   const [pending, start] = useTransition()
+
+  const barcodeStartedAt   = useRef<number | null>(null)
+  const keyPointsEnteredAt = useRef<number | null>(null)
+  const keyPointsAccumMs   = useRef<number>(0)
+
+  // Live timer display
+  const [timerActive, setTimerActive] = useState(false)
+  const [timerSecs,   setTimerSecs]   = useState(0)
+
+  // Step must be declared before the useEffect that depends on it
+  const [step,        setStep]        = useState(1)
 
   const [vendor,      setVendor]      = useState("")
   const [tote,        setTote]        = useState("")
   const [receipt,     setReceipt]     = useState("")
-  const [step,        setStep]        = useState(1)
-  const [barcode, setBarcode] = useState("")
+  const [barcode,     setBarcode]     = useState("")
+
+  useEffect(() => {
+    if (!timerActive) return
+    const id = setInterval(() => {
+      setTimerSecs(barcodeStartedAt.current ? Math.floor((Date.now() - barcodeStartedAt.current) / 1000) : 0)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [timerActive])
+
+  // Track time spent on Key Points (step 3)
+  useEffect(() => {
+    if (step === 3) {
+      keyPointsEnteredAt.current = Date.now()
+    } else if (keyPointsEnteredAt.current !== null) {
+      keyPointsAccumMs.current += Date.now() - keyPointsEnteredAt.current
+      keyPointsEnteredAt.current = null
+    }
+  }, [step])
 
   const LAST_BARCODE_KEY = "vectis_last_barcode"
   function getLastBarcode() {
@@ -465,7 +498,12 @@ export default function LotWizardTab({
 
   const subCats     = mainCat ? (CATEGORY_MAP[mainCat] ?? []) : []
   const mainCatList = Object.keys(CATEGORY_MAP).sort()
-  const inpFocus    = "w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#2AB4A6]"
+  const inpFocus    = tablet
+    ? "w-full bg-[#2C2C2E] border border-gray-700 rounded-xl px-4 py-3.5 text-base text-gray-200 focus:outline-none focus:border-[#2AB4A6]"
+    : "w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#2AB4A6]"
+  const lbl = tablet
+    ? "text-sm text-gray-400 uppercase tracking-wider"
+    : "text-xs text-gray-500 uppercase tracking-wider"
 
   function validateStep(s: number): string {
     if (s === 1) {
@@ -495,6 +533,7 @@ export default function LotWizardTab({
     if (!src) return
     const m = src.match(/(\d+)$/)
     if (!m) return
+    if (!barcodeStartedAt.current) { barcodeStartedAt.current = Date.now(); setTimerActive(true) }
     setBarcode(src.slice(0, m.index) + String(parseInt(m[1]) + 1).padStart(m[1].length, "0"))
   }
 
@@ -512,7 +551,7 @@ export default function LotWizardTab({
     fd.append("lotNumber",    barcode)   // kept as temp lot ID until auto-lotter assigns a number
     fd.append("barcode",      barcode)   // stored separately — auto-lotter only changes lotNumber
     fd.append("title",        title)
-    fd.append("description",  keyPoints)
+    fd.append("keyPoints",    keyPoints)
     fd.append("estimateLow",  estLow.replace(/[£,]/g, "").trim())
     fd.append("estimateHigh", estHigh.replace(/[£,]/g, "").trim())
     fd.append("condition",    condition)
@@ -524,10 +563,22 @@ export default function LotWizardTab({
     fd.append("brand",        brand)
     fd.append("notes",        parcel)
     fd.append("status",       "ENTERED")
+    // Flush key points time if still on that step (shouldn't be, but safety net)
+    if (keyPointsEnteredAt.current !== null) {
+      keyPointsAccumMs.current += Date.now() - keyPointsEnteredAt.current
+      keyPointsEnteredAt.current = null
+    }
+    fd.append("durationMs",   String(barcodeStartedAt.current ? Date.now() - barcodeStartedAt.current : 0))
+    fd.append("keyPointsMs",  String(keyPointsAccumMs.current))
     photoFiles.forEach(p => fd.append("photo", p.file))
 
     start(async () => {
       await createLot(auctionId, fd)
+      barcodeStartedAt.current = null
+      keyPointsAccumMs.current = 0
+      keyPointsEnteredAt.current = null
+      setTimerActive(false)
+      setTimerSecs(0)
       const n = lotCount + 1
       setLotCount(n)
       saveLastBarcode(barcode)
@@ -550,12 +601,24 @@ export default function LotWizardTab({
     <div className="flex flex-col h-full">
       {/* Auction context banner */}
       <div className="flex items-center gap-3 mb-4 px-1">
-        <span className="text-xs text-gray-500 uppercase tracking-wider">Adding to:</span>
-        <span className="font-mono font-bold text-[#2AB4A6] text-sm">{auction.code}</span>
-        <span className="text-gray-300 text-sm">{auction.name}</span>
-        {lotCount > 0 && (
-          <span className="ml-auto text-green-400 text-sm font-bold">{lotCount} lot{lotCount !== 1 ? "s" : ""} added this session</span>
-        )}
+        <span className={`${tablet ? "text-sm" : "text-xs"} text-gray-500 uppercase tracking-wider`}>Adding to:</span>
+        <span className={`font-mono font-bold text-[#2AB4A6] ${tablet ? "text-base" : "text-sm"}`}>{auction.code}</span>
+        <span className={`text-gray-300 ${tablet ? "text-base" : "text-sm"}`}>{auction.name}</span>
+        <div className="ml-auto flex items-center gap-4">
+          {timerActive && (
+            <span className={`flex items-center gap-1.5 font-mono font-bold tabular-nums ${tablet ? "text-base" : "text-sm"}`}
+              style={{ color: timerSecs > 300 ? "#ef4444" : timerSecs > 120 ? "#f59e0b" : "#2AB4A6" }}>
+              <svg className="w-3.5 h-3.5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
+              </svg>
+              {String(Math.floor(timerSecs / 60)).padStart(2, "0")}:{String(timerSecs % 60).padStart(2, "0")}
+            </span>
+          )}
+          {lotCount > 0 && (
+            <span className={`text-green-400 font-bold ${tablet ? "text-base" : "text-sm"}`}>{lotCount} lot{lotCount !== 1 ? "s" : ""} added</span>
+          )}
+        </div>
       </div>
 
       {/* Step indicator */}
@@ -563,15 +626,50 @@ export default function LotWizardTab({
         {STEP_LABELS.map((label, i) => (
           <div key={i} className="flex-1 min-w-0 pb-2 text-center border-b-2 transition-colors"
             style={{ borderColor: i + 1 === step ? CAT_ACCENT : i + 1 < step ? "#22c55e" : "#374151" }}>
-            <span className="block text-xs truncate px-1"
-              style={{ color: i + 1 === step ? CAT_ACCENT : i + 1 < step ? "#22c55e" : "#6b7280", fontWeight: i + 1 === step ? 600 : 400 }}>
-              {i + 1}. {label}
-            </span>
+            {tablet ? (
+              <span className="block text-sm font-semibold px-1"
+                style={{ color: i + 1 === step ? CAT_ACCENT : i + 1 < step ? "#22c55e" : "#6b7280" }}>
+                {i + 1}
+              </span>
+            ) : (
+              <span className="block text-xs truncate px-1"
+                style={{ color: i + 1 === step ? CAT_ACCENT : i + 1 < step ? "#22c55e" : "#6b7280", fontWeight: i + 1 === step ? 600 : 400 }}>
+                {i + 1}. {label}
+              </span>
+            )}
           </div>
         ))}
       </div>
+      {tablet && (
+        <p className={`text-center font-semibold mb-3`} style={{ color: CAT_ACCENT }}>
+          Step {step} of 8 — {STEP_LABELS[step - 1]}
+        </p>
+      )}
 
       {validErr && <p className="text-red-400 text-sm mb-3">{validErr}</p>}
+
+      {/* Top nav */}
+      <div className={`flex items-center justify-between mb-3 sticky top-0 z-10 bg-[#141416] -mx-1 px-1 border-b border-gray-800/50 ${tablet ? "py-3" : "py-2"}`}>
+        <button onClick={goBack} disabled={step === 1}
+          style={{ touchAction: tablet ? "manipulation" : undefined }}
+          className={`bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded transition-colors disabled:opacity-30 hover:border-gray-500 ${tablet ? "px-6 py-3 text-base font-medium" : "px-4 py-1.5 text-sm"}`}>
+          ← Back
+        </button>
+        <span className={`text-gray-600 ${tablet ? "text-base" : "text-xs"}`}>{step} / 8</span>
+        {step < 8 ? (
+          <button onClick={goNext}
+            className={`font-semibold rounded transition-colors ${tablet ? "px-6 py-3 text-base" : "px-4 py-1.5 text-sm"}`}
+            style={{ background: CAT_ACCENT, color: "#1C1C1E", touchAction: tablet ? "manipulation" : undefined }}>
+            Next →
+          </button>
+        ) : (
+          <button onClick={saveLot} disabled={pending}
+            className={`font-semibold rounded transition-colors disabled:opacity-50 ${tablet ? "px-6 py-3 text-base" : "px-4 py-1.5 text-sm"}`}
+            style={{ background: CAT_ACCENT, color: "#1C1C1E", touchAction: tablet ? "manipulation" : undefined }}>
+            {pending ? "Saving…" : photoFiles.length > 0 ? "Save Lot ✓" : "Skip & Save ✓"}
+          </button>
+        )}
+      </div>
 
       {/* Step content */}
       <div className="flex-1 overflow-y-auto">
@@ -581,8 +679,8 @@ export default function LotWizardTab({
             <p className="text-xs text-gray-500">These values are remembered between lots.</p>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-gray-500 uppercase tracking-wider">Vendor Number <span className="text-red-500">*</span></label>
-                <PinBtn pinned={pinnedVendor === vendor && !!vendor} onPin={() => setPinnedVendor(v => v === vendor ? "" : vendor)} />
+                <label className={lbl}>Vendor Number <span className="text-red-500">*</span></label>
+                <PinBtn pinned={pinnedVendor === vendor && !!vendor} onPin={() => setPinnedVendor(v => v === vendor ? "" : vendor)} tablet={tablet} />
               </div>
               <div className="flex gap-2">
                 <input value={vendor} onChange={e => setVendor(e.target.value)} className={`flex-1 ${inpFocus}`} placeholder="e.g. V12345" autoFocus />
@@ -591,8 +689,8 @@ export default function LotWizardTab({
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-gray-500 uppercase tracking-wider">Tote Number <span className="text-red-500">*</span></label>
-                <PinBtn pinned={pinnedTote === tote && !!tote} onPin={() => setPinnedTote(v => v === tote ? "" : tote)} />
+                <label className={lbl}>Tote Number <span className="text-red-500">*</span></label>
+                <PinBtn pinned={pinnedTote === tote && !!tote} onPin={() => setPinnedTote(v => v === tote ? "" : tote)} tablet={tablet} />
               </div>
               <div className="relative">
                 <div className="flex gap-2">
@@ -634,8 +732,8 @@ export default function LotWizardTab({
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-gray-500 uppercase tracking-wider">Receipt Number <span className="text-gray-600">(optional)</span></label>
-                <PinBtn pinned={pinnedReceipt === receipt && !!receipt} onPin={() => setPinnedReceipt(v => v === receipt ? "" : receipt)} />
+                <label className={lbl}>Receipt Number <span className="text-gray-600">(optional)</span></label>
+                <PinBtn pinned={pinnedReceipt === receipt && !!receipt} onPin={() => setPinnedReceipt(v => v === receipt ? "" : receipt)} tablet={tablet} />
               </div>
               <div className="flex gap-2">
                 <input value={receipt} onChange={e => setReceipt(e.target.value)} className={`flex-1 ${inpFocus}`} placeholder="e.g. R9876" />
@@ -649,8 +747,12 @@ export default function LotWizardTab({
           <div className="max-w-lg space-y-4">
             <p className="text-xs text-gray-500">Scan the internal barcode or type it manually.</p>
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Internal Barcode <span className="text-red-500">*</span></label>
-              <input value={barcode} onChange={e => setBarcode(e.target.value)} className={inpFocus} placeholder="Scan or type barcode…" autoFocus />
+              <label className={`${lbl} block mb-1`}>Internal Barcode <span className="text-red-500">*</span></label>
+              <input value={barcode} onChange={e => {
+                const v = e.target.value
+                if (v && !barcode && !barcodeStartedAt.current) { barcodeStartedAt.current = Date.now(); setTimerActive(true) }
+                setBarcode(v)
+              }} className={inpFocus} placeholder="Scan or type barcode…" autoFocus />
             </div>
             <button type="button" onClick={nextBarcodeNumber}
               className="px-4 py-2 text-sm rounded transition-colors"
@@ -662,7 +764,7 @@ export default function LotWizardTab({
 
         {step === 3 && (
           <div className="max-w-lg">
-            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Key Points <span className="text-gray-600">(optional)</span></label>
+            <label className={`${lbl} block mb-1`}>Key Points <span className="text-gray-600">(optional)</span></label>
             <textarea value={keyPoints} onChange={e => setKeyPoints(e.target.value)} rows={6}
               placeholder="Describe any key points about this lot…"
               className={`${inpFocus} resize-none`} autoFocus />
@@ -673,31 +775,31 @@ export default function LotWizardTab({
           <div className="max-w-lg space-y-5">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-gray-500 uppercase tracking-wider">Main Category</label>
+                <label className={lbl}>Main Category</label>
                 <button type="button" onClick={() => setPinnedMain(mainCat)}
-                  className="text-xs px-2 py-0.5 rounded transition-colors"
+                  className={`rounded transition-colors ${tablet ? "text-sm px-3 py-1.5" : "text-xs px-2 py-0.5"}`}
                   style={{ color: pinnedMain === mainCat && mainCat ? CAT_ACCENT : "#6b7280", border: `1px solid ${pinnedMain === mainCat && mainCat ? CAT_ACCENT + "66" : "#374151"}` }}>
                   {pinnedMain === mainCat && mainCat ? "📌 Pinned" : "Pin"}
                 </button>
               </div>
               <Autocomplete value={mainCat} onChange={v => { setMainCat(v); if (!CATEGORY_MAP[v]) setSubCat("") }}
-                options={mainCatList} placeholder="Select main category…" />
+                options={mainCatList} placeholder="Select main category…" tablet={tablet} />
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-gray-500 uppercase tracking-wider">Sub Category</label>
+                <label className={lbl}>Sub Category</label>
                 <button type="button" onClick={() => setPinnedSub(subCat)}
-                  className="text-xs px-2 py-0.5 rounded transition-colors"
+                  className={`rounded transition-colors ${tablet ? "text-sm px-3 py-1.5" : "text-xs px-2 py-0.5"}`}
                   style={{ color: pinnedSub === subCat && subCat ? CAT_ACCENT : "#6b7280", border: `1px solid ${pinnedSub === subCat && subCat ? CAT_ACCENT + "66" : "#374151"}` }}>
                   {pinnedSub === subCat && subCat ? "📌 Pinned" : "Pin"}
                 </button>
               </div>
               <Autocomplete value={subCat} onChange={setSubCat} options={subCats}
-                placeholder={mainCat ? "Select sub-category…" : "Select main category first…"} />
+                placeholder={mainCat ? "Select sub-category…" : "Select main category first…"} tablet={tablet} />
             </div>
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Brand</label>
-              <Autocomplete value={brand} onChange={setBrand} options={BRANDS_LIST} placeholder="Search brand…" />
+              <label className={`${lbl} block mb-1`}>Brand</label>
+              <Autocomplete value={brand} onChange={setBrand} options={BRANDS_LIST} placeholder="Search brand…" tablet={tablet} />
             </div>
           </div>
         )}
@@ -707,29 +809,33 @@ export default function LotWizardTab({
             <div className="flex gap-6">
               <div className="flex-1 space-y-3">
                 <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Estimate Low £ <span className="text-red-500">*</span></label>
+                  <label className={`${lbl} block mb-1`}>Estimate Low £ <span className="text-red-500">*</span></label>
                   <input value={estLow} onChange={e => setEstLow(e.target.value)} className={inpFocus} placeholder="e.g. 40" autoFocus />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Estimate High £ <span className="text-red-500">*</span></label>
+                  <label className={`${lbl} block mb-1`}>Estimate High £ <span className="text-red-500">*</span></label>
                   <input value={estHigh} onChange={e => setEstHigh(e.target.value)} className={inpFocus} placeholder="e.g. 60" />
                 </div>
               </div>
-              <div className="bg-[#2C2C2E] rounded-lg p-3 border border-gray-700">
-                <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 text-center">Quick Select</p>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {QUICK_RANGES.map(([lo, hi], i) => (
-                    <button key={i} type="button" onClick={() => { setEstLow(String(lo)); setEstHigh(String(hi)) }}
-                      className="px-2 py-1.5 text-xs rounded transition-colors whitespace-nowrap"
-                      style={{
-                        background: estLow === String(lo) && estHigh === String(hi) ? CAT_ACCENT : "#1C1C1E",
-                        color: estLow === String(lo) && estHigh === String(hi) ? "#1C1C1E" : "#d1d5db",
-                        border: `1px solid ${estLow === String(lo) && estHigh === String(hi) ? CAT_ACCENT : "#374151"}`,
-                      }}>
-                      £{lo}–£{hi}
-                    </button>
-                  ))}
-                </div>
+              <div className="space-y-2">
+                {([["Low", estLow, setEstLow], ["High", estHigh, setEstHigh]] as const).map(([label, val, setter]) => (
+                  <div key={label} className="bg-[#2C2C2E] rounded-lg p-3 border border-gray-700">
+                    <p className={`${lbl} mb-2`}>{label}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {ESTIMATE_VALUES.map(v => (
+                        <button key={v} type="button" onClick={() => setter(String(v))}
+                          className={`rounded transition-colors ${tablet ? "px-2.5 py-2 text-sm" : "px-2 py-1.5 text-xs"}`}
+                          style={{
+                            background: val === String(v) ? CAT_ACCENT : "#1C1C1E",
+                            color:      val === String(v) ? "#1C1C1E" : "#d1d5db",
+                            border:     `1px solid ${val === String(v) ? CAT_ACCENT : "#374151"}`,
+                          }}>
+                          £{v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -738,13 +844,13 @@ export default function LotWizardTab({
         {step === 6 && (
           <div className="max-w-lg space-y-5">
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider block mb-2">Condition</label>
+              <label className={`${lbl} block mb-2`}>Condition</label>
               <div className="flex flex-wrap gap-2">
-                {CONDITIONS.map(c => <CondBtn key={c} label={c} selected={cond1 === c} onClick={() => setCond1(v => v === c ? "" : c)} />)}
+                {CONDITIONS.map(c => <CondBtn key={c} label={c} selected={cond1 === c} onClick={() => setCond1(v => v === c ? "" : c)} tablet={tablet} />)}
               </div>
             </div>
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Condition To <span className="text-gray-600">(optional)</span></label>
+              <label className={`${lbl} block mb-1`}>Condition To <span className="text-gray-600">(optional)</span></label>
               <div className="flex flex-wrap gap-2">
                 {CONDITIONS.map(c => <CondBtn key={c} label={c} selected={cond2 === c} onClick={() => setCond2(v => v === c ? "" : c)} />)}
               </div>
@@ -755,7 +861,7 @@ export default function LotWizardTab({
         {step === 7 && (
           <div className="max-w-lg space-y-4">
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider block mb-2">Parcel Size</label>
+              <label className={`${lbl} block mb-2`}>Parcel Size</label>
               <div className="flex flex-wrap gap-2">
                 {PARCEL_OPTIONS.map(opt => (
                   <button key={opt} type="button" onClick={() => setParcel(v => v === opt ? "" : opt)}
@@ -808,46 +914,25 @@ export default function LotWizardTab({
               <span className="text-sm font-medium">Take photo</span>
             </button>
             {photoFiles.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
+              <div className={`grid gap-3 ${tablet ? "grid-cols-2" : "grid-cols-3"}`}>
                 {photoFiles.map((p, i) => (
                   <div key={i} className="relative aspect-square">
                     <img src={p.preview} alt={`Photo ${i + 1}`} className="w-full h-full object-cover rounded-lg border border-gray-700" />
                     <button type="button"
                       onClick={() => setPhotoFiles(prev => { URL.revokeObjectURL(prev[i].preview); return prev.filter((_, j) => j !== i) })}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full text-white text-xs flex items-center justify-center">
+                      className={`absolute -top-1.5 -right-1.5 bg-red-600 rounded-full text-white flex items-center justify-center ${tablet ? "w-8 h-8 text-sm -top-2 -right-2" : "w-5 h-5 text-xs"}`}>
                       ✕
                     </button>
                   </div>
                 ))}
               </div>
             )}
-            <p className="text-xs text-gray-600">{photoFiles.length} photo{photoFiles.length !== 1 ? "s" : ""} added</p>
+            <p className={`text-gray-600 ${tablet ? "text-sm" : "text-xs"}`}>{photoFiles.length} photo{photoFiles.length !== 1 ? "s" : ""} added</p>
             {saveStatus && <p className="text-green-400 text-sm font-medium">{saveStatus}</p>}
           </div>
         )}
       </div>
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-800">
-        <button onClick={goBack} disabled={step === 1}
-          className="px-5 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-300 text-sm rounded transition-colors disabled:opacity-30 hover:border-gray-500">
-          ← Back
-        </button>
-        <span className="text-xs text-gray-600">{step} / 8</span>
-        {step < 8 ? (
-          <button onClick={goNext}
-            className="px-5 py-2 text-sm font-semibold rounded transition-colors"
-            style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
-            Next →
-          </button>
-        ) : (
-          <button onClick={saveLot} disabled={pending}
-            className="px-5 py-2 text-sm font-semibold rounded transition-colors disabled:opacity-50"
-            style={{ background: CAT_ACCENT, color: "#1C1C1E" }}>
-            {pending ? "Saving…" : photoFiles.length > 0 ? "Save Lot ✓" : "Skip & Save ✓"}
-          </button>
-        )}
-      </div>
     </div>
   )
 }

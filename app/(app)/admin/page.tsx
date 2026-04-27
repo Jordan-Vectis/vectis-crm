@@ -21,6 +21,12 @@ const sections = [
     description: "Reorder app cards, hide unused ones, feature favourites and customise labels.",
     icon:        "🏠",
   },
+  {
+    href:        "/admin/cataloguing-reports",
+    label:       "Cataloguing Reports",
+    description: "View time-per-lot reports across all cataloguers — average speed, method breakdown and recent activity.",
+    icon:        "📊",
+  },
 ]
 
 export default async function AdminOverviewPage() {

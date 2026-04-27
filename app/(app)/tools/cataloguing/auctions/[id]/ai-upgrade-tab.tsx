@@ -1,13 +1,15 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { applyAiDescriptions } from "@/lib/actions/catalogue"
+import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
 import { PRESETS } from "@/lib/auction-ai-presets"
 
 interface Lot {
   id: string
   lotNumber: string
+  barcode: string | null
   title: string
+  keyPoints: string
   description: string
   estimateLow: number | null
   estimateHigh: number | null
@@ -17,6 +19,7 @@ interface Lot {
 
 interface Props {
   auctionId: string
+  auctionCode: string
   lots: Lot[]
   onDone: () => void
 }
@@ -50,12 +53,15 @@ function parseEstimate(est: string): { low: number | null; high: number | null }
 const DEFAULT_MODEL = "gemini-3-flash-preview"
 const PRESET_KEYS   = Object.keys(PRESETS).filter(k => k !== "Custom (paste my own)")
 
-export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
+export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: Props) {
   const [phase,        setPhase]        = useState<Phase>("idle")
   const [preset,       setPreset]       = useState(PRESET_KEYS[0] ?? "")
   const [model,        setModel]        = useState(DEFAULT_MODEL)
   const [modelList,    setModelList]    = useState<string[]>([DEFAULT_MODEL])
+  const [modelStatus,  setModelStatus]  = useState<Record<string, { ok: boolean; ms: number; error?: string } | "testing">>({})
+  const [testingAll,   setTestingAll]   = useState(false)
   const [sendDesc,     setSendDesc]     = useState(true)
+  const [contextField, setContextField] = useState<"keyPoints" | "description">("keyPoints")
   const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(
     () => new Set(lots.filter(l => !l.aiUpgraded && l.imageUrls.length > 0).map(l => l.id))
   )
@@ -66,9 +72,10 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
   const [log,          setLog]          = useState<string[]>([])
   const [error,        setError]        = useState<string | null>(null)
   const [paused,       setPaused]       = useState(false)
-  const cancelRef = useRef(false)
-  const pauseRef  = useRef(false)
-  const logRef    = useRef<HTMLDivElement>(null)
+  const cancelRef  = useRef(false)
+  const pauseRef   = useRef(false)
+  const abortRef   = useRef<AbortController | null>(null)
+  const logRef     = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetch("/api/auction-ai/models")
@@ -99,6 +106,34 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
     cancelRef.current = true
     pauseRef.current  = false
     setPaused(false)
+    if (abortRef.current) {
+      addLog("⛔ Stop requested — aborting current request…")
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+  }
+
+  async function testAllModels() {
+    setTestingAll(true)
+    const initial: Record<string, "testing"> = {}
+    modelList.forEach(m => { initial[m] = "testing" })
+    setModelStatus(initial)
+
+    await Promise.all(modelList.map(async (m) => {
+      try {
+        const res  = await fetch("/api/auction-ai/model-test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: m }),
+        })
+        const data = await res.json()
+        setModelStatus(prev => ({ ...prev, [m]: data }))
+      } catch (e: any) {
+        setModelStatus(prev => ({ ...prev, [m]: { ok: false, ms: 0, error: e.message } }))
+      }
+    }))
+
+    setTestingAll(false)
   }
 
   // Wait while paused (called inside the run loop)
@@ -136,28 +171,42 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
     const photoMap: Record<string, Blob[]> = {}
     const total = eligibleLots.reduce((s, l) => s + l.imageUrls.length, 0)
     setFetchProgress({ done: 0, total })
-    addLog(`Fetching photos for ${eligibleLots.length} lots (${total} images)…`)
+    addLog(`── Starting run: ${eligibleLots.length} lots, ${total} images, model: ${model}`)
+    addLog(`── Preset: "${preset}"`)
+    addLog(`── Fetching ${total} photos from storage…`)
 
     let fetched = 0
     for (const lot of eligibleLots) {
       if (cancelRef.current) break
       photoMap[lot.id] = []
-      for (const key of lot.imageUrls) {
+      const label = lot.barcode || lot.lotNumber
+      for (let pi = 0; pi < lot.imageUrls.length; pi++) {
         if (cancelRef.current) break
+        const key = lot.imageUrls[pi]
         try {
+          const t0  = Date.now()
           const res = await fetch(`/api/catalogue/photo-proxy?key=${encodeURIComponent(key)}`)
           if (res.ok) {
             const blob = await res.blob()
             photoMap[lot.id].push(blob)
+            const kb = Math.round(blob.size / 1024)
+            addLog(`  ↓ ${label} photo ${pi + 1}/${lot.imageUrls.length} — ${kb} KB (${Date.now() - t0}ms)`)
+          } else {
+            addLog(`  ✗ ${label} photo ${pi + 1} — HTTP ${res.status}`)
           }
-        } catch { /* skip failed photos */ }
+        } catch (err: any) {
+          addLog(`  ✗ ${label} photo ${pi + 1} — fetch failed: ${err.message}`)
+        }
         fetched++
         setFetchProgress({ done: fetched, total })
       }
     }
 
     if (cancelRef.current) { setPhase("idle"); return }
-    addLog(`Photos ready. Starting AI processing…`)
+    const totalFetched = Object.values(photoMap).reduce((s, a) => s + a.length, 0)
+    const totalKb = Math.round(Object.values(photoMap).flat().reduce((s, b) => s + b.size, 0) / 1024)
+    addLog(`── All photos fetched: ${totalFetched}/${total} succeeded (${totalKb} KB total)`)
+    addLog(`── Starting AI processing…`)
 
     // ── Phase 2: Run AI lot by lot ──────────────────────────────────────────
     setPhase("running")
@@ -174,57 +223,109 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
 
       const lot    = eligibleLots[i]
       const photos = photoMap[lot.id] ?? []
-      addLog(`Processing ${i + 1}/${runTotal} — Lot ${lot.lotNumber} (${photos.length} photo${photos.length !== 1 ? "s" : ""})`)
+      const label  = lot.barcode || lot.lotNumber
+      const lotKb  = Math.round(photos.reduce((s, b) => s + b.size, 0) / 1024)
+      addLog(`── ${i + 1}/${runTotal} ${label} — ${photos.length} photo${photos.length !== 1 ? "s" : ""} (${lotKb} KB)`)
 
-      try {
-        const fd = new FormData()
-        fd.set("systemInstruction", systemInstruction)
-        fd.set("model", model)
-        photos.forEach((blob, j) => {
-          fd.append(`lot_${lot.lotNumber}_image_${j}`, blob, `photo_${j}.jpg`)
-        })
-        if (sendDesc && lot.description.trim()) {
-          fd.set(`lot_${lot.lotNumber}_context`, lot.description.trim())
+      // Retry loop — keeps trying until success, with uncapped exponential backoff
+      let attempt = 0
+      let succeeded = false
+      while (!succeeded) {
+        try {
+          const fd = new FormData()
+          fd.set("systemInstruction", systemInstruction)
+          fd.set("model", model)
+          photos.forEach((blob, j) => {
+            fd.append(`lot_${lot.lotNumber}_image_${j}`, blob, `photo_${j}.jpg`)
+          })
+          const ctx = sendDesc ? (contextField === "description" ? lot.description : lot.keyPoints).trim() : ""
+          if (ctx) {
+            fd.set(`lot_${lot.lotNumber}_context`, ctx)
+            addLog(`  → sending ${contextField === "description" ? "description" : "key points"} as context (${ctx.length} chars)`)
+          } else {
+            addLog(`  → no existing context — AI working from photos only`)
+          }
+
+          addLog(`  → sending to Gemini${attempt > 0 ? ` (attempt ${attempt + 1})` : ""}…`)
+          const reqStart = Date.now()
+
+          // Abort after 3 minutes so the retry loop can kick in if the server hangs.
+          // Also wired to abortRef so "Stop & review" kills the request immediately.
+          const controller = new AbortController()
+          abortRef.current = controller
+          const timer = setTimeout(() => controller.abort(), 3 * 60 * 1000)
+          // Heartbeat every 20s so the UI doesn't look frozen
+          let elapsed = 0
+          const heartbeat = setInterval(() => {
+            elapsed += 20
+            addLog(`  ⏳ still waiting for Gemini… (${elapsed}s elapsed)`)
+          }, 20_000)
+          let res: Response
+          try {
+            res = await fetch("/api/auction-ai/batch", { method: "POST", body: fd, signal: controller.signal })
+          } finally {
+            clearTimeout(timer)
+            clearInterval(heartbeat)
+            if (abortRef.current === controller) abortRef.current = null
+          }
+          const reqMs = Date.now() - reqStart
+          addLog(`  ← response received in ${(reqMs / 1000).toFixed(1)}s — HTTP ${res.status}`)
+
+          // Guard against non-JSON responses (e.g. "first byte timeout" from Railway)
+          const text = await res.text()
+          let json: any
+          try { json = JSON.parse(text) } catch { throw new Error(`Non-JSON response: ${text.slice(0, 120)}`) }
+          if (!res.ok) throw new Error(json.error ?? res.statusText)
+
+          const r = json.results?.[0]
+          if (!r || r.status !== "OK") throw new Error(r?.error ?? "No result returned")
+
+          const { low, high } = parseEstimate(r.estimate)
+          collected.push({
+            lotId:           lot.id,
+            lotNumber:       lot.lotNumber,
+            oldDescription:  lot.keyPoints,
+            oldEstimateLow:  lot.estimateLow,
+            oldEstimateHigh: lot.estimateHigh,
+            newDescription:  r.description,
+            newEstimateLow:  low,
+            newEstimateHigh: high,
+            newEstimateRaw:  r.estimate,
+            status:          "ok",
+            approved:        true,
+          })
+          // Save to Auction AI runs so it appears in Saved Runs
+          fetch("/api/auction-ai/runs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              code:        auctionCode,
+              preset,
+              lot:         label,
+              description: r.description,
+              estimate:    r.estimate ?? "",
+            }),
+          }).catch(() => {})
+          addLog(`  ✓ ${label} — done${r.estimate ? ` · estimate: ${r.estimate}` : ""}`)
+          succeeded = true
+        } catch (e: any) {
+          if (cancelRef.current) break   // "Stop & review" aborted the fetch — exit immediately
+          const isTimeout   = e.name === "AbortError" || e.message?.includes("aborted")
+          const isRateLimit = e.message?.includes("429") || e.message?.includes("RESOURCE_EXHAUSTED")
+          const errType     = isTimeout ? "3min timeout" : isRateLimit ? "rate limited" : "error"
+          const delayMs     = Math.pow(2, attempt) * 5000 + Math.random() * 2000
+          const delaySec    = Math.round(delayMs / 1000)
+          addLog(`  ⚠ ${label} — ${errType}: ${e.message}`)
+          addLog(`  ↻ retrying in ${delaySec}s (attempt ${attempt + 1} failed)`)
+          // Chunked delay — checks cancelRef every 500ms so Stop & review is instant
+          const chunks = Math.ceil(delayMs / 500)
+          for (let c = 0; c < chunks; c++) {
+            if (cancelRef.current) break
+            await new Promise(r => setTimeout(r, Math.min(500, delayMs - c * 500)))
+          }
+          if (cancelRef.current) break
+          attempt++
         }
-
-        const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.error ?? res.statusText)
-
-        const r = json.results?.[0]
-        if (!r || r.status !== "OK") throw new Error(r?.error ?? "No result")
-
-        const { low, high } = parseEstimate(r.estimate)
-        collected.push({
-          lotId:           lot.id,
-          lotNumber:       lot.lotNumber,
-          oldDescription:  lot.description,
-          oldEstimateLow:  lot.estimateLow,
-          oldEstimateHigh: lot.estimateHigh,
-          newDescription:  r.description,
-          newEstimateLow:  low,
-          newEstimateHigh: high,
-          newEstimateRaw:  r.estimate,
-          status:          "ok",
-          approved:        true,
-        })
-        addLog(`✓ Lot ${lot.lotNumber} — done`)
-      } catch (e: any) {
-        collected.push({
-          lotId:           lot.id,
-          lotNumber:       lot.lotNumber,
-          oldDescription:  lot.description,
-          oldEstimateLow:  lot.estimateLow,
-          oldEstimateHigh: lot.estimateHigh,
-          newDescription:  "",
-          newEstimateLow:  null,
-          newEstimateHigh: null,
-          newEstimateRaw:  "",
-          status:          "failed",
-          error:           e.message,
-          approved:        false,
-        })
-        addLog(`✗ Lot ${lot.lotNumber} — failed: ${e.message}`)
       }
 
       setResults([...collected])
@@ -232,11 +333,16 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
 
       // 8s rate-limit gap — split into small chunks so pause/cancel responds quickly
       if (i < eligibleLots.length - 1 && !cancelRef.current) {
+        if (!pauseRef.current) addLog(`  · waiting 8s before next lot…`)
         for (let t = 0; t < 80; t++) {
-          if (cancelRef.current) break
+          if (cancelRef.current || pauseRef.current) break
           await new Promise(r => setTimeout(r, 100))
         }
-        await waitIfPaused()
+        if (pauseRef.current && !cancelRef.current) {
+          addLog(`⏸ Paused — ${collected.length} lot${collected.length !== 1 ? "s" : ""} done so far. Click Resume to continue or Stop & review to finish.`)
+          await waitIfPaused()
+          if (!cancelRef.current) addLog(`▶ Resumed`)
+        }
       }
     }
 
@@ -254,16 +360,37 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
     if (toApply.length === 0) { setError("No approved lots to apply."); return }
     setError(null)
     setSaveProgress({ done: 0, total: toApply.length })
+    setLog([])
     setPhase("saving")
 
-    await applyAiDescriptions(auctionId, toApply.map(r => ({
-      id:           r.lotId,
-      description:  r.newDescription,
-      estimateLow:  r.newEstimateLow,
-      estimateHigh: r.newEstimateHigh,
-    })))
+    addLog(`── Saving ${toApply.length} lot${toApply.length !== 1 ? "s" : ""} to database…`)
 
-    setSaveProgress({ done: toApply.length, total: toApply.length })
+    const failed: string[] = []
+    for (let i = 0; i < toApply.length; i++) {
+      const r = toApply[i]
+      addLog(`  · ${i + 1}/${toApply.length} ${r.lotNumber} — saving…`)
+      const t0 = Date.now()
+      try {
+        await applyAiDescriptionOne(auctionId, {
+          id:           r.lotId,
+          description:  r.newDescription,
+          estimateLow:  r.newEstimateLow,
+          estimateHigh: r.newEstimateHigh,
+        })
+        addLog(`  ✓ ${r.lotNumber} — saved (${Date.now() - t0}ms)`)
+      } catch (e: any) {
+        addLog(`  ✗ ${r.lotNumber} — failed: ${e.message}`)
+        failed.push(r.lotNumber)
+      }
+      setSaveProgress({ done: i + 1, total: toApply.length })
+    }
+
+    if (failed.length > 0) {
+      addLog(`── Done with ${failed.length} failure${failed.length !== 1 ? "s" : ""}: ${failed.join(", ")}`)
+    } else {
+      addLog(`── All ${toApply.length} lots saved successfully`)
+    }
+
     setPhase("done")
     onDone()
   }
@@ -296,20 +423,62 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
 
           {/* Model */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1.5 uppercase tracking-wider">Model</label>
-            <select value={model} onChange={e => setModel(e.target.value)}
-              className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500">
-              {modelList.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-gray-500 uppercase tracking-wider">Model</label>
+              <button onClick={testAllModels} disabled={testingAll}
+                className="text-xs text-purple-400 hover:text-purple-300 disabled:opacity-50 transition-colors">
+                {testingAll ? "Testing…" : "⚡ Test all models"}
+              </button>
+            </div>
+
+            {/* Model list with inline status */}
+            <div className="border border-gray-700 rounded-lg overflow-hidden">
+              {modelList.map((m, i) => {
+                const status = modelStatus[m]
+                const isSelected = model === m
+                return (
+                  <button key={m} onClick={() => setModel(m)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors border-b border-gray-800 last:border-0 ${
+                      isSelected ? "bg-purple-900/20" : "hover:bg-[#1a1a1e]"
+                    }`}>
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                      isSelected ? "bg-purple-500" : "bg-gray-700"
+                    }`} />
+                    <span className={`text-sm flex-1 font-mono ${isSelected ? "text-purple-200" : "text-gray-400"}`}>{m}</span>
+                    {status === "testing" && (
+                      <span className="text-xs text-gray-500 animate-pulse">testing…</span>
+                    )}
+                    {status && status !== "testing" && (
+                      status.ok
+                        ? <span className={`text-xs font-medium ${status.ms < 5000 ? "text-green-400" : status.ms < 12000 ? "text-yellow-400" : "text-orange-400"}`}>
+                            ✓ {(status.ms / 1000).toFixed(1)}s
+                          </span>
+                        : <span className="text-xs text-red-400 truncate max-w-[200px]" title={status.error}>
+                            ✗ {status.error?.match(/\[(\d{3}[^\]]*)\]/)?.[1] ?? "error"}
+                          </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Options */}
-          <label className="flex items-center gap-3 cursor-pointer select-none">
-            <input type="checkbox" checked={sendDesc} onChange={e => setSendDesc(e.target.checked)}
-              className="w-4 h-4 rounded accent-purple-500" />
-            <span className="text-sm text-gray-300">Send existing descriptions to the AI</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input type="checkbox" checked={sendDesc} onChange={e => setSendDesc(e.target.checked)}
+                className="w-4 h-4 rounded accent-purple-500" />
+              <span className="text-sm text-gray-300">Send existing</span>
+            </label>
+            <select value={contextField} onChange={e => setContextField(e.target.value as "keyPoints" | "description")}
+              disabled={!sendDesc}
+              className="bg-[#2C2C2E] border border-gray-700 rounded-lg px-2 py-1 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-40">
+              <option value="keyPoints">Key Points</option>
+              <option value="description">Description</option>
+            </select>
+            <span className="text-sm text-gray-300">to the AI</span>
             <span className="text-xs text-gray-600">(helps the AI refine rather than rewrite from scratch)</span>
-          </label>
+          </div>
 
           {/* Lot selector */}
           <div>
@@ -448,9 +617,23 @@ export default function AiUpgradeTab({ auctionId, lots, onDone }: Props) {
 
       {/* ── Saving ── */}
       {phase === "saving" && (
-        <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl px-6 py-10 flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-300 font-medium">Saving descriptions…</p>
+        <div className="space-y-4">
+          <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl px-6 py-5 flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <p className="text-sm text-gray-300 font-medium">Saving descriptions…</p>
+              <span className="ml-auto text-xs text-gray-500">{saveProgress.done} / {saveProgress.total}</span>
+            </div>
+            <div className="w-full bg-gray-800 rounded-full h-2">
+              <div className="bg-purple-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${saveProgress.total > 0 ? (saveProgress.done / saveProgress.total) * 100 : 0}%` }} />
+            </div>
+          </div>
+          {log.length > 0 && (
+            <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-4 h-72 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
+              {log.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          )}
         </div>
       )}
 
@@ -527,7 +710,7 @@ function ProgressCard({
         <p className="text-xs text-gray-500 text-center">{subtitle}</p>
       </div>
       {log.length > 0 && (
-        <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-4 h-40 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
+        <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-4 h-72 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
           {log.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}

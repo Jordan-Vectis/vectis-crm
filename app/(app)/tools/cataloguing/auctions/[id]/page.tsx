@@ -40,6 +40,11 @@ export default async function AuctionDetailPage({
 
   if (!auction) notFound()
 
+  auction.lots.sort((a, b) => {
+    const na = parseInt(a.lotNumber), nb = parseInt(b.lotNumber)
+    return (!isNaN(na) && !isNaN(nb)) ? na - nb : a.lotNumber.localeCompare(b.lotNumber, undefined, { numeric: true })
+  })
+
   const registrations = auction.bidderRegistrations.map(r => ({
     id: r.id,
     contactId: r.contactId,
@@ -82,6 +87,7 @@ export default async function AuctionDetailPage({
           lotNumber: l.lotNumber,
           barcode: l.barcode,
           title: l.title,
+          keyPoints: l.keyPoints,
           description: l.description,
           estimateLow: l.estimateLow,
           estimateHigh: l.estimateHigh,

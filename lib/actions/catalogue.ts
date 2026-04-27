@@ -50,9 +50,9 @@ export async function deleteAuction(id: string) {
 
 export async function generateTitlesFromDescriptions(auctionId: string, lotIds: string[]) {
   await requireCataloguer()
-  const lots = await prisma.catalogueLot.findMany({ where: { id: { in: lotIds } }, select: { id: true, description: true } })
+  const lots = await prisma.catalogueLot.findMany({ where: { id: { in: lotIds } }, select: { id: true, keyPoints: true } })
   await Promise.all(lots.map(l => {
-    const title = l.description.trim().slice(0, 83).trimEnd()
+    const title = l.keyPoints.trim().slice(0, 83).trimEnd()
     if (!title) return Promise.resolve()
     return prisma.catalogueLot.update({ where: { id: l.id }, data: { title } })
   }))
@@ -91,6 +91,18 @@ export async function applyAiDescriptions(
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
+export async function applyAiDescriptionOne(
+  auctionId: string,
+  update: { id: string; description: string; estimateLow: number | null; estimateHigh: number | null }
+) {
+  await requireCataloguer()
+  await prisma.catalogueLot.update({
+    where: { id: update.id },
+    data: { description: update.description, estimateLow: update.estimateLow, estimateHigh: update.estimateHigh, aiUpgraded: true },
+  })
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+}
+
 export async function togglePublished(id: string, published: boolean) {
   await requireCataloguer()
   await prisma.catalogueAuction.update({ where: { id }, data: { published } })
@@ -117,7 +129,26 @@ export async function createLot(auctionId: string, formData: FormData) {
   }
 
   if (data.receipt) data.receipt = await sequencedReceipt(data.receipt)
-  await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName, imageUrls } })
+  const lot = await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName, imageUrls } })
+
+  // Log timing if provided
+  const durationMs  = parseInt(formData.get("durationMs")  as string ?? "0") || 0
+  const keyPointsMs = parseInt(formData.get("keyPointsMs") as string ?? "0") || 0
+  if (durationMs > 0) {
+    await prisma.catalogueTimingLog.create({
+      data: {
+        auctionId,
+        lotId:       lot.id,
+        userId:      session.user.id,
+        userName:    createdByName,
+        method:      "WIZARD",
+        durationMs,
+        keyPointsMs: keyPointsMs > 0 ? keyPointsMs : null,
+        lotNumber:   data.lotNumber || null,
+      },
+    })
+  }
+
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
@@ -141,9 +172,26 @@ export async function createPhotoOnlyLot(auctionId: string, formData: FormData) 
   }
 
   const createdByName = session.user.name ?? session.user.email ?? "Unknown"
-  await prisma.catalogueLot.create({
+  const lot = await prisma.catalogueLot.create({
     data: { auctionId, lotNumber, title: "", description: "", tote: toteNumber || null, notes, status: "ENTERED", imageUrls, createdByName },
   })
+
+  // Log timing if provided
+  const durationMs = parseInt(formData.get("durationMs") as string ?? "0") || 0
+  if (durationMs > 0) {
+    await prisma.catalogueTimingLog.create({
+      data: {
+        auctionId,
+        lotId:     lot.id,
+        userId:    session.user.id,
+        userName:  createdByName,
+        method:    "PHOTO_ONLY",
+        durationMs,
+        lotNumber: lotNumber || null,
+      },
+    })
+  }
+
   revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
 }
 
@@ -324,6 +372,7 @@ export async function deleteLotPhoto(lotId: string, auctionId: string, key: stri
 
 export async function importLots(auctionId: string, rows: {
   lotNumber: string; title: string; description: string
+  keyPoints?: string; barcode?: string
   estimateLow: string; estimateHigh: string; reserve: string
   condition: string; status: string; vendor: string
   tote: string; receipt: string; category: string
@@ -351,7 +400,9 @@ export async function importLots(auctionId: string, rows: {
         createdByName,
         lotNumber:    r.lotNumber,
         title:        r.title || "",
-        description:  r.description || "",
+        keyPoints:    r.keyPoints || r.description || "",
+        barcode:      r.barcode?.toUpperCase() || null,
+        description:  "",
         estimateLow:  r.estimateLow  ? parseInt(r.estimateLow)  : null,
         estimateHigh: r.estimateHigh ? parseInt(r.estimateHigh) : null,
         reserve:      r.reserve      ? parseInt(r.reserve)      : null,
@@ -359,7 +410,7 @@ export async function importLots(auctionId: string, rows: {
         condition:    r.condition    || null,
         status:       r.status       || "ENTERED",
         vendor:       r.vendor       || null,
-        tote:         r.tote         || null,
+        tote:         r.tote?.toUpperCase()    || null,
         receipt,
         category:     r.category     || null,
         subCategory:  r.subCategory  || null,
@@ -384,24 +435,27 @@ async function sequencedReceipt(base: string, extra = 0): Promise<string> {
 }
 
 function extractLotData(formData: FormData) {
+  const str = (key: string) => (formData.get(key) as string)?.trim() || null
+  const up  = (key: string) => str(key)?.toUpperCase() || null
   return {
     lotNumber:   (formData.get("lotNumber") as string) || "",
-    barcode:     (formData.get("barcode") as string) || null,
+    barcode:     up("barcode"),
     title:       (formData.get("title") as string) || "",
+    keyPoints:   (formData.get("keyPoints") as string) || "",
     description: (formData.get("description") as string) || "",
     estimateLow:  formData.get("estimateLow")  ? parseInt(formData.get("estimateLow") as string)  : null,
     estimateHigh: formData.get("estimateHigh") ? parseInt(formData.get("estimateHigh") as string) : null,
     startingBid:  formData.get("startingBid")  ? parseInt(formData.get("startingBid") as string)  : null,
     reserve:      formData.get("reserve")      ? parseInt(formData.get("reserve") as string)      : null,
     hammerPrice:  formData.get("hammerPrice")  ? parseInt(formData.get("hammerPrice") as string)  : null,
-    condition:   (formData.get("condition") as string) || null,
-    vendor:      (formData.get("vendor") as string) || null,
-    tote:        (formData.get("tote") as string) || null,
-    receipt:     (formData.get("receipt") as string) || null,
-    category:    (formData.get("category") as string) || null,
-    subCategory: (formData.get("subCategory") as string) || null,
-    brand:       (formData.get("brand") as string) || null,
-    notes:       (formData.get("notes") as string) || null,
+    condition:   str("condition"),
+    vendor:      str("vendor"),
+    tote:        up("tote"),
+    receipt:     up("receipt"),
+    category:    str("category"),
+    subCategory: str("subCategory"),
+    brand:       str("brand"),
+    notes:       str("notes"),
     status:      (formData.get("status") as string) || "ENTERED",
   }
 }
