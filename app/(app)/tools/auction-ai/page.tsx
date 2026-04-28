@@ -1311,34 +1311,41 @@ function KPRunsTab() {
                   </div>
 
                   {/* lot cards */}
-                  <div className="flex flex-col divide-y divide-gray-800">
+                  <div className="flex flex-col gap-3 p-4">
                     {detail.lots.map(l => (
-                      <div key={l.id} className="px-4 py-3 bg-[#1C1C1E]">
-                        {/* lot header */}
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <div key={l.id} className="rounded-lg overflow-hidden border border-gray-700 bg-[#2C2C2E]">
+                        {/* header */}
+                        <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-700">
                           <input type="checkbox" checked={!!selected[l.id]}
                             onChange={e => setSelected(s => ({ ...s, [l.id]: e.target.checked }))}
-                            className="w-3.5 h-3.5 accent-[#C8A96E] flex-shrink-0" />
-                          <span className="text-xs font-mono font-bold text-[#C8A96E]">{l.lot}</span>
-                          <div className="flex-1" />
-                          <button onClick={() => deleteLot(l.id)}
-                            className="text-xs text-red-600 hover:text-red-400 transition-colors">✕</button>
+                            className="w-3.5 h-3.5 rounded accent-[#C8A96E] flex-shrink-0" />
+                          <span className="text-xs font-mono font-bold text-[#C8A96E]">Lot {l.lot}</span>
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button onClick={() => applyLot(l.id, l.lot, run.code)}
+                              disabled={applying === l.id || applying === "bulk"}
+                              className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] disabled:opacity-40 text-black font-semibold px-3 py-0.5 rounded transition-colors">
+                              {applying === l.id ? "Saving…" : "Apply"}
+                            </button>
+                            <button onClick={() => navigator.clipboard.writeText(revised[l.id] ?? l.description)}
+                              className="text-[10px] text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-0.5 rounded transition-colors">
+                              Copy
+                            </button>
+                            <button onClick={() => deleteLot(l.id)}
+                              className="text-[10px] text-red-700 hover:text-red-400 border border-red-900/40 hover:border-red-700/40 px-2 py-0.5 rounded transition-colors">✕</button>
+                          </div>
                         </div>
 
                         {/* description */}
-                        <div>
-                          <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Saved description (editable)</p>
+                        <div className="px-3 py-2">
+                          <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-1.5">
+                            After (fixed) <span className="text-gray-600 normal-case ml-1">· editable</span>
+                          </p>
                           <textarea
                             value={revised[l.id] ?? l.description}
                             onChange={e => setRevised(s => ({ ...s, [l.id]: e.target.value }))}
-                            rows={5}
-                            className="w-full bg-[#2C2C2E] border border-gray-700 focus:border-[#C8A96E] rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none resize-y"
+                            rows={8}
+                            className="w-full text-xs text-gray-200 bg-[#1C1C1E] border border-gray-700 rounded p-2 leading-relaxed resize-y focus:outline-none focus:border-[#C8A96E]"
                           />
-                          <button onClick={() => applyLot(l.id, l.lot, run.code)}
-                            disabled={applying === l.id || applying === "bulk"}
-                            className="mt-1 text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
-                            {applying === l.id ? "Saving…" : "Apply to catalogue"}
-                          </button>
                         </div>
                       </div>
                     ))}
