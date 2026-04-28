@@ -2409,8 +2409,8 @@ export default function AuctionAIPage() {
       <main className="flex-1 overflow-auto p-6">
         <div className={tab === "chat"         ? "" : "hidden"}><ChatTab model={model} /></div>
         <div className={tab === "batch"        ? "" : "hidden"}><BatchTab model={model} /></div>
-        <div className={tab === "runs"         ? "" : "hidden"}><SavedRunsTab /></div>
-        <div className={tab === "kpruns"       ? "" : "hidden"}><KPRunsTab /></div>
+        <div className={tab === "runs"         ? "" : "hidden"}>{tab === "runs"   && <SavedRunsTab />}</div>
+        <div className={tab === "kpruns"       ? "" : "hidden"}>{tab === "kpruns" && <KPRunsTab />}</div>
         <div className={tab === "barcode"      ? "" : "hidden"}><BarcodeTab /></div>
         <div className={tab === "copier"       ? "" : "hidden"}><CopierTab /></div>
         <div className={tab === "kpcheck"      ? "" : "hidden"}><KeyPointsCheckTab model={model} /></div>
