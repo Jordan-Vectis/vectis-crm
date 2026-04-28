@@ -1061,8 +1061,8 @@ function SavedRunsTab() {
     if (!desc) return
     setApplying(lotId)
     try {
-      // find the auction id by code, then find the lot by folder number
-      const lotsRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(auctionCode)}`)
+      const catalogueCode = auctionCode.replace(/_KP$/i, "")
+      const lotsRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(catalogueCode)}`)
       if (!lotsRes.ok) throw new Error("Could not fetch lots")
       const lotsData = await lotsRes.json()
       const match = lotsData.lots?.find((l: { lotNumber: string; id: string }) => l.lotNumber === lotLabel)
@@ -1082,7 +1082,8 @@ function SavedRunsTab() {
     setApplying("bulk")
     let ok = 0, fail = 0
     try {
-      const lotsRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(auctionCode)}`)
+      const catalogueCode = auctionCode.replace(/_KP$/i, "")
+      const lotsRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(catalogueCode)}`)
       if (!lotsRes.ok) throw new Error("Could not fetch lots")
       const lotsData = await lotsRes.json()
       for (const l of lots) {
@@ -1137,7 +1138,7 @@ function SavedRunsTab() {
               return (
                 <div key={run.id} className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
                   <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
-                    <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code}</span>
+                    <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code.replace(/_KP$/i, "")}</span>
                     <span className="text-xs text-gray-500">{run._count.lots} lots</span>
                     <span className="text-xs text-gray-600">{new Date(run.updatedAt).toLocaleDateString("en-GB")}</span>
                     <span className="text-xs px-2 py-0.5 bg-purple-900/40 text-purple-300 rounded-full border border-purple-700/40">KP Check</span>
@@ -1824,19 +1825,20 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
       setProgress(null)
       setShowResults(true)
 
-      // Save fixed lots to Saved Runs so they appear in the Saved Runs tab
+      // Save all checked lots to Saved Runs (use _KP suffix to avoid clashing with batch runs)
       setLots(current => {
-        const fixed = current.filter(l => l.status === "fixed" && l.revised)
-        if (fixed.length > 0) {
-          fixed.forEach(l => {
+        const checked = current.filter(l => (l.status === "ok" || l.status === "fixed") && l.description)
+        if (checked.length > 0) {
+          const runCode = code.trim().toUpperCase() + "_KP"
+          checked.forEach(l => {
             fetch("/api/auction-ai/runs", {
               method:  "POST",
               headers: { "Content-Type": "application/json" },
               body:    JSON.stringify({
-                code:                code.trim().toUpperCase(),
+                code:                runCode,
                 preset:              "Key Points Check",
                 lot:                 l.label,
-                description:         l.revised,
+                description:         l.revised ?? l.description,
                 estimate:            "",
                 originalDescription: l.description,
                 keyPoints:           Array.isArray(l.keyPoints) ? l.keyPoints.join("\n") : (l.keyPoints ?? ""),
@@ -1845,7 +1847,7 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
               }),
             }).catch(() => {})
           })
-          addLog(`── Saved ${fixed.length} fixed lot${fixed.length !== 1 ? "s" : ""} to Saved Runs`)
+          addLog(`── Saved ${checked.length} lot${checked.length !== 1 ? "s" : ""} to Saved Runs`)
         }
         return current
       })
