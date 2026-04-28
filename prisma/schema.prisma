@@ -209,11 +209,15 @@ model AuctionRun {
 }
 
 model AuctionLot {
-  id          String     @id @default(cuid())
-  lot         String
-  description String     @db.Text
-  estimate    String
-  createdAt   DateTime   @default(now())
+  id                  String     @id @default(cuid())
+  lot                 String
+  description         String     @db.Text
+  estimate            String
+  originalDescription String?    @db.Text
+  keyPoints           String?    @db.Text
+  missing             String?    @db.Text
+  added               String?    @db.Text
+  createdAt           DateTime   @default(now())
 
   runId String
   run   AuctionRun @relation(fields: [runId], references: [id], onDelete: Cascade)

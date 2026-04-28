@@ -1039,7 +1039,7 @@ function CopierTab() {
 // ─── Saved Runs Tab ───────────────────────────────────────────────────────────
 
 type RunSummary = { id: string; code: string; preset: string; updatedAt: string; _count: { lots: number } }
-type RunLot     = { id: string; lot: string; description: string; estimate: string; createdAt: string }
+type RunLot     = { id: string; lot: string; description: string; estimate: string; createdAt: string; originalDescription?: string | null; keyPoints?: string | null; missing?: string | null; added?: string | null }
 type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: RunLot[] }
 
 function SavedRunsTab() {
@@ -1335,17 +1335,45 @@ function KPRunsTab() {
                           </div>
                         </div>
 
-                        {/* description */}
-                        <div className="px-3 py-2">
-                          <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-1.5">
-                            After (fixed) <span className="text-gray-600 normal-case ml-1">· editable</span>
-                          </p>
-                          <textarea
-                            value={revised[l.id] ?? l.description}
-                            onChange={e => setRevised(s => ({ ...s, [l.id]: e.target.value }))}
-                            rows={8}
-                            className="w-full text-xs text-gray-200 bg-[#1C1C1E] border border-gray-700 rounded p-2 leading-relaxed resize-y focus:outline-none focus:border-[#C8A96E]"
-                          />
+                        {/* missing / added summary */}
+                        {(l.missing || l.added) && (
+                          <div className="flex gap-4 px-3 py-2 border-b border-gray-700 bg-[#1C1C1E]">
+                            {l.missing && (
+                              <div className="flex-1">
+                                <p className="text-[10px] text-red-400 uppercase tracking-wider mb-0.5">Was missing</p>
+                                <p className="text-xs text-red-300">{l.missing}</p>
+                              </div>
+                            )}
+                            {l.added && (
+                              <div className="flex-1">
+                                <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-0.5">What changed</p>
+                                <p className="text-xs text-[#C8A96E]">{l.added}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* three columns: key points | before | after */}
+                        <div className="grid grid-cols-3 divide-x divide-gray-700">
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Key Points</p>
+                            <pre className="text-xs text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">{l.keyPoints ?? "—"}</pre>
+                          </div>
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Before</p>
+                            <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{l.originalDescription ?? "—"}</p>
+                          </div>
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-1.5">
+                              After (fixed) <span className="text-gray-600 normal-case ml-1">· editable</span>
+                            </p>
+                            <textarea
+                              value={revised[l.id] ?? l.description}
+                              onChange={e => setRevised(s => ({ ...s, [l.id]: e.target.value }))}
+                              rows={8}
+                              className="w-full text-xs text-gray-200 bg-[#1C1C1E] border border-gray-700 rounded p-2 leading-relaxed resize-y focus:outline-none focus:border-[#C8A96E]"
+                            />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1913,11 +1941,15 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
               method:  "POST",
               headers: { "Content-Type": "application/json" },
               body:    JSON.stringify({
-                code:        runCode,
-                preset:      "Key Points Check",
-                lot:         l.label,
-                description: l.revised ?? l.description,
-                estimate:    "",
+                code:                runCode,
+                preset:              "Key Points Check",
+                lot:                 l.label,
+                description:         l.revised ?? l.description,
+                estimate:            "",
+                originalDescription: l.description,
+                keyPoints:           l.keyPoints,
+                missing:             l.missing  ?? null,
+                added:               l.added    ?? null,
               }),
             }).catch(e => showToast(`Auto-save failed for lot ${l.label}: ${e.message}`))
           })
@@ -1951,11 +1983,15 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
-          code:        runCode,
-          preset:      "Key Points Check",
-          lot:         l.label,
-          description: l.revised ?? l.description,
-          estimate:    "",
+          code:                runCode,
+          preset:              "Key Points Check",
+          lot:                 l.label,
+          description:         l.revised ?? l.description,
+          estimate:            "",
+          originalDescription: l.description,
+          keyPoints:           l.keyPoints,
+          missing:             l.missing  ?? null,
+          added:               l.added    ?? null,
         }),
       }).then(async r => {
         if (!r.ok) { failed++; const j = await r.json().catch(() => ({})); showToast(`Save failed for lot ${l.label}: ${j.error ?? r.statusText}`) }
