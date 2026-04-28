@@ -479,6 +479,26 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
     URL.revokeObjectURL(url)
   }
 
+  function exportForAHKReceipt() {
+    // Group filtered lots by receipt, collect barcodes per receipt, skip lots with no receipt
+    const receiptMap = new Map<string, string[]>()
+    for (const l of filtered) {
+      if (!l.receipt?.trim()) continue
+      const receipt = l.receipt.trim()
+      if (!receiptMap.has(receipt)) receiptMap.set(receipt, [])
+      receiptMap.get(receipt)!.push((l.barcode ?? l.lotNumber).trim())
+    }
+    if (receiptMap.size === 0) { alert("No lots with receipt numbers in current filter."); return }
+    const lines = ["ToteNumber,LotCount,Barcodes", ...Array.from(receiptMap.entries()).map(([r, barcodes]) => `${r},${barcodes.length},${barcodes.join("|")}`)]
+    const blob = new Blob([lines.join("\r\n")], { type: "text/csv" })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement("a")
+    a.href     = url
+    a.download = "bc_import_receipt.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function exportPhotos() {
     const lotsWithPhotos = filtered.filter(l => l.imageUrls.length > 0)
     if (lotsWithPhotos.length === 0) { setPhotoMsg("No photos to export"); setTimeout(() => setPhotoMsg(null), 3000); return }
@@ -684,7 +704,11 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
           )}
           <button onClick={exportForAHK}
             className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-purple-400 hover:text-purple-400 transition-colors">
-            ⬇ Export for BC Macro
+            ⬇ Export for BC Macro (Tote)
+          </button>
+          <button onClick={exportForAHKReceipt}
+            className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-purple-400 hover:text-purple-400 transition-colors">
+            ⬇ Export for BC Macro (Receipt)
           </button>
           <button onClick={exportPhotos} disabled={photoExporting}
             className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-[#2AB4A6] hover:text-[#2AB4A6] transition-colors disabled:opacity-50">
