@@ -309,7 +309,12 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
               missing:             null,
               added:               null,
             }),
-          }).catch(() => {})
+          }).then(async res => {
+            if (!res.ok) {
+              const j = await res.json().catch(() => ({}))
+              addLog(`⚠ ${label} — save to Saved Runs failed: ${j.error ?? res.statusText}`)
+            }
+          }).catch(e => addLog(`⚠ ${label} — save to Saved Runs error: ${e.message}`))
           addLog(`  ✓ ${label} — done${r.estimate ? ` · estimate: ${r.estimate}` : ""}`)
           succeeded = true
         } catch (e: any) {

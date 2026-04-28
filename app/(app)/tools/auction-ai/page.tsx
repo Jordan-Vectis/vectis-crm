@@ -5,6 +5,49 @@ import * as XLSX from "xlsx"
 import { PRESETS } from "@/lib/auction-ai-presets"
 import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
 
+// ─── Toast system ─────────────────────────────────────────────────────────────
+
+type ToastType = "error" | "warn" | "ok"
+type ToastEvent = { message: string; type: ToastType }
+
+function showToast(message: string, type: ToastType = "error") {
+  window.dispatchEvent(new CustomEvent("vectis-toast", { detail: { message, type } }))
+}
+
+function ToastContainer() {
+  const [toasts, setToasts] = useState<(ToastEvent & { id: number })[]>([])
+  const next = useRef(0)
+
+  useEffect(() => {
+    function handler(e: Event) {
+      const { message, type } = (e as CustomEvent<ToastEvent>).detail
+      const id = next.current++
+      setToasts(t => [...t, { message, type, id }])
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+    }
+    window.addEventListener("vectis-toast", handler)
+    return () => window.removeEventListener("vectis-toast", handler)
+  }, [])
+
+  if (!toasts.length) return null
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      {toasts.map(t => (
+        <div key={t.id}
+          className={`flex items-start gap-2 px-4 py-3 rounded-lg shadow-xl text-sm border animate-in slide-in-from-right-4 fade-in duration-200
+            ${t.type === "error" ? "bg-red-950 border-red-700 text-red-200"
+            : t.type === "warn"  ? "bg-yellow-950 border-yellow-700 text-yellow-200"
+            :                      "bg-green-950 border-green-700 text-green-200"}`}>
+          <span className="flex-shrink-0 mt-0.5">{t.type === "error" ? "✕" : t.type === "warn" ? "⚠" : "✓"}</span>
+          <span className="flex-1 break-words">{t.message}</span>
+          <button onClick={() => setToasts(ts => ts.filter(x => x.id !== t.id))}
+            className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity ml-1">✕</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "kpruns" | "instructions" | "kpcheck"
@@ -526,12 +569,18 @@ function BatchTab({ model }: { model: string }) {
         if (auctionCode.trim()) {
           const r = json.results[0]
           if (r?.status === "OK") {
-            await fetch("/api/auction-ai/runs", {
+            const saveRes = await fetch("/api/auction-ai/runs", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate, originalDescription: null, keyPoints: null, missing: null, added: null }),
             })
-            addLog(`✓ ${lot} — OK  ·  saved`)
+            if (!saveRes.ok) {
+              const err = await saveRes.json().catch(() => ({}))
+              showToast(`Save failed for ${lot}: ${err.error ?? saveRes.statusText}`)
+              addLog(`⚠ ${lot} — OK but save failed: ${err.error ?? saveRes.statusText}`)
+            } else {
+              addLog(`✓ ${lot} — OK  ·  saved`)
+            }
           } else {
             addLog(`✓ ${lot} — OK`)
           }
@@ -1889,7 +1938,7 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
                 missing:             l.missing ?? "",
                 added:               l.added   ?? "",
               }),
-            }).catch(() => {})
+            }).catch(e => showToast(`Auto-save failed for lot ${l.label}: ${e.message}`))
           })
           addLog(`── Saved ${checked.length} lot${checked.length !== 1 ? "s" : ""} to Saved Runs`)
         }
@@ -1915,6 +1964,7 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
     setSaving(true)
     setSavedMsg("")
     const runCode = code.trim().toUpperCase() + "_KP"
+    let failed = 0
     await Promise.all(checked.map(l =>
       fetch("/api/auction-ai/runs", {
         method:  "POST",
@@ -1930,10 +1980,12 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
           missing:             l.missing ?? "",
           added:               l.added   ?? "",
         }),
-      }).catch(() => {})
+      }).then(async r => {
+        if (!r.ok) { failed++; const j = await r.json().catch(() => ({})); showToast(`Save failed for lot ${l.label}: ${j.error ?? r.statusText}`) }
+      }).catch(e => { failed++; showToast(`Save error for lot ${l.label}: ${e.message}`) })
     ))
     setSaving(false)
-    setSavedMsg(`✓ ${checked.length} lots saved`)
+    setSavedMsg(failed ? `⚠ ${checked.length - failed} saved, ${failed} failed` : `✓ ${checked.length} lots saved`)
     setTimeout(() => setSavedMsg(""), 3000)
   }
 
@@ -2321,6 +2373,7 @@ export default function AuctionAIPage() {
 
   return (
     <div className="flex h-[calc(100vh-48px)] bg-[#1C1C1E] text-white overflow-hidden">
+      <ToastContainer />
 
       <aside className="w-52 bg-[#141416] border-r border-gray-800 flex flex-col flex-shrink-0">
         <div className="px-4 py-5 border-b border-gray-800">
