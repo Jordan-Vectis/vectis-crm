@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  const { code, preset, lot, description, estimate } = await req.json()
+  const { code, preset, lot, description, estimate, originalDescription, keyPoints, missing, added } = await req.json()
   if (!code || !lot) return NextResponse.json({ error: "Missing code or lot" }, { status: 400 })
 
   const run = await prisma.auctionRun.upsert({
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   })
 
   await prisma.auctionLot.create({
-    data: { runId: run.id, lot, description, estimate },
+    data: { runId: run.id, lot, description, estimate, originalDescription, keyPoints, missing, added },
   })
 
   return NextResponse.json({ ok: true, runId: run.id })

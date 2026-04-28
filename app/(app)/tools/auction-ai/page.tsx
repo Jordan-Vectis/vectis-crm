@@ -990,15 +990,20 @@ function CopierTab() {
 // ─── Saved Runs Tab ───────────────────────────────────────────────────────────
 
 type RunSummary = { id: string; code: string; preset: string; updatedAt: string; _count: { lots: number } }
-type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: { id: string; lot: string; description: string; estimate: string; createdAt: string }[] }
+type RunLot     = { id: string; lot: string; description: string; estimate: string; createdAt: string; originalDescription?: string; keyPoints?: string; missing?: string; added?: string }
+type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: RunLot[] }
 
 function SavedRunsTab() {
-  const [runs,       setRuns]       = useState<RunSummary[]>([])
-  const [expanded,   setExpanded]   = useState<string | null>(null)
-  const [detail,     setDetail]     = useState<RunDetail | null>(null)
-  const [search,     setSearch]     = useState("")
-  const [loading,    setLoading]    = useState(false)
-  const [deleting,   setDeleting]   = useState<string | null>(null)
+  const [runs,     setRuns]     = useState<RunSummary[]>([])
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [detail,   setDetail]   = useState<RunDetail | null>(null)
+  const [search,   setSearch]   = useState("")
+  const [loading,  setLoading]  = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  // KP run editable revised descriptions keyed by lot id
+  const [revised,  setRevised]  = useState<Record<string, string>>({})
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [applying, setApplying] = useState<string | null>(null)
 
   useEffect(() => { loadRuns() }, [])
 
@@ -1013,12 +1018,19 @@ function SavedRunsTab() {
   async function expand(run: RunSummary) {
     if (expanded === run.id) { setExpanded(null); setDetail(null); return }
     setExpanded(run.id)
-    const r = await fetch(`/api/auction-ai/runs/${run.id}`)
-    setDetail(await r.json())
+    const r  = await fetch(`/api/auction-ai/runs/${run.id}`)
+    const d  = await r.json() as RunDetail
+    setDetail(d)
+    // seed revised state with saved descriptions
+    const rev: Record<string, string> = {}
+    const sel: Record<string, boolean> = {}
+    d.lots.forEach(l => { rev[l.id] = l.description; sel[l.id] = false })
+    setRevised(rev)
+    setSelected(sel)
   }
 
   async function deleteRun(id: string) {
-    if (!confirm("Delete this auction run and all its lots?")) return
+    if (!confirm("Delete this run and all its lots?")) return
     setDeleting(id)
     await fetch("/api/auction-ai/runs", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
     setRuns(r => r.filter(x => x.id !== id))
@@ -1044,7 +1056,201 @@ function SavedRunsTab() {
     XLSX.writeFile(wb, `${run.code}.xlsx`)
   }
 
-  const filtered = runs.filter(r => r.code.toLowerCase().includes(search.toLowerCase()))
+  async function applyLot(lotId: string, lotLabel: string, auctionCode: string) {
+    const desc = revised[lotId]
+    if (!desc) return
+    setApplying(lotId)
+    try {
+      // find the auction id by code, then find the lot by folder number
+      const lotsRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(auctionCode)}`)
+      if (!lotsRes.ok) throw new Error("Could not fetch lots")
+      const lotsData = await lotsRes.json()
+      const match = lotsData.lots?.find((l: { lotNumber: string; id: string }) => l.lotNumber === lotLabel)
+      if (!match) throw new Error(`Lot ${lotLabel} not found in catalogue`)
+      await applyAiDescriptionOne(lotsData.auctionId, { id: match.id, description: desc, estimateLow: null, estimateHigh: null })
+      alert(`✓ Lot ${lotLabel} saved to catalogue`)
+    } catch (e: any) {
+      alert(`Error: ${e.message}`)
+    } finally {
+      setApplying(null)
+    }
+  }
+
+  async function applySelected(auctionCode: string) {
+    const lots = detail?.lots.filter(l => selected[l.id]) ?? []
+    if (!lots.length) return
+    setApplying("bulk")
+    let ok = 0, fail = 0
+    try {
+      const lotsRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(auctionCode)}`)
+      if (!lotsRes.ok) throw new Error("Could not fetch lots")
+      const lotsData = await lotsRes.json()
+      for (const l of lots) {
+        const match = lotsData.lots?.find((x: { lotNumber: string; id: string }) => x.lotNumber === l.lot)
+        if (!match) { fail++; continue }
+        try {
+          await applyAiDescriptionOne(lotsData.auctionId, { id: match.id, description: revised[l.id] ?? l.description, estimateLow: null, estimateHigh: null })
+          ok++
+        } catch { fail++ }
+      }
+      alert(`Done — ${ok} saved${fail ? `, ${fail} failed` : ""}`)
+    } catch (e: any) {
+      alert(`Error: ${e.message}`)
+    } finally {
+      setApplying(null)
+    }
+  }
+
+  const filtered    = runs.filter(r => r.code.toLowerCase().includes(search.toLowerCase()))
+  const normalRuns  = filtered.filter(r => r.preset !== "Key Points Check")
+  const kpRuns      = filtered.filter(r => r.preset === "Key Points Check")
+
+  const allSelected = detail ? detail.lots.every(l => selected[l.id]) : false
+  const selCount    = detail ? detail.lots.filter(l => selected[l.id]).length : 0
+
+  function toggleAll() {
+    if (!detail) return
+    const next = !allSelected
+    setSelected(Object.fromEntries(detail.lots.map(l => [l.id, next])))
+  }
+
+  // ── Run card for normal batch runs ──
+  function NormalRunCard({ run }: { run: RunSummary }) {
+    return (
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
+          <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code}</span>
+          <span className="text-xs text-gray-500">{run._count.lots} lots</span>
+          <span className="text-xs text-gray-600">{new Date(run.updatedAt).toLocaleDateString("en-GB")}</span>
+          <span className="text-xs text-gray-600 truncate max-w-[120px]">{run.preset}</span>
+          <button onClick={e => { e.stopPropagation(); deleteRun(run.id) }} disabled={deleting === run.id}
+            className="text-xs text-red-500 hover:text-red-400 transition-colors ml-1 flex-shrink-0">
+            {deleting === run.id ? "…" : "Delete"}
+          </button>
+          <span className="text-gray-600 text-xs">{expanded === run.id ? "▲" : "▼"}</span>
+        </div>
+
+        {expanded === run.id && detail?.id === run.id && (
+          <div className="border-t border-gray-700">
+            <div className="flex items-center justify-between px-4 py-2 bg-[#1C1C1E]">
+              <span className="text-xs text-gray-500">{detail.lots.length} lots</span>
+              <button onClick={() => exportRun(detail)}
+                className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] text-black font-semibold rounded transition-colors">
+                ⬇ Export to Excel
+              </button>
+            </div>
+            <div className="max-h-96 overflow-y-auto">
+              {detail.lots.map(l => (
+                <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 border-t border-gray-800 hover:bg-[#2C2C2E] group">
+                  <span className="text-xs font-mono text-[#C8A96E] flex-shrink-0 w-20">{l.lot}</span>
+                  <span className="text-xs text-gray-300 flex-1 line-clamp-2">{l.description}</span>
+                  <span className="text-xs text-gray-500 flex-shrink-0 w-20 text-right">{l.estimate}</span>
+                  <button onClick={() => deleteLot(l.id)}
+                    className="text-xs text-red-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Run card for KP Check runs ──
+  function KPRunCard({ run }: { run: RunSummary }) {
+    const isOpen = expanded === run.id && detail?.id === run.id
+    return (
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
+          <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code}</span>
+          <span className="text-xs text-gray-500">{run._count.lots} lots</span>
+          <span className="text-xs text-gray-600">{new Date(run.updatedAt).toLocaleDateString("en-GB")}</span>
+          <span className="text-xs px-2 py-0.5 bg-purple-900/40 text-purple-300 rounded-full border border-purple-700/40">KP Check</span>
+          <button onClick={e => { e.stopPropagation(); deleteRun(run.id) }} disabled={deleting === run.id}
+            className="text-xs text-red-500 hover:text-red-400 transition-colors ml-1 flex-shrink-0">
+            {deleting === run.id ? "…" : "Delete"}
+          </button>
+          <span className="text-gray-600 text-xs">{isOpen ? "▲" : "▼"}</span>
+        </div>
+
+        {isOpen && (
+          <div className="border-t border-gray-700">
+            {/* toolbar */}
+            <div className="flex items-center gap-3 px-4 py-2 bg-[#1C1C1E] flex-wrap">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                  className="w-3.5 h-3.5 accent-[#C8A96E]" />
+                <span className="text-xs text-gray-400">Select all</span>
+              </label>
+              <span className="text-xs text-gray-600">{detail.lots.length} lots</span>
+              <div className="flex-1" />
+              <button
+                onClick={() => applySelected(run.code)}
+                disabled={selCount === 0 || applying === "bulk"}
+                className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
+                {applying === "bulk" ? "Saving…" : `Apply ${selCount > 0 ? selCount : ""} selected`}
+              </button>
+            </div>
+
+            {/* lot cards */}
+            <div className="flex flex-col divide-y divide-gray-800">
+              {detail.lots.map(l => {
+                const kps = l.keyPoints ? l.keyPoints.split("\n").filter(Boolean) : []
+                return (
+                  <div key={l.id} className="px-4 py-3 bg-[#1C1C1E]">
+                    {/* lot header row */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <input type="checkbox" checked={!!selected[l.id]}
+                        onChange={e => setSelected(s => ({ ...s, [l.id]: e.target.checked }))}
+                        className="w-3.5 h-3.5 accent-[#C8A96E] flex-shrink-0" />
+                      <span className="text-xs font-mono font-bold text-[#C8A96E]">{l.lot}</span>
+                      {l.missing && <span className="text-xs px-1.5 py-0.5 bg-red-900/40 text-red-300 rounded border border-red-700/30 truncate max-w-[200px]" title={l.missing}>⚠ Missing: {l.missing}</span>}
+                      {l.added   && <span className="text-xs px-1.5 py-0.5 bg-green-900/40 text-green-300 rounded border border-green-700/30 truncate max-w-[200px]" title={l.added}>✓ Added: {l.added}</span>}
+                      <div className="flex-1" />
+                      <button onClick={() => deleteLot(l.id)}
+                        className="text-xs text-red-600 hover:text-red-400 transition-colors flex-shrink-0">✕</button>
+                    </div>
+
+                    {/* key points if any */}
+                    {kps.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {kps.map((kp, i) => (
+                          <span key={i} className="text-[10px] px-1.5 py-0.5 bg-[#2C2C2E] text-gray-400 rounded border border-gray-700">{kp}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* before / after columns */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">Before</p>
+                        <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">{l.originalDescription || <span className="text-gray-600 italic">Not recorded</span>}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">After (editable)</p>
+                        <textarea
+                          value={revised[l.id] ?? l.description}
+                          onChange={e => setRevised(s => ({ ...s, [l.id]: e.target.value }))}
+                          rows={5}
+                          className="w-full bg-[#2C2C2E] border border-gray-700 focus:border-[#C8A96E] rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none resize-y"
+                        />
+                        <button
+                          onClick={() => applyLot(l.id, l.lot, run.code)}
+                          disabled={applying === l.id || applying === "bulk"}
+                          className="mt-1 text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
+                          {applying === l.id ? "Saving…" : "Apply to catalogue"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full gap-4">
@@ -1058,51 +1264,27 @@ function SavedRunsTab() {
 
       {loading && <p className="text-gray-500 text-sm">Loading…</p>}
 
-      {!loading && filtered.length === 0 && (
-        <p className="text-gray-600 text-sm">No saved runs yet. Enter an auction code on the Batch Run tab before running.</p>
-      )}
+      <div className="flex flex-col gap-6 overflow-y-auto flex-1">
 
-      <div className="flex flex-col gap-2 overflow-y-auto flex-1">
-        {filtered.map(run => (
-          <div key={run.id} className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
-            {/* ── Run header ── */}
-            <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
-              <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code}</span>
-              <span className="text-xs text-gray-500">{run._count.lots} lots</span>
-              <span className="text-xs text-gray-600">{new Date(run.updatedAt).toLocaleDateString("en-GB")}</span>
-              <span className="text-xs text-gray-600 truncate max-w-[120px]">{run.preset}</span>
-              <button onClick={e => { e.stopPropagation(); deleteRun(run.id) }} disabled={deleting === run.id}
-                className="text-xs text-red-500 hover:text-red-400 transition-colors ml-1 flex-shrink-0">
-                {deleting === run.id ? "…" : "Delete"}
-              </button>
-              <span className="text-gray-600 text-xs">{expanded === run.id ? "▲" : "▼"}</span>
-            </div>
-
-            {/* ── Expanded lots ── */}
-            {expanded === run.id && detail?.id === run.id && (
-              <div className="border-t border-gray-700">
-                <div className="flex items-center justify-between px-4 py-2 bg-[#1C1C1E]">
-                  <span className="text-xs text-gray-500">{detail.lots.length} lots</span>
-                  <button onClick={() => exportRun(detail)}
-                    className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] text-black font-semibold rounded transition-colors">
-                    ⬇ Export to Excel
-                  </button>
-                </div>
-                <div className="max-h-96 overflow-y-auto">
-                  {detail.lots.map(l => (
-                    <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 border-t border-gray-800 hover:bg-[#2C2C2E] group">
-                      <span className="text-xs font-mono text-[#C8A96E] flex-shrink-0 w-20">{l.lot}</span>
-                      <span className="text-xs text-gray-300 flex-1 line-clamp-2">{l.description}</span>
-                      <span className="text-xs text-gray-500 flex-shrink-0 w-20 text-right">{l.estimate}</span>
-                      <button onClick={() => deleteLot(l.id)}
-                        className="text-xs text-red-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">✕</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+        {/* ── Key Points Check runs ── */}
+        {kpRuns.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-purple-400 border-b border-purple-900/40 pb-1">Key Points Check Runs</h3>
+            {kpRuns.map(run => <KPRunCard key={run.id} run={run} />)}
           </div>
-        ))}
+        )}
+
+        {/* ── Normal batch runs ── */}
+        {normalRuns.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-gray-700 pb-1">Batch AI Runs</h3>
+            {normalRuns.map(run => <NormalRunCard key={run.id} run={run} />)}
+          </div>
+        )}
+
+        {!loading && kpRuns.length === 0 && normalRuns.length === 0 && (
+          <p className="text-gray-600 text-sm">No saved runs yet.</p>
+        )}
       </div>
     </div>
   )
@@ -1672,11 +1854,15 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
               method:  "POST",
               headers: { "Content-Type": "application/json" },
               body:    JSON.stringify({
-                code:        code.trim().toUpperCase(),
-                preset:      "Key Points Check",
-                lot:         l.label,
-                description: l.revised,
-                estimate:    "",
+                code:                code.trim().toUpperCase(),
+                preset:              "Key Points Check",
+                lot:                 l.label,
+                description:         l.revised,
+                estimate:            "",
+                originalDescription: l.description,
+                keyPoints:           Array.isArray(l.keyPoints) ? l.keyPoints.join("\n") : (l.keyPoints ?? ""),
+                missing:             l.missing ?? "",
+                added:               l.added   ?? "",
               }),
             }).catch(() => {})
           })
