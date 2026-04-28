@@ -1114,144 +1114,6 @@ function SavedRunsTab() {
     setSelected(Object.fromEntries(detail.lots.map(l => [l.id, next])))
   }
 
-  // ── Run card for normal batch runs ──
-  function NormalRunCard({ run }: { run: RunSummary }) {
-    return (
-      <div className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
-          <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code}</span>
-          <span className="text-xs text-gray-500">{run._count.lots} lots</span>
-          <span className="text-xs text-gray-600">{new Date(run.updatedAt).toLocaleDateString("en-GB")}</span>
-          <span className="text-xs text-gray-600 truncate max-w-[120px]">{run.preset}</span>
-          <button onClick={e => { e.stopPropagation(); deleteRun(run.id) }} disabled={deleting === run.id}
-            className="text-xs text-red-500 hover:text-red-400 transition-colors ml-1 flex-shrink-0">
-            {deleting === run.id ? "…" : "Delete"}
-          </button>
-          <span className="text-gray-600 text-xs">{expanded === run.id ? "▲" : "▼"}</span>
-        </div>
-
-        {expanded === run.id && detail?.id === run.id && (
-          <div className="border-t border-gray-700">
-            <div className="flex items-center justify-between px-4 py-2 bg-[#1C1C1E]">
-              <span className="text-xs text-gray-500">{detail.lots.length} lots</span>
-              <button onClick={() => exportRun(detail)}
-                className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] text-black font-semibold rounded transition-colors">
-                ⬇ Export to Excel
-              </button>
-            </div>
-            <div className="max-h-96 overflow-y-auto">
-              {detail.lots.map(l => (
-                <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 border-t border-gray-800 hover:bg-[#2C2C2E] group">
-                  <span className="text-xs font-mono text-[#C8A96E] flex-shrink-0 w-20">{l.lot}</span>
-                  <span className="text-xs text-gray-300 flex-1 line-clamp-2">{l.description}</span>
-                  <span className="text-xs text-gray-500 flex-shrink-0 w-20 text-right">{l.estimate}</span>
-                  <button onClick={() => deleteLot(l.id)}
-                    className="text-xs text-red-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">✕</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ── Run card for KP Check runs ──
-  function KPRunCard({ run }: { run: RunSummary }) {
-    const isOpen = expanded === run.id && detail?.id === run.id
-    return (
-      <div className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
-          <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code}</span>
-          <span className="text-xs text-gray-500">{run._count.lots} lots</span>
-          <span className="text-xs text-gray-600">{new Date(run.updatedAt).toLocaleDateString("en-GB")}</span>
-          <span className="text-xs px-2 py-0.5 bg-purple-900/40 text-purple-300 rounded-full border border-purple-700/40">KP Check</span>
-          <button onClick={e => { e.stopPropagation(); deleteRun(run.id) }} disabled={deleting === run.id}
-            className="text-xs text-red-500 hover:text-red-400 transition-colors ml-1 flex-shrink-0">
-            {deleting === run.id ? "…" : "Delete"}
-          </button>
-          <span className="text-gray-600 text-xs">{isOpen ? "▲" : "▼"}</span>
-        </div>
-
-        {isOpen && (
-          <div className="border-t border-gray-700">
-            {/* toolbar */}
-            <div className="flex items-center gap-3 px-4 py-2 bg-[#1C1C1E] flex-wrap">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input type="checkbox" checked={allSelected} onChange={toggleAll}
-                  className="w-3.5 h-3.5 accent-[#C8A96E]" />
-                <span className="text-xs text-gray-400">Select all</span>
-              </label>
-              <span className="text-xs text-gray-600">{detail.lots.length} lots</span>
-              <div className="flex-1" />
-              <button
-                onClick={() => applySelected(run.code)}
-                disabled={selCount === 0 || applying === "bulk"}
-                className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
-                {applying === "bulk" ? "Saving…" : `Apply ${selCount > 0 ? selCount : ""} selected`}
-              </button>
-            </div>
-
-            {/* lot cards */}
-            <div className="flex flex-col divide-y divide-gray-800">
-              {detail.lots.map(l => {
-                const kps = l.keyPoints ? l.keyPoints.split("\n").filter(Boolean) : []
-                return (
-                  <div key={l.id} className="px-4 py-3 bg-[#1C1C1E]">
-                    {/* lot header row */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <input type="checkbox" checked={!!selected[l.id]}
-                        onChange={e => setSelected(s => ({ ...s, [l.id]: e.target.checked }))}
-                        className="w-3.5 h-3.5 accent-[#C8A96E] flex-shrink-0" />
-                      <span className="text-xs font-mono font-bold text-[#C8A96E]">{l.lot}</span>
-                      {l.missing && <span className="text-xs px-1.5 py-0.5 bg-red-900/40 text-red-300 rounded border border-red-700/30 truncate max-w-[200px]" title={l.missing}>⚠ Missing: {l.missing}</span>}
-                      {l.added   && <span className="text-xs px-1.5 py-0.5 bg-green-900/40 text-green-300 rounded border border-green-700/30 truncate max-w-[200px]" title={l.added}>✓ Added: {l.added}</span>}
-                      <div className="flex-1" />
-                      <button onClick={() => deleteLot(l.id)}
-                        className="text-xs text-red-600 hover:text-red-400 transition-colors flex-shrink-0">✕</button>
-                    </div>
-
-                    {/* key points if any */}
-                    {kps.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-1">
-                        {kps.map((kp, i) => (
-                          <span key={i} className="text-[10px] px-1.5 py-0.5 bg-[#2C2C2E] text-gray-400 rounded border border-gray-700">{kp}</span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* before / after columns */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">Before</p>
-                        <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">{l.originalDescription || <span className="text-gray-600 italic">Not recorded</span>}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">After (editable)</p>
-                        <textarea
-                          value={revised[l.id] ?? l.description}
-                          onChange={e => setRevised(s => ({ ...s, [l.id]: e.target.value }))}
-                          rows={5}
-                          className="w-full bg-[#2C2C2E] border border-gray-700 focus:border-[#C8A96E] rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none resize-y"
-                        />
-                        <button
-                          onClick={() => applyLot(l.id, l.lot, run.code)}
-                          disabled={applying === l.id || applying === "bulk"}
-                          className="mt-1 text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
-                          {applying === l.id ? "Saving…" : "Apply to catalogue"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="flex items-center justify-between">
@@ -1270,7 +1132,99 @@ function SavedRunsTab() {
         {kpRuns.length > 0 && (
           <div className="flex flex-col gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-purple-400 border-b border-purple-900/40 pb-1">Key Points Check Runs</h3>
-            {kpRuns.map(run => <KPRunCard key={run.id} run={run} />)}
+            {kpRuns.map(run => {
+              const isOpen = expanded === run.id && detail?.id === run.id
+              return (
+                <div key={run.id} className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
+                  <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
+                    <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code}</span>
+                    <span className="text-xs text-gray-500">{run._count.lots} lots</span>
+                    <span className="text-xs text-gray-600">{new Date(run.updatedAt).toLocaleDateString("en-GB")}</span>
+                    <span className="text-xs px-2 py-0.5 bg-purple-900/40 text-purple-300 rounded-full border border-purple-700/40">KP Check</span>
+                    <button onClick={e => { e.stopPropagation(); deleteRun(run.id) }} disabled={deleting === run.id}
+                      className="text-xs text-red-500 hover:text-red-400 transition-colors ml-1 flex-shrink-0">
+                      {deleting === run.id ? "…" : "Delete"}
+                    </button>
+                    <span className="text-gray-600 text-xs">{isOpen ? "▲" : "▼"}</span>
+                  </div>
+
+                  {isOpen && (
+                    <div className="border-t border-gray-700">
+                      {/* toolbar */}
+                      <div className="flex items-center gap-3 px-4 py-2 bg-[#1C1C1E] flex-wrap">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                            className="w-3.5 h-3.5 accent-[#C8A96E]" />
+                          <span className="text-xs text-gray-400">Select all</span>
+                        </label>
+                        <span className="text-xs text-gray-600">{detail.lots.length} lots</span>
+                        <div className="flex-1" />
+                        <button
+                          onClick={() => applySelected(run.code)}
+                          disabled={selCount === 0 || applying === "bulk"}
+                          className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
+                          {applying === "bulk" ? "Saving…" : `Apply ${selCount > 0 ? selCount : ""} selected`}
+                        </button>
+                      </div>
+
+                      {/* lot cards */}
+                      <div className="flex flex-col divide-y divide-gray-800">
+                        {detail.lots.map(l => {
+                          const kps = l.keyPoints ? l.keyPoints.split("\n").filter(Boolean) : []
+                          return (
+                            <div key={l.id} className="px-4 py-3 bg-[#1C1C1E]">
+                              <div className="flex items-center gap-2 mb-2">
+                                <input type="checkbox" checked={!!selected[l.id]}
+                                  onChange={e => setSelected(s => ({ ...s, [l.id]: e.target.checked }))}
+                                  className="w-3.5 h-3.5 accent-[#C8A96E] flex-shrink-0" />
+                                <span className="text-xs font-mono font-bold text-[#C8A96E]">{l.lot}</span>
+                                {l.missing && <span className="text-xs px-1.5 py-0.5 bg-red-900/40 text-red-300 rounded border border-red-700/30 truncate max-w-[200px]" title={l.missing}>⚠ Missing: {l.missing}</span>}
+                                {l.added   && <span className="text-xs px-1.5 py-0.5 bg-green-900/40 text-green-300 rounded border border-green-700/30 truncate max-w-[200px]" title={l.added}>✓ Added: {l.added}</span>}
+                                <div className="flex-1" />
+                                <button onClick={() => deleteLot(l.id)}
+                                  className="text-xs text-red-600 hover:text-red-400 transition-colors flex-shrink-0">✕</button>
+                              </div>
+
+                              {kps.length > 0 && (
+                                <div className="mb-2 flex flex-wrap gap-1">
+                                  {kps.map((kp, i) => (
+                                    <span key={i} className="text-[10px] px-1.5 py-0.5 bg-[#2C2C2E] text-gray-400 rounded border border-gray-700">{kp}</span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">Before</p>
+                                  <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">
+                                    {l.originalDescription || <span className="text-gray-600 italic">Not recorded</span>}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">After (editable)</p>
+                                  <textarea
+                                    value={revised[l.id] ?? l.description}
+                                    onChange={e => setRevised(s => ({ ...s, [l.id]: e.target.value }))}
+                                    rows={5}
+                                    className="w-full bg-[#2C2C2E] border border-gray-700 focus:border-[#C8A96E] rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none resize-y"
+                                  />
+                                  <button
+                                    onClick={() => applyLot(l.id, l.lot, run.code)}
+                                    disabled={applying === l.id || applying === "bulk"}
+                                    className="mt-1 text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
+                                    {applying === l.id ? "Saving…" : "Apply to catalogue"}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -1278,7 +1232,44 @@ function SavedRunsTab() {
         {normalRuns.length > 0 && (
           <div className="flex flex-col gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-gray-700 pb-1">Batch AI Runs</h3>
-            {normalRuns.map(run => <NormalRunCard key={run.id} run={run} />)}
+            {normalRuns.map(run => (
+              <div key={run.id} className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
+                  <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code}</span>
+                  <span className="text-xs text-gray-500">{run._count.lots} lots</span>
+                  <span className="text-xs text-gray-600">{new Date(run.updatedAt).toLocaleDateString("en-GB")}</span>
+                  <span className="text-xs text-gray-600 truncate max-w-[120px]">{run.preset}</span>
+                  <button onClick={e => { e.stopPropagation(); deleteRun(run.id) }} disabled={deleting === run.id}
+                    className="text-xs text-red-500 hover:text-red-400 transition-colors ml-1 flex-shrink-0">
+                    {deleting === run.id ? "…" : "Delete"}
+                  </button>
+                  <span className="text-gray-600 text-xs">{expanded === run.id ? "▲" : "▼"}</span>
+                </div>
+
+                {expanded === run.id && detail?.id === run.id && (
+                  <div className="border-t border-gray-700">
+                    <div className="flex items-center justify-between px-4 py-2 bg-[#1C1C1E]">
+                      <span className="text-xs text-gray-500">{detail.lots.length} lots</span>
+                      <button onClick={() => exportRun(detail)}
+                        className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] text-black font-semibold rounded transition-colors">
+                        ⬇ Export to Excel
+                      </button>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {detail.lots.map(l => (
+                        <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 border-t border-gray-800 hover:bg-[#2C2C2E] group">
+                          <span className="text-xs font-mono text-[#C8A96E] flex-shrink-0 w-20">{l.lot}</span>
+                          <span className="text-xs text-gray-300 flex-1 line-clamp-2">{l.description}</span>
+                          <span className="text-xs text-gray-500 flex-shrink-0 w-20 text-right">{l.estimate}</span>
+                          <button onClick={() => deleteLot(l.id)}
+                            className="text-xs text-red-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
@@ -1717,43 +1708,31 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
     if (!code.trim()) return
     setLoading(true); setError(null); setLots([]); setAuctionId(null)
     try {
-      // 1. Load catalogue lots (key points)
+      // Load catalogue lots — key points + existing description directly from catalogue
       const catRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(code.trim().toUpperCase())}`)
       if (!catRes.ok) throw new Error((await catRes.json()).error ?? "Catalogue not found")
       const catData = await catRes.json()
       setAuctionId(catData.auctionId ?? null)
 
-      // 2. Load matching saved run (AI descriptions) — find by code
-      const runsRes = await fetch("/api/auction-ai/runs")
-      const allRuns: { id: string; code: string }[] = runsRes.ok ? await runsRes.json() : []
-      const matchingRun = allRuns.find(r => r.code.toUpperCase() === code.trim().toUpperCase())
-      let runLots: { lot: string; description: string }[] = []
-      if (matchingRun) {
-        const runRes = await fetch(`/api/auction-ai/runs/${matchingRun.id}`)
-        if (runRes.ok) {
-          const runData = await runRes.json()
-          runLots = runData.lots ?? []
-        }
-      }
-
-      // 3. Match by lot number
-      const descMap = new Map(runLots.map(r => [r.lot.toString(), r.description]))
+      // Build lot list: needs both a key points entry and a description in the catalogue
       const merged: KPLot[] = catData.lots
-        .filter((l: any) => l.keyPoints?.trim())
+        .filter((l: any) => l.keyPoints?.trim() && l.description?.trim())
         .map((l: any) => ({
           id:          l.id,
           label:       l.lotNumber,
           keyPoints:   l.keyPoints,
-          description: descMap.get(l.lotNumber) ?? descMap.get(l.barcode ?? "") ?? "",
+          description: l.description,
           status:      "idle" as const,
         }))
-        .filter((l: KPLot) => l.description)
 
-      if (merged.length === 0 && catData.lots.length > 0) {
+      if (merged.length === 0) {
+        const total    = catData.lots.length
+        const hasKP    = catData.lots.filter((l: any) => l.keyPoints?.trim()).length
+        const hasDesc  = catData.lots.filter((l: any) => l.description?.trim()).length
         throw new Error(
-          matchingRun
-            ? "Lots loaded but no AI descriptions matched lot numbers. Run the Batch tab first."
-            : `No saved AI run found for "${code.toUpperCase()}". Run the Batch tab first, then come back.`
+          total === 0
+            ? `No lots found for "${code.toUpperCase()}".`
+            : `No lots have both key points and a description yet. ${hasKP} lot${hasKP !== 1 ? "s" : ""} have key points, ${hasDesc} have a description. Add descriptions via the Batch Run tab or the cataloguing page first.`
         )
       }
 
