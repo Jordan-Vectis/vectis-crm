@@ -299,11 +299,15 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              code:        auctionCode,
+              code:                auctionCode,
               preset,
-              lot:         label,
-              description: r.description,
-              estimate:    r.estimate ?? "",
+              lot:                 label,
+              description:         r.description,
+              estimate:            r.estimate ?? "",
+              originalDescription: null,
+              keyPoints:           null,
+              missing:             null,
+              added:               null,
             }),
           }).catch(() => {})
           addLog(`  ✓ ${label} — done${r.estimate ? ` · estimate: ${r.estimate}` : ""}`)

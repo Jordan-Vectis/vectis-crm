@@ -529,7 +529,7 @@ function BatchTab({ model }: { model: string }) {
             await fetch("/api/auction-ai/runs", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
+              body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate, originalDescription: null, keyPoints: null, missing: null, added: null }),
             })
             addLog(`✓ ${lot} — OK  ·  saved`)
           } else {
