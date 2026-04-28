@@ -434,6 +434,63 @@ async function sequencedReceipt(base: string, extra = 0): Promise<string> {
   return `${base}-${count + extra + 1}`
 }
 
+export async function massCreateLots(
+  auctionId: string,
+  auctionCode: string,
+  opts: {
+    count:       number
+    vendor:      string
+    tote:        string
+    receipt:     string
+    category:    string
+    subCategory: string
+  }
+) {
+  const session = await requireCataloguer()
+  const createdByName = session.user.name ?? session.user.email ?? "Unknown"
+
+  // Work out the highest existing lot number so we can continue sequentially
+  const existingLots = await prisma.catalogueLot.findMany({
+    where:  { auctionId },
+    select: { lotNumber: true, barcode: true },
+  })
+  const maxLotNum = existingLots.reduce((max, l) => {
+    const n = parseInt(l.lotNumber)
+    return !isNaN(n) && n > max ? n : max
+  }, 0)
+
+  // Work out the highest existing barcode suffix for this auction code so we
+  // never produce a duplicate — e.g. F051003 → suffix 3
+  const prefix = auctionCode.toUpperCase()
+  const maxBarcode = existingLots.reduce((max, l) => {
+    if (!l.barcode) return max
+    const b = l.barcode.toUpperCase()
+    if (!b.startsWith(prefix)) return max
+    const n = parseInt(b.slice(prefix.length))
+    return !isNaN(n) && n > max ? n : max
+  }, 0)
+
+  const data = Array.from({ length: opts.count }, (_, i) => ({
+    auctionId,
+    createdByName,
+    lotNumber:   String(maxLotNum  + i + 1),
+    barcode:     `${prefix}${String(maxBarcode + i + 1).padStart(3, "0")}`,
+    title:       "",
+    keyPoints:   "",
+    description: "",
+    imageUrls:   [] as string[],
+    vendor:      opts.vendor      || null,
+    tote:        opts.tote        ? opts.tote.toUpperCase()    : null,
+    receipt:     opts.receipt     ? opts.receipt.toUpperCase() : null,
+    category:    opts.category    || null,
+    subCategory: opts.subCategory || null,
+  }))
+
+  await prisma.catalogueLot.createMany({ data })
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+  return data.length
+}
+
 function extractLotData(formData: FormData) {
   const str = (key: string) => (formData.get(key) as string)?.trim() || null
   const up  = (key: string) => str(key)?.toUpperCase() || null
