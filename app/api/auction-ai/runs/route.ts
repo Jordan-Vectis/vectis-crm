@@ -22,24 +22,35 @@ export async function POST(req: NextRequest) {
   const { code, preset, lot, description, estimate, originalDescription, keyPoints, missing, added } = await req.json()
   if (!code || !lot) return NextResponse.json({ error: "Missing code or lot" }, { status: 400 })
 
-  const run = await prisma.auctionRun.upsert({
-    where:  { code },
-    update: { preset, updatedAt: new Date() },
-    create: { code, preset: preset ?? "" },
-  })
+  let run: { id: string }
+  try {
+    run = await prisma.auctionRun.upsert({
+      where:  { code },
+      update: { preset, updatedAt: new Date() },
+      create: { code, preset: preset ?? "" },
+    })
+  } catch (e: any) {
+    console.error("[runs POST] upsert failed:", e)
+    return NextResponse.json({ error: `Run upsert failed: ${e.message}` }, { status: 500 })
+  }
 
-  await prisma.auctionLot.create({
-    data: {
-      runId:               run.id,
-      lot,
-      description:         description         ?? "",
-      estimate:            estimate             ?? "",
-      originalDescription: originalDescription  ?? null,
-      keyPoints:           keyPoints            ?? null,
-      missing:             missing              ?? null,
-      added:               added                ?? null,
-    },
-  })
+  try {
+    await prisma.auctionLot.create({
+      data: {
+        runId:               run.id,
+        lot:                 String(lot),
+        description:         String(description         ?? ""),
+        estimate:            String(estimate             ?? ""),
+        originalDescription: originalDescription != null ? String(originalDescription) : null,
+        keyPoints:           keyPoints           != null ? String(keyPoints)           : null,
+        missing:             missing             != null ? String(missing)             : null,
+        added:               added               != null ? String(added)               : null,
+      },
+    })
+  } catch (e: any) {
+    console.error("[runs POST] lot create failed:", e)
+    return NextResponse.json({ error: `Lot create failed: ${e.message}` }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true, runId: run.id })
 }
