@@ -1662,6 +1662,28 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
       setChecking(false)
       setProgress(null)
       setShowResults(true)
+
+      // Save fixed lots to Saved Runs so they appear in the Saved Runs tab
+      setLots(current => {
+        const fixed = current.filter(l => l.status === "fixed" && l.revised)
+        if (fixed.length > 0) {
+          fixed.forEach(l => {
+            fetch("/api/auction-ai/runs", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({
+                code:        code.trim().toUpperCase(),
+                preset:      "Key Points Check",
+                lot:         l.label,
+                description: l.revised,
+                estimate:    "",
+              }),
+            }).catch(() => {})
+          })
+          addLog(`── Saved ${fixed.length} fixed lot${fixed.length !== 1 ? "s" : ""} to Saved Runs`)
+        }
+        return current
+      })
     }
   }
 
