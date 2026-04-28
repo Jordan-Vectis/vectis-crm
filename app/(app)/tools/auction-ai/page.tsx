@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { PRESETS } from "@/lib/auction-ai-presets"
 import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
+import { showError } from "@/lib/error-modal"
 
 // ─── Toast system ─────────────────────────────────────────────────────────────
 
@@ -575,9 +576,10 @@ function BatchTab({ model }: { model: string }) {
               body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
             })
             if (!saveRes.ok) {
-              const err = await saveRes.json().catch(() => ({}))
-              showToast(`Save failed for ${lot}: ${err.error ?? saveRes.statusText}`)
-              addLog(`⚠ ${lot} — OK but save failed: ${err.error ?? saveRes.statusText}`)
+              const txt = await saveRes.text().catch(() => "")
+              let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
+              showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
+              addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
             } else {
               addLog(`✓ ${lot} — OK  ·  saved`)
             }
@@ -1220,9 +1222,9 @@ function KPRunsTab() {
       const match   = data.lots?.find((l: { lotNumber: string; id: string }) => l.lotNumber === lotLabel)
       if (!match) throw new Error(`Lot ${lotLabel} not found in catalogue`)
       await applyAiDescriptionOne(data.auctionId, { id: match.id, description: desc, estimateLow: null, estimateHigh: null })
-      alert(`✓ Lot ${lotLabel} saved to catalogue`)
+      showToast(`✓ Lot ${lotLabel} saved to catalogue`, "ok")
     } catch (e: any) {
-      alert(`Error: ${e.message}`)
+      showError("Failed to apply to catalogue", e.message)
     } finally {
       setApplying(null)
     }
@@ -1246,9 +1248,10 @@ function KPRunsTab() {
           ok++
         } catch { fail++ }
       }
-      alert(`Done — ${ok} saved${fail ? `, ${fail} failed` : ""}`)
+      if (fail) showError("Some lots failed to apply", `${ok} saved, ${fail} failed — check lot numbers match the catalogue.`)
+      else showToast(`✓ ${ok} lots saved to catalogue`, "ok")
     } catch (e: any) {
-      alert(`Error: ${e.message}`)
+      showError("Failed to apply lots", e.message)
     } finally {
       setApplying(null)
     }
@@ -1956,9 +1959,9 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
                 const txt = await r.text().catch(() => "")
                 let msg = ""
                 try { msg = JSON.parse(txt).error ?? "" } catch { msg = txt }
-                showToast(`Auto-save failed for lot ${l.label} (${r.status}): ${msg || "unknown error"}`)
+                showError(`Auto-save failed — Lot ${l.label}`, `HTTP ${r.status}`, msg || "No detail returned from server")
               }
-            }).catch(e => showToast(`Auto-save failed for lot ${l.label}: ${e.message}`))
+            }).catch(e => showError(`Auto-save failed — Lot ${l.label}`, e.message))
           })
           addLog(`── Saved ${checked.length} lot${checked.length !== 1 ? "s" : ""} to Saved Runs`)
         }
@@ -2006,9 +2009,9 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
           const txt = await r.text().catch(() => "")
           let msg = ""
           try { msg = JSON.parse(txt).error ?? "" } catch { msg = txt }
-          showToast(`Save failed for lot ${l.label} (${r.status}): ${msg || "unknown error"}`)
+          showError(`Save failed — Lot ${l.label}`, `HTTP ${r.status}`, msg || "No detail returned from server")
         }
-      }).catch(e => { failed++; showToast(`Save error for lot ${l.label}: ${e.message}`) })
+      }).catch(e => { failed++; showError(`Save error — Lot ${l.label}`, e.message) })
     ))
     setSaving(false)
     setSavedMsg(failed ? `⚠ ${checked.length - failed} saved, ${failed} failed` : `✓ ${checked.length} lots saved`)

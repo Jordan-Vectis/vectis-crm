@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
 import { PRESETS } from "@/lib/auction-ai-presets"
+import { showError } from "@/lib/error-modal"
 
 interface Lot {
   id: string
@@ -308,11 +309,14 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
               }),
             })
             if (!saveRes.ok) {
-              const j = await saveRes.json().catch(() => ({}))
-              addLog(`⚠ ${label} — save to Saved Runs failed: ${j.error ?? saveRes.statusText}`)
+              const txt = await saveRes.text().catch(() => "")
+              let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
+              addLog(`⚠ ${label} — save to Saved Runs failed: ${errMsg || saveRes.status}`)
+              showError(`Save to Saved Runs failed — ${label}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
             }
           } catch (saveErr: any) {
             addLog(`⚠ ${label} — save to Saved Runs error: ${saveErr.message}`)
+            showError(`Save to Saved Runs error — ${label}`, saveErr.message)
           }
           addLog(`  ✓ ${label} — done${r.estimate ? ` · estimate: ${r.estimate}` : ""}`)
           succeeded = true
