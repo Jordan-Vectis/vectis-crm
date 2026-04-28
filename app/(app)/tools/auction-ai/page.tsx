@@ -572,7 +572,7 @@ function BatchTab({ model }: { model: string }) {
             const saveRes = await fetch("/api/auction-ai/runs", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate, originalDescription: null, keyPoints: null, missing: null, added: null }),
+              body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
             })
             if (!saveRes.ok) {
               const err = await saveRes.json().catch(() => ({}))
@@ -1039,7 +1039,7 @@ function CopierTab() {
 // ─── Saved Runs Tab ───────────────────────────────────────────────────────────
 
 type RunSummary = { id: string; code: string; preset: string; updatedAt: string; _count: { lots: number } }
-type RunLot     = { id: string; lot: string; description: string; estimate: string; createdAt: string; originalDescription?: string; keyPoints?: string; missing?: string; added?: string }
+type RunLot     = { id: string; lot: string; description: string; estimate: string; createdAt: string }
 type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: RunLot[] }
 
 function SavedRunsTab() {
@@ -1312,58 +1312,36 @@ function KPRunsTab() {
 
                   {/* lot cards */}
                   <div className="flex flex-col divide-y divide-gray-800">
-                    {detail.lots.map(l => {
-                      const kps = l.keyPoints ? l.keyPoints.split("\n").filter(Boolean) : []
-                      return (
-                        <div key={l.id} className="px-4 py-3 bg-[#1C1C1E]">
-                          {/* lot header */}
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <input type="checkbox" checked={!!selected[l.id]}
-                              onChange={e => setSelected(s => ({ ...s, [l.id]: e.target.checked }))}
-                              className="w-3.5 h-3.5 accent-[#C8A96E] flex-shrink-0" />
-                            <span className="text-xs font-mono font-bold text-[#C8A96E]">{l.lot}</span>
-                            {l.missing && <span className="text-xs px-1.5 py-0.5 bg-red-900/40 text-red-300 rounded border border-red-700/30 truncate max-w-[220px]" title={l.missing}>⚠ {l.missing}</span>}
-                            {l.added   && <span className="text-xs px-1.5 py-0.5 bg-green-900/40 text-green-300 rounded border border-green-700/30 truncate max-w-[220px]" title={l.added}>✓ {l.added}</span>}
-                            <div className="flex-1" />
-                            <button onClick={() => deleteLot(l.id)}
-                              className="text-xs text-red-600 hover:text-red-400 transition-colors">✕</button>
-                          </div>
-
-                          {/* key points chips */}
-                          {kps.length > 0 && (
-                            <div className="mb-2 flex flex-wrap gap-1">
-                              {kps.map((kp, i) => (
-                                <span key={i} className="text-[10px] px-1.5 py-0.5 bg-[#2C2C2E] text-gray-400 rounded border border-gray-700">{kp}</span>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* before / after */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">Before</p>
-                              <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">
-                                {l.originalDescription || <em className="text-gray-600">Not recorded</em>}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">After (editable)</p>
-                              <textarea
-                                value={revised[l.id] ?? l.description}
-                                onChange={e => setRevised(s => ({ ...s, [l.id]: e.target.value }))}
-                                rows={5}
-                                className="w-full bg-[#2C2C2E] border border-gray-700 focus:border-[#C8A96E] rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none resize-y"
-                              />
-                              <button onClick={() => applyLot(l.id, l.lot, run.code)}
-                                disabled={applying === l.id || applying === "bulk"}
-                                className="mt-1 text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
-                                {applying === l.id ? "Saving…" : "Apply to catalogue"}
-                              </button>
-                            </div>
-                          </div>
+                    {detail.lots.map(l => (
+                      <div key={l.id} className="px-4 py-3 bg-[#1C1C1E]">
+                        {/* lot header */}
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <input type="checkbox" checked={!!selected[l.id]}
+                            onChange={e => setSelected(s => ({ ...s, [l.id]: e.target.checked }))}
+                            className="w-3.5 h-3.5 accent-[#C8A96E] flex-shrink-0" />
+                          <span className="text-xs font-mono font-bold text-[#C8A96E]">{l.lot}</span>
+                          <div className="flex-1" />
+                          <button onClick={() => deleteLot(l.id)}
+                            className="text-xs text-red-600 hover:text-red-400 transition-colors">✕</button>
                         </div>
-                      )
-                    })}
+
+                        {/* description */}
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Saved description (editable)</p>
+                          <textarea
+                            value={revised[l.id] ?? l.description}
+                            onChange={e => setRevised(s => ({ ...s, [l.id]: e.target.value }))}
+                            rows={5}
+                            className="w-full bg-[#2C2C2E] border border-gray-700 focus:border-[#C8A96E] rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none resize-y"
+                          />
+                          <button onClick={() => applyLot(l.id, l.lot, run.code)}
+                            disabled={applying === l.id || applying === "bulk"}
+                            className="mt-1 text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
+                            {applying === l.id ? "Saving…" : "Apply to catalogue"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -1928,15 +1906,11 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
               method:  "POST",
               headers: { "Content-Type": "application/json" },
               body:    JSON.stringify({
-                code:                runCode,
-                preset:              "Key Points Check",
-                lot:                 l.label,
-                description:         l.revised ?? l.description,
-                estimate:            "",
-                originalDescription: l.description,
-                keyPoints:           Array.isArray(l.keyPoints) ? l.keyPoints.join("\n") : (l.keyPoints ?? ""),
-                missing:             l.missing ?? "",
-                added:               l.added   ?? "",
+                code:        runCode,
+                preset:      "Key Points Check",
+                lot:         l.label,
+                description: l.revised ?? l.description,
+                estimate:    "",
               }),
             }).catch(e => showToast(`Auto-save failed for lot ${l.label}: ${e.message}`))
           })
@@ -1970,15 +1944,11 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
-          code:                runCode,
-          preset:              "Key Points Check",
-          lot:                 l.label,
-          description:         l.revised ?? l.description,
-          estimate:            "",
-          originalDescription: l.description,
-          keyPoints:           Array.isArray(l.keyPoints) ? l.keyPoints.join("\n") : (l.keyPoints ?? ""),
-          missing:             l.missing ?? "",
-          added:               l.added   ?? "",
+          code:        runCode,
+          preset:      "Key Points Check",
+          lot:         l.label,
+          description: l.revised ?? l.description,
+          estimate:    "",
         }),
       }).then(async r => {
         if (!r.ok) { failed++; const j = await r.json().catch(() => ({})); showToast(`Save failed for lot ${l.label}: ${j.error ?? r.statusText}`) }
