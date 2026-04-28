@@ -1862,6 +1862,37 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
     navigator.clipboard.writeText(text)
   }
 
+  const [saving, setSaving] = useState(false)
+  const [savedMsg, setSavedMsg] = useState("")
+
+  async function saveRun() {
+    const checked = lots.filter(l => (l.status === "ok" || l.status === "fixed") && l.description)
+    if (!checked.length || !code.trim()) return
+    setSaving(true)
+    setSavedMsg("")
+    const runCode = code.trim().toUpperCase() + "_KP"
+    await Promise.all(checked.map(l =>
+      fetch("/api/auction-ai/runs", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          code:                runCode,
+          preset:              "Key Points Check",
+          lot:                 l.label,
+          description:         l.revised ?? l.description,
+          estimate:            "",
+          originalDescription: l.description,
+          keyPoints:           Array.isArray(l.keyPoints) ? l.keyPoints.join("\n") : (l.keyPoints ?? ""),
+          missing:             l.missing ?? "",
+          added:               l.added   ?? "",
+        }),
+      }).catch(() => {})
+    ))
+    setSaving(false)
+    setSavedMsg(`✓ ${checked.length} lots saved`)
+    setTimeout(() => setSavedMsg(""), 3000)
+  }
+
   const checkedCount = lots.filter(l => l.status === "ok" || l.status === "fixed").length
   const fixedCount   = lots.filter(l => l.status === "fixed").length
   const inp = "w-full bg-[#1C1C1E] border border-gray-700 rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#C8A96E]"
@@ -1984,10 +2015,19 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
             </div>
             <div className="flex gap-2 items-center">
               {checkedCount > 0 && !checking && (
-                <button onClick={copyAll}
-                  className="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded transition-colors">
-                  Copy all
-                </button>
+                <>
+                  <button onClick={copyAll}
+                    className="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded transition-colors">
+                    Copy all
+                  </button>
+                  {savedMsg
+                    ? <span className="text-xs text-green-400">{savedMsg}</span>
+                    : <button onClick={saveRun} disabled={saving}
+                        className="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded transition-colors disabled:opacity-40">
+                        {saving ? "Saving…" : "💾 Save run"}
+                      </button>
+                  }
+                </>
               )}
               {checking && (
                 <>
