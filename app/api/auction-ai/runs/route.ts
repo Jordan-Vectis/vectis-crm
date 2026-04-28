@@ -29,7 +29,16 @@ export async function POST(req: NextRequest) {
   })
 
   await prisma.auctionLot.create({
-    data: { runId: run.id, lot, description, estimate, originalDescription, keyPoints, missing, added },
+    data: {
+      runId:               run.id,
+      lot,
+      description:         description         ?? "",
+      estimate:            estimate             ?? "",
+      originalDescription: originalDescription  ?? null,
+      keyPoints:           keyPoints            ?? null,
+      missing:             missing              ?? null,
+      added:               added                ?? null,
+    },
   })
 
   return NextResponse.json({ ok: true, runId: run.id })
