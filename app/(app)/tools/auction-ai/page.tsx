@@ -1951,6 +1951,13 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
                 missing:             l.missing  ?? null,
                 added:               l.added    ?? null,
               }),
+            }).then(async r => {
+              if (!r.ok) {
+                const txt = await r.text().catch(() => "")
+                let msg = ""
+                try { msg = JSON.parse(txt).error ?? "" } catch { msg = txt }
+                showToast(`Auto-save failed for lot ${l.label} (${r.status}): ${msg || "unknown error"}`)
+              }
             }).catch(e => showToast(`Auto-save failed for lot ${l.label}: ${e.message}`))
           })
           addLog(`── Saved ${checked.length} lot${checked.length !== 1 ? "s" : ""} to Saved Runs`)
@@ -1994,7 +2001,13 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
           added:               l.added    ?? null,
         }),
       }).then(async r => {
-        if (!r.ok) { failed++; const j = await r.json().catch(() => ({})); showToast(`Save failed for lot ${l.label}: ${j.error ?? r.statusText}`) }
+        if (!r.ok) {
+          failed++
+          const txt = await r.text().catch(() => "")
+          let msg = ""
+          try { msg = JSON.parse(txt).error ?? "" } catch { msg = txt }
+          showToast(`Save failed for lot ${l.label} (${r.status}): ${msg || "unknown error"}`)
+        }
       }).catch(e => { failed++; showToast(`Save error for lot ${l.label}: ${e.message}`) })
     ))
     setSaving(false)
