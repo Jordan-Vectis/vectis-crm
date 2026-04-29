@@ -10,7 +10,7 @@ export type LotGroup = {
   items:        string[]
   estimateLow:  number
   estimateHigh: number
-  position:     "top-left" | "top-center" | "top-right" | "middle-left" | "middle-center" | "middle-right" | "bottom-left" | "bottom-center" | "bottom-right"
+  bounds:       { x: number; y: number; w: number; h: number } // % of image dimensions
   notes:        string
   colour:       string
 }
@@ -41,6 +41,7 @@ You will be given a photo of items laid out for cataloguing. Your job is to:
 2. Group them into logical auction lots based on type, theme, value, and what collectors would want together
 3. Estimate a sale value for each lot based on typical Vectis auction results
 4. Also estimate the total value of everything in the photo
+5. For each group, provide a precise bounding box showing exactly where those items appear in the photo
 
 Return ONLY valid JSON in this exact format — no markdown, no explanation, just the JSON:
 
@@ -54,14 +55,24 @@ Return ONLY valid JSON in this exact format — no markdown, no explanation, jus
       "items": ["<item 1>", "<item 2>"],
       "estimateLow": <number>,
       "estimateHigh": <number>,
-      "position": "<one of: top-left | top-center | top-right | middle-left | middle-center | middle-right | bottom-left | bottom-center | bottom-right>",
+      "bounds": {
+        "x": <0-100>,
+        "y": <0-100>,
+        "w": <0-100>,
+        "h": <0-100>
+      },
       "notes": "<any condition notes or relevant detail>"
     }
   ]
 }
 
-Rules:
-- position must describe roughly where in the photo the items for that lot are located
+Rules for bounds:
+- x and y are the top-left corner of the bounding box as a percentage of the image width and height
+- w and h are the width and height of the box as a percentage of the image width and height
+- Be as precise as possible — tightly wrap the actual items in each group
+- All values must be 0–100 and the box must not exceed the image edges (x+w <= 100, y+h <= 100)
+
+Other rules:
 - Combine items of similar type/theme/value into sensible lots
 - Do not create lots worth less than £5
 - estimateLow and estimateHigh are in GBP as whole numbers
@@ -94,15 +105,23 @@ export async function POST(req: NextRequest) {
     ])
 
     const raw = result.response.text().trim()
-    // Strip any markdown code fences if the model adds them
     const json = raw.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim()
     const parsed: LottingUpResult = JSON.parse(json)
 
-    // Assign colours to each group
-    parsed.groups = parsed.groups.map((g, i) => ({
-      ...g,
-      colour: COLOURS[i % COLOURS.length],
-    }))
+    // Assign colours and clamp bounds
+    parsed.groups = parsed.groups.map((g, i) => {
+      const b = g.bounds ?? { x: 0, y: 0, w: 100, h: 100 }
+      return {
+        ...g,
+        colour: COLOURS[i % COLOURS.length],
+        bounds: {
+          x: Math.max(0, Math.min(100, b.x)),
+          y: Math.max(0, Math.min(100, b.y)),
+          w: Math.max(1, Math.min(100 - b.x, b.w)),
+          h: Math.max(1, Math.min(100 - b.y, b.h)),
+        },
+      }
+    })
 
     return NextResponse.json(parsed)
   } catch (e: any) {

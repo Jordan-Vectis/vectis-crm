@@ -4,20 +4,6 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import type { LotGroup, LottingUpResult } from "@/app/api/lotting-up/route"
 import { showError } from "@/lib/error-modal"
 
-// ── Zone → canvas rectangle (% of image width/height) ────────────────────────
-
-const ZONE_RECTS: Record<string, { x: number; y: number; w: number; h: number }> = {
-  "top-left":      { x: 0,    y: 0,    w: 45, h: 45 },
-  "top-center":    { x: 27.5, y: 0,    w: 45, h: 45 },
-  "top-right":     { x: 55,   y: 0,    w: 45, h: 45 },
-  "middle-left":   { x: 0,    y: 27.5, w: 45, h: 45 },
-  "middle-center": { x: 27.5, y: 27.5, w: 45, h: 45 },
-  "middle-right":  { x: 55,   y: 27.5, w: 45, h: 45 },
-  "bottom-left":   { x: 0,    y: 55,   w: 45, h: 45 },
-  "bottom-center": { x: 27.5, y: 55,   w: 45, h: 45 },
-  "bottom-right":  { x: 55,   y: 55,   w: 45, h: 45 },
-}
-
 function hexToRgb(hex: string) {
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
@@ -26,68 +12,90 @@ function hexToRgb(hex: string) {
 }
 
 // ── Overlay canvas ─────────────────────────────────────────────────────────────
+// Draws the base photo always; only draws the highlight box when a lot is hovered.
 
 function OverlayCanvas({ imageUrl, groups, highlightId }: {
-  imageUrl: string
-  groups:   LotGroup[]
+  imageUrl:    string
+  groups:      LotGroup[]
   highlightId: number | null
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const imgRef    = useRef<HTMLImageElement | null>(null)
 
+  // Load the image once
+  useEffect(() => {
+    const img = new Image()
+    img.onload = () => {
+      imgRef.current = img
+      const canvas = canvasRef.current
+      if (!canvas) return
+      canvas.width  = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext("2d")
+      ctx?.drawImage(img, 0, 0)
+    }
+    img.src = imageUrl
+  }, [imageUrl])
+
+  // Redraw whenever the highlighted lot changes
   const draw = useCallback(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    const img    = imgRef.current
+    if (!canvas || !img) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const img = new Image()
-    img.onload = () => {
-      canvas.width  = img.naturalWidth
-      canvas.height = img.naturalHeight
-      ctx.drawImage(img, 0, 0)
+    // Always start with clean photo
+    ctx.drawImage(img, 0, 0)
 
-      groups.forEach(g => {
-        const zone = ZONE_RECTS[g.position] ?? ZONE_RECTS["middle-center"]
-        const x = (zone.x / 100) * img.naturalWidth
-        const y = (zone.y / 100) * img.naturalHeight
-        const w = (zone.w / 100) * img.naturalWidth
-        const h = (zone.h / 100) * img.naturalHeight
+    if (highlightId === null) return
 
-        const { r, g: gv, b } = hexToRgb(g.colour)
-        const isHighlit = highlightId === g.id
-        const alpha = isHighlit ? 0.35 : (highlightId !== null ? 0.08 : 0.18)
+    const g = groups.find(g => g.id === highlightId)
+    if (!g) return
 
-        // Filled rectangle
-        ctx.fillStyle = `rgba(${r},${gv},${b},${alpha})`
-        ctx.fillRect(x, y, w, h)
+    const { x: bx, y: by, w: bw, h: bh } = g.bounds
+    const px = (bx / 100) * img.naturalWidth
+    const py = (by / 100) * img.naturalHeight
+    const pw = (bw / 100) * img.naturalWidth
+    const ph = (bh / 100) * img.naturalHeight
 
-        // Border
-        ctx.strokeStyle = `rgba(${r},${gv},${b},${isHighlit ? 0.95 : 0.55})`
-        ctx.lineWidth   = isHighlit ? Math.max(3, img.naturalWidth * 0.004) : Math.max(2, img.naturalWidth * 0.002)
-        ctx.strokeRect(x, y, w, h)
+    const { r, g: gv, b } = hexToRgb(g.colour)
 
-        // Label badge
-        const fontSize  = Math.max(12, Math.min(22, img.naturalWidth * 0.022))
-        const padding   = fontSize * 0.5
-        const text      = `${g.id}`
-        ctx.font        = `bold ${fontSize}px sans-serif`
-        const textW     = ctx.measureText(text).width
-        const badgeW    = textW + padding * 2
-        const badgeH    = fontSize + padding
-        const bx        = x + 6
-        const by        = y + 6
+    // Dim everything outside the box
+    ctx.fillStyle = "rgba(0,0,0,0.45)"
+    ctx.fillRect(0,  0,  img.naturalWidth, py)                     // above
+    ctx.fillRect(0,  py, px, ph)                                   // left
+    ctx.fillRect(px + pw, py, img.naturalWidth - px - pw, ph)      // right
+    ctx.fillRect(0,  py + ph, img.naturalWidth, img.naturalHeight - py - ph) // below
 
-        ctx.fillStyle = `rgba(${r},${gv},${b},${isHighlit ? 1 : 0.75})`
-        ctx.beginPath()
-        ctx.roundRect(bx, by, badgeW, badgeH, 4)
-        ctx.fill()
+    // Coloured border
+    ctx.strokeStyle = `rgba(${r},${gv},${b},0.95)`
+    ctx.lineWidth   = Math.max(3, img.naturalWidth * 0.004)
+    ctx.strokeRect(px, py, pw, ph)
 
-        ctx.fillStyle = "white"
-        ctx.fillText(text, bx + padding, by + fontSize * 0.85)
-      })
-    }
-    img.src = imageUrl
-  }, [imageUrl, groups, highlightId])
+    // Subtle fill inside
+    ctx.fillStyle = `rgba(${r},${gv},${b},0.12)`
+    ctx.fillRect(px, py, pw, ph)
+
+    // Number badge
+    const fontSize = Math.max(14, Math.min(28, img.naturalWidth * 0.025))
+    const pad      = fontSize * 0.55
+    const label    = `${g.id}`
+    ctx.font       = `bold ${fontSize}px sans-serif`
+    const tw       = ctx.measureText(label).width
+    const badgeW   = tw + pad * 2
+    const badgeH   = fontSize + pad * 1.2
+    const badgeX   = px + 8
+    const badgeY   = py + 8
+
+    ctx.fillStyle = `rgba(${r},${gv},${b},1)`
+    ctx.beginPath()
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 5)
+    ctx.fill()
+
+    ctx.fillStyle = "white"
+    ctx.fillText(label, badgeX + pad, badgeY + fontSize * 0.88)
+  }, [groups, highlightId])
 
   useEffect(() => { draw() }, [draw])
 
