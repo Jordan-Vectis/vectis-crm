@@ -209,11 +209,15 @@ model AuctionRun {
 }
 
 model AuctionLot {
-  id          String     @id @default(cuid())
-  lot         String
-  description String     @db.Text
-  estimate    String
-  createdAt   DateTime   @default(now())
+  id                  String     @id @default(cuid())
+  lot                 String
+  description         String     @db.Text
+  estimate            String
+  originalDescription String?    @db.Text
+  keyPoints           String?    @db.Text
+  missing             String?    @db.Text
+  added               String?    @db.Text
+  createdAt           DateTime   @default(now())
 
   runId String
   run   AuctionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -302,9 +306,10 @@ model CatalogueLot {
   currentBid   Int?
   hammerPrice  Int?
   condition    String?
-  vendor       String?
-  tote         String?
-  receipt      String?
+  vendor          String?
+  tote            String?
+  receipt         String?
+  receiptUniqueId String?
   category     String?
   subCategory  String?
   brand        String?
@@ -499,6 +504,17 @@ model ParcelLot {
   lot      CatalogueLot @relation(fields: [lotId], references: [id])
 
   @@unique([parcelId, lotId])
+}
+
+model MacroFile {
+  id          String   @id @default(cuid())
+  name        String
+  filename    String
+  description String?  @db.Text
+  content     Bytes
+  mimeType    String   @default("text/plain")
+  size        Int
+  createdAt   DateTime @default(now())
 }
 
 model HeroSlide {

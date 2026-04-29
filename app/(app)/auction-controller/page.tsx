@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import { io as ioClient, Socket } from "socket.io-client"
 import { lotPhotoUrl } from "@/lib/photo-url"
+import { showError } from "@/lib/error-modal"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AuctionMeta {
@@ -119,7 +120,7 @@ export default function AuctionControllerPage() {
     socket.on("clerk:auth:fail", () => setLoginError("Incorrect password. Please try again."))
     socket.on("clerk:auctions",  (list: AuctionMeta[]) => setAuctions(list))
     socket.on("clerk:auctionLoaded", () => setPhase("control"))
-    socket.on("clerk:error", (e: { message: string }) => alert("Error: " + e.message))
+    socket.on("clerk:error", (e: { message: string }) => showError("Auction controller error", e.message))
 
     socket.on("auction:state", (s: AuctionState) => {
       setState(s)

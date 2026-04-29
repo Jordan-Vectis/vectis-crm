@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 const links = [
   { key: "AUCTION_MANAGER",    href: "/tools/cataloguing/auctions",        label: "Auction Manager",    icon: "🏷" },
   { key: "TABLET_CATALOGUING", href: "/tools/cataloguing/tablet/auctions", label: "Tablet Cataloguing", icon: "📱" },
+  { key: "LOTTING_UP",         href: "/tools/cataloguing/lotting-up",      label: "Lotting Up",         icon: "🔍" },
 ]
 
 interface Props {

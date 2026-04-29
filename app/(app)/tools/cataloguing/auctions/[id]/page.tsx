@@ -98,6 +98,7 @@ export default async function AuctionDetailPage({
           vendor: l.vendor,
           tote: l.tote,
           receipt: l.receipt,
+          receiptUniqueId: l.receiptUniqueId,
           category: l.category,
           subCategory: l.subCategory,
           brand: l.brand,

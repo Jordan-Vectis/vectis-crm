@@ -128,8 +128,8 @@ export async function createLot(auctionId: string, formData: FormData) {
     }
   }
 
-  if (data.receipt) data.receipt = await sequencedReceipt(data.receipt)
-  const lot = await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName, imageUrls } })
+  const receiptUniqueId = data.receipt ? await sequencedReceiptUid(data.receipt) : null
+  const lot = await prisma.catalogueLot.create({ data: { ...data, auctionId, createdByName, imageUrls, receiptUniqueId } })
 
   // Log timing if provided
   const durationMs  = parseInt(formData.get("durationMs")  as string ?? "0") || 0
@@ -303,7 +303,7 @@ export async function fillLotsFromTotes(auctionId: string) {
     const info = toteMap.get(lot.tote!)
     if (!info?.receipt) continue
     if (!(info.receipt in receiptOffset)) {
-      receiptOffset[info.receipt] = await prisma.catalogueLot.count({ where: { receipt: { startsWith: info.receipt + "-" } } })
+      receiptOffset[info.receipt] = await prisma.catalogueLot.count({ where: { receiptUniqueId: { startsWith: info.receipt + "-" } } })
     }
   }
 
@@ -313,16 +313,18 @@ export async function fillLotsFromTotes(auctionId: string) {
     const info = toteMap.get(lot.tote)
     if (!info) continue
     if (!lot.vendor || !lot.receipt) {
-      let receipt = lot.receipt
-      if (!receipt && info.receipt) {
-        receiptOffset[info.receipt] = (receiptOffset[info.receipt] ?? 0) + 1
-        receipt = `${info.receipt}-${receiptOffset[info.receipt]}`
+      const receiptBase = info.receipt || null
+      let receiptUniqueId: string | null = null
+      if (!lot.receipt && receiptBase) {
+        receiptOffset[receiptBase] = (receiptOffset[receiptBase] ?? 0) + 1
+        receiptUniqueId = `${receiptBase}-${receiptOffset[receiptBase]}`
       }
       await prisma.catalogueLot.update({
         where: { id: lot.id },
         data: {
-          vendor:  lot.vendor  || info.vendor,
-          receipt: receipt     || info.receipt,
+          vendor:          lot.vendor || info.vendor,
+          receipt:         receiptBase,
+          receiptUniqueId: receiptUniqueId,
         },
       })
       updated++
@@ -384,39 +386,41 @@ export async function importLots(auctionId: string, rows: {
   // Pre-count existing sequenced lots per receipt base, then track in-batch additions
   const receiptOffset: Record<string, number> = {}
   for (const base of [...new Set(rows.map(r => r.receipt).filter(Boolean))]) {
-    receiptOffset[base] = await prisma.catalogueLot.count({ where: { receipt: { startsWith: base + "-" } } })
+    receiptOffset[base] = await prisma.catalogueLot.count({ where: { receiptUniqueId: { startsWith: base + "-" } } })
   }
 
   for (const r of rows) {
-    let receipt = r.receipt || null
-    if (receipt) {
-      receiptOffset[receipt] = (receiptOffset[receipt] ?? 0) + 1
-      receipt = `${r.receipt}-${receiptOffset[r.receipt]}`
+    const receiptBase = r.receipt ? r.receipt.toUpperCase() : null
+    let receiptUniqueId: string | null = null
+    if (receiptBase) {
+      receiptOffset[receiptBase] = (receiptOffset[receiptBase] ?? 0) + 1
+      receiptUniqueId = `${receiptBase}-${receiptOffset[receiptBase]}`
     }
 
     await prisma.catalogueLot.create({
       data: {
         auctionId,
         createdByName,
-        lotNumber:    r.lotNumber,
-        title:        r.title || "",
-        keyPoints:    r.keyPoints || r.description || "",
-        barcode:      r.barcode?.toUpperCase() || null,
-        description:  "",
-        estimateLow:  r.estimateLow  ? parseInt(r.estimateLow)  : null,
-        estimateHigh: r.estimateHigh ? parseInt(r.estimateHigh) : null,
-        reserve:      r.reserve      ? parseInt(r.reserve)      : null,
-        hammerPrice:  null,
-        condition:    r.condition    || null,
-        status:       r.status       || "ENTERED",
-        vendor:       r.vendor       || null,
-        tote:         r.tote?.toUpperCase()    || null,
-        receipt,
-        category:     r.category     || null,
-        subCategory:  r.subCategory  || null,
-        brand:        r.brand        || null,
-        notes:        r.notes        || null,
-        imageUrls:    [],
+        lotNumber:      r.lotNumber,
+        title:          r.title || "",
+        keyPoints:      r.keyPoints || r.description || "",
+        barcode:        r.barcode?.toUpperCase() || null,
+        description:    "",
+        estimateLow:    r.estimateLow  ? parseInt(r.estimateLow)  : null,
+        estimateHigh:   r.estimateHigh ? parseInt(r.estimateHigh) : null,
+        reserve:        r.reserve      ? parseInt(r.reserve)      : null,
+        hammerPrice:    null,
+        condition:      r.condition    || null,
+        status:         r.status       || "ENTERED",
+        vendor:         r.vendor       || null,
+        tote:           r.tote?.toUpperCase() || null,
+        receipt:        receiptBase,
+        receiptUniqueId,
+        category:       r.category    || null,
+        subCategory:    r.subCategory || null,
+        brand:          r.brand       || null,
+        notes:          r.notes       || null,
+        imageUrls:      [],
       },
     })
   }
@@ -425,13 +429,76 @@ export async function importLots(auctionId: string, rows: {
   return rows.length
 }
 
-// Returns the next sequenced receipt value, e.g. "R000123" → "R000123-4"
-// Counts all existing lots whose receipt starts with "{base}-"
-async function sequencedReceipt(base: string, extra = 0): Promise<string> {
+// Returns the next receiptUniqueId for a base receipt, e.g. "R000123" → "R000123-4"
+// Counts existing lots whose receiptUniqueId starts with "{base}-"
+async function sequencedReceiptUid(base: string, extra = 0): Promise<string> {
   const count = await prisma.catalogueLot.count({
-    where: { receipt: { startsWith: base + "-" } },
+    where: { receiptUniqueId: { startsWith: base + "-" } },
   })
   return `${base}-${count + extra + 1}`
+}
+
+export async function massCreateLots(
+  auctionId: string,
+  auctionCode: string,
+  opts: {
+    count:       number
+    vendor:      string
+    tote:        string
+    receipt:     string
+    category:    string
+    subCategory: string
+  }
+) {
+  const session = await requireCataloguer()
+  const createdByName = session.user.name ?? session.user.email ?? "Unknown"
+
+  // Work out the highest existing lot number so we can continue sequentially
+  const existingLots = await prisma.catalogueLot.findMany({
+    where:  { auctionId },
+    select: { lotNumber: true, barcode: true },
+  })
+  const maxLotNum = existingLots.reduce((max, l) => {
+    const n = parseInt(l.lotNumber)
+    return !isNaN(n) && n > max ? n : max
+  }, 0)
+
+  // Work out the highest existing barcode suffix for this auction code so we
+  // never produce a duplicate — e.g. F051003 → suffix 3
+  const prefix = auctionCode.toUpperCase()
+  const maxBarcode = existingLots.reduce((max, l) => {
+    if (!l.barcode) return max
+    const b = l.barcode.toUpperCase()
+    if (!b.startsWith(prefix)) return max
+    const n = parseInt(b.slice(prefix.length))
+    return !isNaN(n) && n > max ? n : max
+  }, 0)
+
+  const receiptBase = opts.receipt ? opts.receipt.toUpperCase() : null
+  const receiptStart = receiptBase
+    ? await prisma.catalogueLot.count({ where: { receiptUniqueId: { startsWith: receiptBase + "-" } } })
+    : 0
+
+  const data = Array.from({ length: opts.count }, (_, i) => ({
+    auctionId,
+    createdByName,
+    lotNumber:       String(maxLotNum  + i + 1),
+    barcode:         `${prefix}${String(maxBarcode + i + 1).padStart(3, "0")}`,
+    title:           "",
+    keyPoints:       "",
+    description:     "",
+    imageUrls:       [] as string[],
+    vendor:          opts.vendor      || null,
+    tote:            opts.tote        ? opts.tote.toUpperCase() : null,
+    receipt:         receiptBase,
+    receiptUniqueId: receiptBase ? `${receiptBase}-${receiptStart + i + 1}` : null,
+    category:        opts.category    || null,
+    subCategory:     opts.subCategory || null,
+  }))
+
+  await prisma.catalogueLot.createMany({ data })
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+  return data.length
 }
 
 function extractLotData(formData: FormData) {
@@ -450,9 +517,10 @@ function extractLotData(formData: FormData) {
     hammerPrice:  formData.get("hammerPrice")  ? parseInt(formData.get("hammerPrice") as string)  : null,
     condition:   str("condition"),
     vendor:      str("vendor"),
-    tote:        up("tote"),
-    receipt:     up("receipt"),
-    category:    str("category"),
+    tote:            up("tote"),
+    receipt:         up("receipt"),
+    receiptUniqueId: up("receiptUniqueId"),
+    category:        str("category"),
     subCategory: str("subCategory"),
     brand:       str("brand"),
     notes:       str("notes"),

@@ -736,9 +736,14 @@ export default function LotWizardTab({
                 <PinBtn pinned={pinnedReceipt === receipt && !!receipt} onPin={() => setPinnedReceipt(v => v === receipt ? "" : receipt)} tablet={tablet} />
               </div>
               <div className="flex gap-2">
-                <input value={receipt} onChange={e => setReceipt(e.target.value)} className={`flex-1 ${inpFocus}`} placeholder="e.g. R9876" />
+                <input value={receipt} onChange={e => setReceipt(e.target.value)} className={`flex-1 ${inpFocus}`} placeholder="e.g. R007523" />
                 {receipt && <button type="button" onClick={() => setReceipt("")} className="px-3 py-2 bg-[#2C2C2E] border border-gray-700 text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
               </div>
+              {receipt && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Unique ID will be auto-assigned (e.g. <span className="text-gray-400">{receipt.toUpperCase()}-N</span>)
+                </p>
+              )}
             </div>
           </div>
         )}

@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids, toggleLotAiUpgraded } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids, toggleLotAiUpgraded, massCreateLots } from "@/lib/actions/catalogue"
 import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import ImportTab from "./import-tab"
@@ -25,7 +25,7 @@ interface Lot {
   id: string; lotNumber: string; barcode: string | null; title: string; keyPoints: string; description: string
   estimateLow: number | null; estimateHigh: number | null; startingBid: number | null; reserve: number | null
   hammerPrice: number | null; condition: string | null; vendor: string | null
-  tote: string | null; receipt: string | null; category: string | null
+  tote: string | null; receipt: string | null; receiptUniqueId: string | null; category: string | null
   subCategory: string | null; brand: string | null; notes: string | null
   status: string; aiUpgraded: boolean; createdByName: string | null; imageUrls: string[]
 }
@@ -341,7 +341,7 @@ function colMatch(value: string | null | undefined, filter: string) {
 
 function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   lots: Lot[]; auctionId: string
-  auction: { code: string; name: string }
+  auction: { id: string; code: string; name: string }
   onEdit: (id: string) => void
   onDelete: () => void
 }) {
@@ -369,6 +369,16 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   const [titlesPending, startTitles] = useTransition()
 
   // Autolotter panel
+  const [showMassAdd,    setShowMassAdd]    = useState(false)
+  const [massCount,      setMassCount]      = useState(10)
+  const [massVendor,     setMassVendor]     = useState("")
+  const [massTote,       setMassTote]       = useState("")
+  const [massReceipt,    setMassReceipt]    = useState("")
+  const [massCategory,   setMassCategory]   = useState("")
+  const [massSubCat,     setMassSubCat]     = useState("")
+  const [massAdding,     startMassAdd]      = useTransition()
+  const [massMsg,        setMassMsg]        = useState<string | null>(null)
+
   const [showAutolotter, setShowAutolotter] = useState(false)
   const [sortMode, setSortMode] = useState<"subcat" | "vendor" | "subcat_vendor" | "vendor_subcat">("subcat")
   const [lotterMsg, setLotterMsg] = useState<string | null>(null)
@@ -475,6 +485,26 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
     const a    = document.createElement("a")
     a.href     = url
     a.download = "bc_import.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportForAHKReceipt() {
+    // Group filtered lots by receipt, collect barcodes per receipt, skip lots with no receipt
+    const receiptMap = new Map<string, string[]>()
+    for (const l of filtered) {
+      if (!l.receipt?.trim()) continue
+      const receipt = l.receipt.trim()
+      if (!receiptMap.has(receipt)) receiptMap.set(receipt, [])
+      receiptMap.get(receipt)!.push((l.barcode ?? l.lotNumber).trim())
+    }
+    if (receiptMap.size === 0) { alert("No lots with receipt numbers in current filter."); return }
+    const lines = ["ToteNumber,LotCount,Barcodes", ...Array.from(receiptMap.entries()).map(([r, barcodes]) => `${r},${barcodes.length},${barcodes.join("|")}`)]
+    const blob = new Blob([lines.join("\r\n")], { type: "text/csv" })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement("a")
+    a.href     = url
+    a.download = "bc_import_receipt.csv"
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -622,8 +652,81 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
 
   if (lots.length === 0) {
     return (
-      <div className="text-center py-16 text-gray-600">
-        No lots yet — use the <span className="text-gray-400">Add Lot</span> tab to get started.
+      <div>
+        {/* ── Mass Add panel still available on empty auction ── */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setShowMassAdd(v => !v)}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showMassAdd ? "border-orange-500 text-orange-400 bg-orange-900/20" : "border-gray-600 text-gray-400 hover:border-orange-500 hover:text-orange-400"}`}>
+            ➕ Mass Add Lots
+          </button>
+          {massMsg && <span className="text-xs text-orange-400">{massMsg}</span>}
+        </div>
+        {showMassAdd && (
+          <div className="mb-4 bg-[#1C1C1E] border border-orange-700/40 rounded-xl p-4 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-orange-300">Mass Add Lots</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Creates blank lots in bulk. Barcodes are auto-generated as {auction.code}001, {auction.code}002… continuing from the highest existing barcode.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Number of lots <span className="text-orange-400">*</span></label>
+                <input type="number" min={1} max={1000} value={massCount}
+                  onChange={e => setMassCount(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+                  className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Vendor</label>
+                <input type="text" value={massVendor} onChange={e => setMassVendor(e.target.value)} placeholder="e.g. V000123"
+                  className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Tote</label>
+                <input type="text" value={massTote} onChange={e => setMassTote(e.target.value)} placeholder="e.g. T01"
+                  className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Receipt</label>
+                <input type="text" value={massReceipt} onChange={e => setMassReceipt(e.target.value)} placeholder="e.g. R000123"
+                  className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Category</label>
+                <input type="text" value={massCategory} onChange={e => setMassCategory(e.target.value)} placeholder="e.g. Toys"
+                  className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Sub-category</label>
+                <input type="text" value={massSubCat} onChange={e => setMassSubCat(e.target.value)} placeholder="e.g. Action Figures"
+                  className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                disabled={massAdding}
+                onClick={() => {
+                  startMassAdd(async () => {
+                    setMassMsg(null)
+                    const n = await massCreateLots(auction.id, auction.code, {
+                      count: massCount, vendor: massVendor, tote: massTote,
+                      receipt: massReceipt, category: massCategory, subCategory: massSubCat,
+                    })
+                    setMassMsg(`✓ ${n} lots created`)
+                    setTimeout(() => setMassMsg(null), 4000)
+                  })
+                }}
+                className="px-5 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
+                {massAdding ? "Creating…" : `Create ${massCount} lot${massCount !== 1 ? "s" : ""}`}
+              </button>
+              <button onClick={() => setShowMassAdd(false)} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Cancel</button>
+            </div>
+          </div>
+        )}
+        <div className="text-center py-16 text-gray-600">
+          No lots yet — use the <span className="text-gray-400">Add Lot</span> tab or Mass Add above to get started.
+        </div>
       </div>
     )
   }
@@ -649,12 +752,17 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
             {fillPending ? "Pulling…" : "⟳ Pull Vendor/Receipt from Totes"}
           </button>
           <button
-            onClick={() => { setShowAutolotter(v => !v); setShowBids(false) }}
+            onClick={() => { setShowMassAdd(v => !v); setShowAutolotter(false); setShowBids(false) }}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showMassAdd ? "border-orange-500 text-orange-400 bg-orange-900/20" : "border-gray-600 text-gray-400 hover:border-orange-500 hover:text-orange-400"}`}>
+            ➕ Mass Add Lots
+          </button>
+          <button
+            onClick={() => { setShowAutolotter(v => !v); setShowBids(false); setShowMassAdd(false) }}
             className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showAutolotter ? "border-yellow-500 text-yellow-400 bg-yellow-900/20" : "border-gray-600 text-gray-400 hover:border-yellow-500 hover:text-yellow-400"}`}>
             🔢 Auto-number Lots
           </button>
           <button
-            onClick={() => { setShowBids(v => !v); setShowAutolotter(false) }}
+            onClick={() => { setShowBids(v => !v); setShowAutolotter(false); setShowMassAdd(false) }}
             className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showBids ? "border-green-500 text-green-400 bg-green-900/20" : "border-gray-600 text-gray-400 hover:border-green-500 hover:text-green-400"}`}>
             💰 Set Starting Bids
           </button>
@@ -662,6 +770,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
           {lotterMsg && <span className="text-xs text-yellow-400">{lotterMsg}</span>}
           {bidsMsg  && <span className="text-xs text-green-400">{bidsMsg}</span>}
           {titlesMsg && <span className="text-xs text-[#2AB4A6]">{titlesMsg}</span>}
+          {massMsg  && <span className="text-xs text-orange-400">{massMsg}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {selected.size > 0 && (
@@ -684,7 +793,11 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
           )}
           <button onClick={exportForAHK}
             className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-purple-400 hover:text-purple-400 transition-colors">
-            ⬇ Export for BC Macro
+            ⬇ Export for BC Macro (Tote)
+          </button>
+          <button onClick={exportForAHKReceipt}
+            className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-purple-400 hover:text-purple-400 transition-colors">
+            ⬇ Export for BC Macro (Receipt)
           </button>
           <button onClick={exportPhotos} disabled={photoExporting}
             className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-[#2AB4A6] hover:text-[#2AB4A6] transition-colors disabled:opacity-50">
@@ -697,6 +810,74 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
         </div>
       </div>
       {photoMsg && <p className="text-xs text-[#2AB4A6] mb-2">{photoMsg}</p>}
+
+      {/* ── Mass Add Lots panel ── */}
+      {showMassAdd && (
+        <div className="mb-4 bg-[#1C1C1E] border border-orange-700/40 rounded-xl p-4 space-y-4">
+          <div>
+            <p className="text-sm font-semibold text-orange-300">Mass Add Lots</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Creates blank lots in bulk. Barcodes are auto-generated as {auction.code}001, {auction.code}002… continuing from the highest existing barcode.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Number of lots <span className="text-orange-400">*</span></label>
+              <input type="number" min={1} max={1000} value={massCount}
+                onChange={e => setMassCount(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+                className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Vendor</label>
+              <input type="text" value={massVendor} onChange={e => setMassVendor(e.target.value)} placeholder="e.g. V000123"
+                className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Tote</label>
+              <input type="text" value={massTote} onChange={e => setMassTote(e.target.value)} placeholder="e.g. T01"
+                className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Receipt</label>
+              <input type="text" value={massReceipt} onChange={e => setMassReceipt(e.target.value)} placeholder="e.g. R000123"
+                className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Category</label>
+              <input type="text" value={massCategory} onChange={e => setMassCategory(e.target.value)} placeholder="e.g. Toys"
+                className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Sub-category</label>
+              <input type="text" value={massSubCat} onChange={e => setMassSubCat(e.target.value)} placeholder="e.g. Action Figures"
+                className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              disabled={massAdding}
+              onClick={() => {
+                startMassAdd(async () => {
+                  setMassMsg(null)
+                  const n = await massCreateLots(auction.id, auction.code, {
+                    count:       massCount,
+                    vendor:      massVendor,
+                    tote:        massTote,
+                    receipt:     massReceipt,
+                    category:    massCategory,
+                    subCategory: massSubCat,
+                  })
+                  setMassMsg(`✓ ${n} lots created`)
+                  setTimeout(() => setMassMsg(null), 4000)
+                })
+              }}
+              className="px-5 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
+              {massAdding ? "Creating…" : `Create ${massCount} lot${massCount !== 1 ? "s" : ""}`}
+            </button>
+            <button onClick={() => setShowMassAdd(false)} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* ── Auto-number Lots panel ── */}
       {showAutolotter && (
@@ -853,7 +1034,9 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                 <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">{lot.barcode ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-200 max-w-[160px] truncate">{lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.vendor ?? "—"}</td>
-                <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.receipt ?? "—"}</td>
+                <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
+                  {lot.receiptUniqueId ?? lot.receipt ?? "—"}
+                </td>
                 <td className="px-4 py-3 text-gray-400 text-xs font-mono whitespace-nowrap">{lot.tote ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs">
                   {lot.category ? (
@@ -1111,6 +1294,11 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
                 <label className={lbl}>Receipt</label>
                 <input name="receipt" defaultValue={lot.receipt ?? ""} className={input} />
               </div>
+            </div>
+            <div>
+              <label className={lbl}>Receipt Unique ID</label>
+              <input name="receiptUniqueId" defaultValue={lot.receiptUniqueId ?? ""} className={input}
+                placeholder="e.g. R007523-1 (auto-assigned on create)" />
             </div>
             <div>
               <label className={lbl}>Category</label>

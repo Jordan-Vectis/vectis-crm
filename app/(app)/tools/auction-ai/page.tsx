@@ -4,10 +4,55 @@ import { useState, useRef, useCallback, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { PRESETS } from "@/lib/auction-ai-presets"
 import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
+import { showError } from "@/lib/error-modal"
+import { MacroTab } from "./macro-tab"
+
+// ─── Toast system ─────────────────────────────────────────────────────────────
+
+type ToastType = "error" | "warn" | "ok"
+type ToastEvent = { message: string; type: ToastType }
+
+function showToast(message: string, type: ToastType = "error") {
+  window.dispatchEvent(new CustomEvent("vectis-toast", { detail: { message, type } }))
+}
+
+function ToastContainer() {
+  const [toasts, setToasts] = useState<(ToastEvent & { id: number })[]>([])
+  const next = useRef(0)
+
+  useEffect(() => {
+    function handler(e: Event) {
+      const { message, type } = (e as CustomEvent<ToastEvent>).detail
+      const id = next.current++
+      setToasts(t => [...t, { message, type, id }])
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+    }
+    window.addEventListener("vectis-toast", handler)
+    return () => window.removeEventListener("vectis-toast", handler)
+  }, [])
+
+  if (!toasts.length) return null
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      {toasts.map(t => (
+        <div key={t.id}
+          className={`flex items-start gap-2 px-4 py-3 rounded-lg shadow-xl text-sm border animate-in slide-in-from-right-4 fade-in duration-200
+            ${t.type === "error" ? "bg-red-950 border-red-700 text-red-200"
+            : t.type === "warn"  ? "bg-yellow-950 border-yellow-700 text-yellow-200"
+            :                      "bg-green-950 border-green-700 text-green-200"}`}>
+          <span className="flex-shrink-0 mt-0.5">{t.type === "error" ? "✕" : t.type === "warn" ? "⚠" : "✓"}</span>
+          <span className="flex-1 break-words">{t.message}</span>
+          <button onClick={() => setToasts(ts => ts.filter(x => x.id !== t.id))}
+            className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity ml-1">✕</button>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "instructions" | "kpcheck"
+type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "kpruns" | "instructions" | "kpcheck" | "macro"
 
 type ChatMessage = {
   role: "user" | "model"
@@ -526,12 +571,19 @@ function BatchTab({ model }: { model: string }) {
         if (auctionCode.trim()) {
           const r = json.results[0]
           if (r?.status === "OK") {
-            await fetch("/api/auction-ai/runs", {
+            const saveRes = await fetch("/api/auction-ai/runs", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
             })
-            addLog(`✓ ${lot} — OK  ·  saved`)
+            if (!saveRes.ok) {
+              const txt = await saveRes.text().catch(() => "")
+              let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
+              showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
+              addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
+            } else {
+              addLog(`✓ ${lot} — OK  ·  saved`)
+            }
           } else {
             addLog(`✓ ${lot} — OK`)
           }
@@ -990,15 +1042,16 @@ function CopierTab() {
 // ─── Saved Runs Tab ───────────────────────────────────────────────────────────
 
 type RunSummary = { id: string; code: string; preset: string; updatedAt: string; _count: { lots: number } }
-type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: { id: string; lot: string; description: string; estimate: string; createdAt: string }[] }
+type RunLot     = { id: string; lot: string; description: string; estimate: string; createdAt: string; originalDescription?: string | null; keyPoints?: string | null; missing?: string | null; added?: string | null }
+type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: RunLot[] }
 
 function SavedRunsTab() {
-  const [runs,       setRuns]       = useState<RunSummary[]>([])
-  const [expanded,   setExpanded]   = useState<string | null>(null)
-  const [detail,     setDetail]     = useState<RunDetail | null>(null)
-  const [search,     setSearch]     = useState("")
-  const [loading,    setLoading]    = useState(false)
-  const [deleting,   setDeleting]   = useState<string | null>(null)
+  const [runs,     setRuns]     = useState<RunSummary[]>([])
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [detail,   setDetail]   = useState<RunDetail | null>(null)
+  const [search,   setSearch]   = useState("")
+  const [loading,  setLoading]  = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => { loadRuns() }, [])
 
@@ -1006,7 +1059,8 @@ function SavedRunsTab() {
     setLoading(true)
     const r = await fetch("/api/auction-ai/runs")
     const j = await r.json()
-    setRuns(j)
+    // Only show batch runs (not KP Check runs)
+    setRuns((j as RunSummary[]).filter(x => x.preset !== "Key Points Check"))
     setLoading(false)
   }
 
@@ -1065,7 +1119,6 @@ function SavedRunsTab() {
       <div className="flex flex-col gap-2 overflow-y-auto flex-1">
         {filtered.map(run => (
           <div key={run.id} className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
-            {/* ── Run header ── */}
             <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
               <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code}</span>
               <span className="text-xs text-gray-500">{run._count.lots} lots</span>
@@ -1078,7 +1131,6 @@ function SavedRunsTab() {
               <span className="text-gray-600 text-xs">{expanded === run.id ? "▲" : "▼"}</span>
             </div>
 
-            {/* ── Expanded lots ── */}
             {expanded === run.id && detail?.id === run.id && (
               <div className="border-t border-gray-700">
                 <div className="flex items-center justify-between px-4 py-2 bg-[#1C1C1E]">
@@ -1103,6 +1155,238 @@ function SavedRunsTab() {
             )}
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── KP Check Runs Tab ────────────────────────────────────────────────────────
+
+function KPRunsTab() {
+  const [runs,     setRuns]     = useState<RunSummary[]>([])
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [detail,   setDetail]   = useState<RunDetail | null>(null)
+  const [search,   setSearch]   = useState("")
+  const [loading,  setLoading]  = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [revised,  setRevised]  = useState<Record<string, string>>({})
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [applying, setApplying] = useState<string | null>(null)
+
+  useEffect(() => { loadRuns() }, [])
+
+  async function loadRuns() {
+    setLoading(true)
+    const r = await fetch("/api/auction-ai/runs")
+    const j = await r.json()
+    setRuns((j as RunSummary[]).filter(x => x.preset === "Key Points Check"))
+    setLoading(false)
+  }
+
+  async function expand(run: RunSummary) {
+    if (expanded === run.id) { setExpanded(null); setDetail(null); setRevised({}); setSelected({}); return }
+    setExpanded(run.id)
+    const r = await fetch(`/api/auction-ai/runs/${run.id}`)
+    const d = await r.json() as RunDetail
+    setDetail(d)
+    const rev: Record<string, string>  = {}
+    const sel: Record<string, boolean> = {}
+    d.lots.forEach(l => { rev[l.id] = l.description; sel[l.id] = false })
+    setRevised(rev)
+    setSelected(sel)
+  }
+
+  async function deleteRun(id: string) {
+    if (!confirm("Delete this KP run and all its lots?")) return
+    setDeleting(id)
+    await fetch("/api/auction-ai/runs", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+    setRuns(r => r.filter(x => x.id !== id))
+    if (expanded === id) { setExpanded(null); setDetail(null) }
+    setDeleting(null)
+  }
+
+  async function deleteLot(lotId: string) {
+    await fetch(`/api/auction-ai/runs/${lotId}`, { method: "DELETE" })
+    setDetail(d => d ? { ...d, lots: d.lots.filter(l => l.id !== lotId) } : d)
+    setRuns(r => r.map(x => x.id === detail?.id ? { ...x, _count: { lots: x._count.lots - 1 } } : x))
+  }
+
+  async function applyLot(lotId: string, lotLabel: string, runCode: string) {
+    const desc = revised[lotId]
+    if (!desc) return
+    setApplying(lotId)
+    try {
+      const code    = runCode.replace(/_KP$/i, "")
+      const res     = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(code)}`)
+      if (!res.ok) throw new Error("Could not fetch catalogue lots")
+      const data    = await res.json()
+      const match   = data.lots?.find((l: { lotNumber: string; id: string }) => l.lotNumber === lotLabel)
+      if (!match) throw new Error(`Lot ${lotLabel} not found in catalogue`)
+      await applyAiDescriptionOne(data.auctionId, { id: match.id, description: desc, estimateLow: null, estimateHigh: null })
+      showToast(`✓ Lot ${lotLabel} saved to catalogue`, "ok")
+    } catch (e: any) {
+      showError("Failed to apply to catalogue", e.message)
+    } finally {
+      setApplying(null)
+    }
+  }
+
+  async function applySelected(runCode: string) {
+    const toApply = detail?.lots.filter(l => selected[l.id]) ?? []
+    if (!toApply.length) return
+    setApplying("bulk")
+    let ok = 0, fail = 0
+    try {
+      const code  = runCode.replace(/_KP$/i, "")
+      const res   = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(code)}`)
+      if (!res.ok) throw new Error("Could not fetch catalogue lots")
+      const data  = await res.json()
+      for (const l of toApply) {
+        const match = data.lots?.find((x: { lotNumber: string; id: string }) => x.lotNumber === l.lot)
+        if (!match) { fail++; continue }
+        try {
+          await applyAiDescriptionOne(data.auctionId, { id: match.id, description: revised[l.id] ?? l.description, estimateLow: null, estimateHigh: null })
+          ok++
+        } catch { fail++ }
+      }
+      if (fail) showError("Some lots failed to apply", `${ok} saved, ${fail} failed — check lot numbers match the catalogue.`)
+      else showToast(`✓ ${ok} lots saved to catalogue`, "ok")
+    } catch (e: any) {
+      showError("Failed to apply lots", e.message)
+    } finally {
+      setApplying(null)
+    }
+  }
+
+  const filtered    = runs.filter(r => r.code.toLowerCase().replace(/_kp$/i, "").includes(search.toLowerCase()))
+  const allSelected = detail ? detail.lots.every(l => selected[l.id]) : false
+  const selCount    = detail ? detail.lots.filter(l => selected[l.id]).length : 0
+
+  return (
+    <div className="flex flex-col h-full gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white">KP Check Runs</h2>
+        <button onClick={loadRuns} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">↻ Refresh</button>
+      </div>
+
+      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search auction code…"
+        className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] placeholder:text-gray-600" />
+
+      {loading && <p className="text-gray-500 text-sm">Loading…</p>}
+      {!loading && filtered.length === 0 && (
+        <p className="text-gray-600 text-sm">No KP Check runs saved yet. Run a Key Points Check and click Save run.</p>
+      )}
+
+      <div className="flex flex-col gap-2 overflow-y-auto flex-1">
+        {filtered.map(run => {
+          const isOpen = expanded === run.id && detail?.id === run.id
+          return (
+            <div key={run.id} className="bg-[#2C2C2E] border border-gray-700 rounded-lg overflow-hidden">
+              {/* header */}
+              <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#3A3A3C] transition-colors" onClick={() => expand(run)}>
+                <span className="text-[#C8A96E] font-bold font-mono text-sm flex-1">{run.code.replace(/_KP$/i, "")}</span>
+                <span className="text-xs text-gray-500">{run._count.lots} lots</span>
+                <span className="text-xs text-gray-600">{new Date(run.updatedAt).toLocaleDateString("en-GB")}</span>
+                <button onClick={e => { e.stopPropagation(); deleteRun(run.id) }} disabled={deleting === run.id}
+                  className="text-xs text-red-500 hover:text-red-400 transition-colors ml-1 flex-shrink-0">
+                  {deleting === run.id ? "…" : "Delete"}
+                </button>
+                <span className="text-gray-600 text-xs">{isOpen ? "▲" : "▼"}</span>
+              </div>
+
+              {/* expanded */}
+              {isOpen && (
+                <div className="border-t border-gray-700">
+                  {/* toolbar */}
+                  <div className="flex items-center gap-3 px-4 py-2 bg-[#1C1C1E] flex-wrap">
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" checked={allSelected}
+                        onChange={() => setSelected(Object.fromEntries(detail.lots.map(l => [l.id, !allSelected])))}
+                        className="w-3.5 h-3.5 accent-[#C8A96E]" />
+                      <span className="text-xs text-gray-400">Select all</span>
+                    </label>
+                    <span className="text-xs text-gray-600">{detail.lots.length} lots</span>
+                    <div className="flex-1" />
+                    <button onClick={() => applySelected(run.code)}
+                      disabled={selCount === 0 || applying === "bulk"}
+                      className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-40 text-black font-semibold rounded transition-colors">
+                      {applying === "bulk" ? "Saving…" : `Apply ${selCount > 0 ? selCount + " " : ""}selected`}
+                    </button>
+                  </div>
+
+                  {/* lot cards */}
+                  <div className="flex flex-col gap-3 p-4">
+                    {detail.lots.map(l => (
+                      <div key={l.id} className="rounded-lg overflow-hidden border border-gray-700 bg-[#2C2C2E]">
+                        {/* header */}
+                        <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-700">
+                          <input type="checkbox" checked={!!selected[l.id]}
+                            onChange={e => setSelected(s => ({ ...s, [l.id]: e.target.checked }))}
+                            className="w-3.5 h-3.5 rounded accent-[#C8A96E] flex-shrink-0" />
+                          <span className="text-xs font-mono font-bold text-[#C8A96E]">Lot {l.lot}</span>
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button onClick={() => applyLot(l.id, l.lot, run.code)}
+                              disabled={applying === l.id || applying === "bulk"}
+                              className="text-xs bg-[#C8A96E] hover:bg-[#b8944f] disabled:opacity-40 text-black font-semibold px-3 py-0.5 rounded transition-colors">
+                              {applying === l.id ? "Saving…" : "Apply"}
+                            </button>
+                            <button onClick={() => navigator.clipboard.writeText(revised[l.id] ?? l.description)}
+                              className="text-[10px] text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-0.5 rounded transition-colors">
+                              Copy
+                            </button>
+                            <button onClick={() => deleteLot(l.id)}
+                              className="text-[10px] text-red-700 hover:text-red-400 border border-red-900/40 hover:border-red-700/40 px-2 py-0.5 rounded transition-colors">✕</button>
+                          </div>
+                        </div>
+
+                        {/* missing / added summary */}
+                        {(l.missing || l.added) && (
+                          <div className="flex gap-4 px-3 py-2 border-b border-gray-700 bg-[#1C1C1E]">
+                            {l.missing && (
+                              <div className="flex-1">
+                                <p className="text-[10px] text-red-400 uppercase tracking-wider mb-0.5">Was missing</p>
+                                <p className="text-xs text-red-300">{l.missing}</p>
+                              </div>
+                            )}
+                            {l.added && (
+                              <div className="flex-1">
+                                <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-0.5">What changed</p>
+                                <p className="text-xs text-[#C8A96E]">{l.added}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* three columns: key points | before | after */}
+                        <div className="grid grid-cols-3 divide-x divide-gray-700">
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Key Points</p>
+                            <pre className="text-xs text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">{l.keyPoints ?? "—"}</pre>
+                          </div>
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Before</p>
+                            <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{l.originalDescription ?? "—"}</p>
+                          </div>
+                          <div className="px-3 py-2">
+                            <p className="text-[10px] text-[#C8A96E] uppercase tracking-wider mb-1.5">
+                              After (fixed) <span className="text-gray-600 normal-case ml-1">· editable</span>
+                            </p>
+                            <textarea
+                              value={revised[l.id] ?? l.description}
+                              onChange={e => setRevised(s => ({ ...s, [l.id]: e.target.value }))}
+                              rows={8}
+                              className="w-full text-xs text-gray-200 bg-[#1C1C1E] border border-gray-700 rounded p-2 leading-relaxed resize-y focus:outline-none focus:border-[#C8A96E]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -1535,43 +1819,31 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
     if (!code.trim()) return
     setLoading(true); setError(null); setLots([]); setAuctionId(null)
     try {
-      // 1. Load catalogue lots (key points)
+      // Load catalogue lots — key points + existing description directly from catalogue
       const catRes = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(code.trim().toUpperCase())}`)
       if (!catRes.ok) throw new Error((await catRes.json()).error ?? "Catalogue not found")
       const catData = await catRes.json()
       setAuctionId(catData.auctionId ?? null)
 
-      // 2. Load matching saved run (AI descriptions) — find by code
-      const runsRes = await fetch("/api/auction-ai/runs")
-      const allRuns: { id: string; code: string }[] = runsRes.ok ? await runsRes.json() : []
-      const matchingRun = allRuns.find(r => r.code.toUpperCase() === code.trim().toUpperCase())
-      let runLots: { lot: string; description: string }[] = []
-      if (matchingRun) {
-        const runRes = await fetch(`/api/auction-ai/runs/${matchingRun.id}`)
-        if (runRes.ok) {
-          const runData = await runRes.json()
-          runLots = runData.lots ?? []
-        }
-      }
-
-      // 3. Match by lot number
-      const descMap = new Map(runLots.map(r => [r.lot.toString(), r.description]))
+      // Build lot list: needs both a key points entry and a description in the catalogue
       const merged: KPLot[] = catData.lots
-        .filter((l: any) => l.keyPoints?.trim())
+        .filter((l: any) => l.keyPoints?.trim() && l.description?.trim())
         .map((l: any) => ({
           id:          l.id,
           label:       l.lotNumber,
           keyPoints:   l.keyPoints,
-          description: descMap.get(l.lotNumber) ?? descMap.get(l.barcode ?? "") ?? "",
+          description: l.description,
           status:      "idle" as const,
         }))
-        .filter((l: KPLot) => l.description)
 
-      if (merged.length === 0 && catData.lots.length > 0) {
+      if (merged.length === 0) {
+        const total    = catData.lots.length
+        const hasKP    = catData.lots.filter((l: any) => l.keyPoints?.trim()).length
+        const hasDesc  = catData.lots.filter((l: any) => l.description?.trim()).length
         throw new Error(
-          matchingRun
-            ? "Lots loaded but no AI descriptions matched lot numbers. Run the Batch tab first."
-            : `No saved AI run found for "${code.toUpperCase()}". Run the Batch tab first, then come back.`
+          total === 0
+            ? `No lots found for "${code.toUpperCase()}".`
+            : `No lots have both key points and a description yet. ${hasKP} lot${hasKP !== 1 ? "s" : ""} have key points, ${hasDesc} have a description. Add descriptions via the Batch Run tab or the cataloguing page first.`
         )
       }
 
@@ -1662,6 +1934,40 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
       setChecking(false)
       setProgress(null)
       setShowResults(true)
+
+      // Save all checked lots to Saved Runs (use _KP suffix to avoid clashing with batch runs)
+      setLots(current => {
+        const checked = current.filter(l => (l.status === "ok" || l.status === "fixed") && l.description)
+        if (checked.length > 0) {
+          const runCode = code.trim().toUpperCase() + "_KP"
+          checked.forEach(l => {
+            fetch("/api/auction-ai/runs", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({
+                code:                runCode,
+                preset:              "Key Points Check",
+                lot:                 l.label,
+                description:         l.revised ?? l.description,
+                estimate:            "",
+                originalDescription: l.description,
+                keyPoints:           l.keyPoints,
+                missing:             l.missing  ?? null,
+                added:               l.added    ?? null,
+              }),
+            }).then(async r => {
+              if (!r.ok) {
+                const txt = await r.text().catch(() => "")
+                let msg = ""
+                try { msg = JSON.parse(txt).error ?? "" } catch { msg = txt }
+                showError(`Auto-save failed — Lot ${l.label}`, `HTTP ${r.status}`, msg || "No detail returned from server")
+              }
+            }).catch(e => showError(`Auto-save failed — Lot ${l.label}`, e.message))
+          })
+          addLog(`── Saved ${checked.length} lot${checked.length !== 1 ? "s" : ""} to Saved Runs`)
+        }
+        return current
+      })
     }
   }
 
@@ -1671,6 +1977,46 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
       .map(l => `Lot ${l.label}:\n${l.revised ?? l.description}`)
       .join("\n\n---\n\n")
     navigator.clipboard.writeText(text)
+  }
+
+  const [saving, setSaving] = useState(false)
+  const [savedMsg, setSavedMsg] = useState("")
+
+  async function saveRun() {
+    const checked = lots.filter(l => (l.status === "ok" || l.status === "fixed") && l.description)
+    if (!checked.length || !code.trim()) return
+    setSaving(true)
+    setSavedMsg("")
+    const runCode = code.trim().toUpperCase() + "_KP"
+    let failed = 0
+    await Promise.all(checked.map(l =>
+      fetch("/api/auction-ai/runs", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          code:                runCode,
+          preset:              "Key Points Check",
+          lot:                 l.label,
+          description:         l.revised ?? l.description,
+          estimate:            "",
+          originalDescription: l.description,
+          keyPoints:           l.keyPoints,
+          missing:             l.missing  ?? null,
+          added:               l.added    ?? null,
+        }),
+      }).then(async r => {
+        if (!r.ok) {
+          failed++
+          const txt = await r.text().catch(() => "")
+          let msg = ""
+          try { msg = JSON.parse(txt).error ?? "" } catch { msg = txt }
+          showError(`Save failed — Lot ${l.label}`, `HTTP ${r.status}`, msg || "No detail returned from server")
+        }
+      }).catch(e => { failed++; showError(`Save error — Lot ${l.label}`, e.message) })
+    ))
+    setSaving(false)
+    setSavedMsg(failed ? `⚠ ${checked.length - failed} saved, ${failed} failed` : `✓ ${checked.length} lots saved`)
+    setTimeout(() => setSavedMsg(""), 3000)
   }
 
   const checkedCount = lots.filter(l => l.status === "ok" || l.status === "fixed").length
@@ -1795,10 +2141,19 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
             </div>
             <div className="flex gap-2 items-center">
               {checkedCount > 0 && !checking && (
-                <button onClick={copyAll}
-                  className="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded transition-colors">
-                  Copy all
-                </button>
+                <>
+                  <button onClick={copyAll}
+                    className="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded transition-colors">
+                    Copy all
+                  </button>
+                  {savedMsg
+                    ? <span className="text-xs text-green-400">{savedMsg}</span>
+                    : <button onClick={saveRun} disabled={saving}
+                        className="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded transition-colors disabled:opacity-40">
+                        {saving ? "Saving…" : "💾 Save run"}
+                      </button>
+                  }
+                </>
               )}
               {checking && (
                 <>
@@ -2000,10 +2355,12 @@ const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
   { id: "chat",         label: "Chat Window",        icon: "💬" },
   { id: "batch",        label: "Batch Run",          icon: "⚡" },
   { id: "runs",         label: "Saved Runs",         icon: "🗂" },
+  { id: "kpruns",       label: "KP Check Runs",      icon: "✅" },
   { id: "barcode",      label: "Barcode Sorter",     icon: "▦"  },
   { id: "copier",       label: "Description Copier", icon: "📋" },
   { id: "kpcheck",      label: "Key Points Check",   icon: "✓"  },
   { id: "instructions", label: "Instructions",       icon: "📝" },
+  { id: "macro",        label: "Macro Downloader",   icon: "⌨️" },
 ]
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -2047,6 +2404,7 @@ export default function AuctionAIPage() {
 
   return (
     <div className="flex h-[calc(100vh-48px)] bg-[#1C1C1E] text-white overflow-hidden">
+      <ToastContainer />
 
       <aside className="w-52 bg-[#141416] border-r border-gray-800 flex flex-col flex-shrink-0">
         <div className="px-4 py-5 border-b border-gray-800">
@@ -2082,11 +2440,13 @@ export default function AuctionAIPage() {
       <main className="flex-1 overflow-auto p-6">
         <div className={tab === "chat"         ? "" : "hidden"}><ChatTab model={model} /></div>
         <div className={tab === "batch"        ? "" : "hidden"}><BatchTab model={model} /></div>
-        <div className={tab === "runs"         ? "" : "hidden"}><SavedRunsTab /></div>
+        <div className={tab === "runs"         ? "" : "hidden"}>{tab === "runs"   && <SavedRunsTab />}</div>
+        <div className={tab === "kpruns"       ? "" : "hidden"}>{tab === "kpruns" && <KPRunsTab />}</div>
         <div className={tab === "barcode"      ? "" : "hidden"}><BarcodeTab /></div>
         <div className={tab === "copier"       ? "" : "hidden"}><CopierTab /></div>
         <div className={tab === "kpcheck"      ? "" : "hidden"}><KeyPointsCheckTab model={model} /></div>
         <div className={tab === "instructions" ? "" : "hidden"}><InstructionsTab /></div>
+        <div className={tab === "macro"        ? "" : "hidden"}><MacroTab /></div>
       </main>
     </div>
   )

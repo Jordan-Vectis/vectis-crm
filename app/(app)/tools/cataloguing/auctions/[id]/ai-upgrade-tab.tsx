@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
 import { PRESETS } from "@/lib/auction-ai-presets"
+import { showError } from "@/lib/error-modal"
 
 interface Lot {
   id: string
@@ -294,18 +295,29 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
             status:          "ok",
             approved:        true,
           })
-          // Save to Auction AI runs so it appears in Saved Runs
-          fetch("/api/auction-ai/runs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              code:        auctionCode,
-              preset,
-              lot:         label,
-              description: r.description,
-              estimate:    r.estimate ?? "",
-            }),
-          }).catch(() => {})
+          // Save to Auction AI runs so it appears in Saved Runs (awaited so count is correct on navigation)
+          try {
+            const saveRes = await fetch("/api/auction-ai/runs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                code:        auctionCode,
+                preset,
+                lot:         label,
+                description: r.description,
+                estimate:    r.estimate ?? "",
+              }),
+            })
+            if (!saveRes.ok) {
+              const txt = await saveRes.text().catch(() => "")
+              let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
+              addLog(`⚠ ${label} — save to Saved Runs failed: ${errMsg || saveRes.status}`)
+              showError(`Save to Saved Runs failed — ${label}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
+            }
+          } catch (saveErr: any) {
+            addLog(`⚠ ${label} — save to Saved Runs error: ${saveErr.message}`)
+            showError(`Save to Saved Runs error — ${label}`, saveErr.message)
+          }
           addLog(`  ✓ ${label} — done${r.estimate ? ` · estimate: ${r.estimate}` : ""}`)
           succeeded = true
         } catch (e: any) {

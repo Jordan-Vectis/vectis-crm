@@ -32,11 +32,12 @@ export async function GET(req: NextRequest) {
     auctionId: auction.id,
     code:      auction.code,
     lots:      auction.lots.map(l => ({
-      id:        l.id,
-      lotNumber: l.lotNumber,
-      title:     l.title,
-      keyPoints: l.keyPoints ?? l.description ?? "",
-      barcode:   l.barcode ?? null,
+      id:          l.id,
+      lotNumber:   l.lotNumber,
+      title:       l.title,
+      keyPoints:   l.keyPoints ?? "",
+      description: l.description ?? "",
+      barcode:     l.barcode ?? null,
     })),
   })
 }
