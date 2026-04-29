@@ -101,13 +101,24 @@ function OverlayCanvas({ imageUrl, groups, highlightId }: {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const DEFAULT_MODEL = "gemini-2.5-flash-preview-04-17"
+
 export default function LottingUpPage() {
   const [imageUrl,    setImageUrl]    = useState<string | null>(null)
   const [imageFile,   setImageFile]   = useState<File | null>(null)
   const [result,      setResult]      = useState<LottingUpResult | null>(null)
   const [analysing,   setAnalysing]   = useState(false)
   const [highlightId, setHighlightId] = useState<number | null>(null)
+  const [model,       setModel]       = useState(DEFAULT_MODEL)
+  const [modelList,   setModelList]   = useState<string[]>([DEFAULT_MODEL])
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch("/api/auction-ai/models")
+      .then(r => r.json())
+      .then(j => { if (j.models?.length) setModelList(j.models) })
+      .catch(() => {})
+  }, [])
 
   function handleFile(file: File) {
     if (!file.type.startsWith("image/")) return
@@ -137,6 +148,7 @@ export default function LottingUpPage() {
     try {
       const fd = new FormData()
       fd.append("photo", imageFile)
+      fd.append("model", model)
       const res = await fetch("/api/lotting-up", { method: "POST", body: fd })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -154,11 +166,20 @@ export default function LottingUpPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Lotting Up</h1>
-        <p className="text-sm text-gray-400 mt-1">
-          Upload a photo of items and AI will suggest how to group them into auction lots with estimated values.
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Lotting Up</h1>
+          <p className="text-sm text-gray-400 mt-1">
+            Upload a photo of items and AI will suggest how to group them into auction lots with estimated values.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <label className="text-xs text-gray-500">Model</label>
+          <select value={model} onChange={e => setModel(e.target.value)}
+            className="bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-[#2AB4A6]">
+            {modelList.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* Upload area */}

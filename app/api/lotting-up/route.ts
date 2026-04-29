@@ -79,13 +79,14 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData()
     const file = formData.get("photo") as File | null
     if (!file) return NextResponse.json({ error: "No photo provided" }, { status: 400 })
+    const modelId = (formData.get("model") as string | null) ?? "gemini-2.5-flash-preview-04-17"
 
     const buffer = await file.arrayBuffer()
     const base64 = Buffer.from(buffer).toString("base64")
     const mimeType = file.type || "image/jpeg"
 
     const genai = new GoogleGenerativeAI(apiKey)
-    const model = genai.getGenerativeModel({ model: "gemini-2.0-flash" })
+    const model = genai.getGenerativeModel({ model: modelId })
 
     const result = await model.generateContent([
       SYSTEM_PROMPT,
