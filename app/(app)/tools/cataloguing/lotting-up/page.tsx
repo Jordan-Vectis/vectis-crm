@@ -279,7 +279,7 @@ export default function LottingUpPage() {
             {/* Main photo */}
             <div className="rounded-xl bg-[#1C1C1E] border border-gray-800"
               onDrop={onDrop} onDragOver={e => e.preventDefault()}>
-              {result && imageFiles.length === 1 ? (
+              {result ? (
                 <PhotoOverlay imageUrl={activeUrl} groups={result.groups} highlightId={highlightId} />
               ) : (
                 <img src={activeUrl} alt={`Photo ${activeIdx + 1}`} className="w-full h-auto block rounded-xl" />
