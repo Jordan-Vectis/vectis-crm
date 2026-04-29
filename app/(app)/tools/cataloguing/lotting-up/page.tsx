@@ -75,6 +75,7 @@ export default function LottingUpPage() {
     (typeof window !== "undefined" ? localStorage.getItem(MODEL_STORAGE_KEY) : null) ?? DEFAULT_MODEL
   )
   const [defaultSaved, setDefaultSaved] = useState(false)
+  const [minLotValue,  setMinLotValue]  = useState<string>("")
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -114,6 +115,7 @@ export default function LottingUpPage() {
       const fd = new FormData()
       fd.append("photo", imageFile)
       fd.append("model", model)
+      if (minLotValue) fd.append("minLotValue", minLotValue)
       const res = await fetch("/api/lotting-up", { method: "POST", body: fd })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -248,6 +250,35 @@ export default function LottingUpPage() {
                     <p className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Suggested lots</p>
                     <p className="text-2xl font-bold text-[#2AB4A6]">{result.groups.length}</p>
                   </div>
+                </div>
+
+                {/* Regroup controls */}
+                <div className="flex items-center gap-2 bg-[#1C1C1E] border border-gray-800 rounded-xl px-4 py-3">
+                  <span className="text-xs text-gray-400 flex-shrink-0">Regroup with min lot value</span>
+                  <div className="relative flex-shrink-0">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs">£</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={minLotValue}
+                      onChange={e => setMinLotValue(e.target.value)}
+                      placeholder="e.g. 70"
+                      className="bg-[#2C2C2E] border border-gray-700 rounded-lg pl-5 pr-2 py-1 text-xs text-gray-200 w-24 focus:outline-none focus:border-[#2AB4A6]"
+                    />
+                  </div>
+                  <button
+                    onClick={analyse}
+                    disabled={analysing || !minLotValue}
+                    className="text-xs bg-[#2AB4A6] hover:bg-[#24a090] disabled:opacity-40 text-black font-semibold px-3 py-1 rounded-lg transition-colors flex-shrink-0"
+                  >
+                    {analysing ? "Regrouping…" : "Regroup"}
+                  </button>
+                  {minLotValue && (
+                    <button onClick={() => setMinLotValue("")}
+                      className="text-xs text-gray-500 hover:text-white transition-colors flex-shrink-0">
+                      clear
+                    </button>
+                  )}
                 </div>
 
                 {/* Lot cards */}

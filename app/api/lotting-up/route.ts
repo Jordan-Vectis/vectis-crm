@@ -95,7 +95,8 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData()
     const file = formData.get("photo") as File | null
     if (!file) return NextResponse.json({ error: "No photo provided" }, { status: 400 })
-    const modelId = (formData.get("model") as string | null) ?? "gemini-2.5-flash-preview-04-17"
+    const modelId     = (formData.get("model") as string | null) ?? "gemini-2.5-flash-preview-04-17"
+    const minLotValue = parseInt(formData.get("minLotValue") as string ?? "", 10) || null
 
     const buffer = await file.arrayBuffer()
     const base64 = Buffer.from(buffer).toString("base64")
@@ -104,8 +105,15 @@ export async function POST(req: NextRequest) {
     const genai = new GoogleGenerativeAI(apiKey)
     const model = genai.getGenerativeModel({ model: modelId })
 
+    const minValueInstruction = minLotValue
+      ? `\n\nIMPORTANT OVERRIDE — Minimum lot value: Every lot MUST have an estimateLow of at least £${minLotValue}. ` +
+        `Combine items together until each lot reaches this minimum. ` +
+        `It is better to have fewer, larger lots than any lot falling below £${minLotValue}. ` +
+        `Do not create any lot with estimateLow below £${minLotValue}.`
+      : ""
+
     const result = await model.generateContent([
-      SYSTEM_PROMPT,
+      SYSTEM_PROMPT + minValueInstruction,
       { inlineData: { data: base64, mimeType } },
     ])
 
