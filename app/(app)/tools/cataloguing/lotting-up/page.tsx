@@ -288,6 +288,32 @@ export default function LottingUpPage() {
     addFiles(Array.from(e.dataTransfer.files))
   }
 
+  async function analyseOne(idx: number, currentRuns: PhotoRun[]) {
+    const run = currentRuns[idx]
+    if (!run || run.analysing) return
+    updateRun(idx, { analysing: true, result: null })
+    try {
+      const fd = new FormData()
+      fd.append("photo", run.file)
+      fd.append("model", model)
+      if (minLotValue) fd.append("minLotValue", minLotValue)
+      const res = await fetch("/api/lotting-up", { method: "POST", body: fd })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? `HTTP ${res.status}`)
+      }
+      updateRun(idx, { result: await res.json(), analysing: false })
+    } catch (e: any) {
+      updateRun(idx, { analysing: false })
+      showError(`Photo ${idx + 1} failed`, e.message)
+    }
+  }
+
+  function analyseAll() {
+    const snapshot = runs // capture current array
+    snapshot.forEach((_, idx) => analyseOne(idx, snapshot))
+  }
+
   // Combined totals across all completed runs
   const completedRuns = runs.filter(r => r.result)
   const overallLow    = completedRuns.reduce((s, r) => s + (r.result?.totalEstimateLow  ?? 0), 0)
@@ -422,6 +448,17 @@ export default function LottingUpPage() {
             >
               + Add photo
             </button>
+
+            {/* Analyse all */}
+            {runs.length > 1 && (
+              <button
+                onClick={analyseAll}
+                disabled={runs.every(r => r.analysing)}
+                className="flex-shrink-0 ml-auto text-xs bg-[#2AB4A6] hover:bg-[#24a090] disabled:opacity-40 text-black font-semibold px-4 py-2 rounded-xl transition-colors"
+              >
+                {runs.some(r => r.analysing) ? "Analysing…" : "✦ Analyse all"}
+              </button>
+            )}
 
             <input ref={addMoreRef} type="file" accept="image/*" multiple className="hidden" onChange={onInputChange} />
           </div>
