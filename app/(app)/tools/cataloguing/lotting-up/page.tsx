@@ -1,109 +1,53 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect } from "react"
 import type { LotGroup, LottingUpResult } from "@/app/api/lotting-up/route"
 import { showError } from "@/lib/error-modal"
 
-function hexToRgb(hex: string) {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return { r, g, b }
-}
+// ── Photo with CSS overlay ────────────────────────────────────────────────────
+// Uses percentage-based absolute positioning so coordinates always match the
+// displayed image regardless of screen size — no canvas scaling issues.
 
-// ── Overlay canvas ─────────────────────────────────────────────────────────────
-// Draws the base photo always; only draws the highlight box when a lot is hovered.
-
-function OverlayCanvas({ imageUrl, groups, highlightId }: {
+function PhotoOverlay({ imageUrl, groups, highlightId }: {
   imageUrl:    string
   groups:      LotGroup[]
   highlightId: number | null
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const imgRef    = useRef<HTMLImageElement | null>(null)
-
-  // Load the image once
-  useEffect(() => {
-    const img = new Image()
-    img.onload = () => {
-      imgRef.current = img
-      const canvas = canvasRef.current
-      if (!canvas) return
-      canvas.width  = img.naturalWidth
-      canvas.height = img.naturalHeight
-      const ctx = canvas.getContext("2d")
-      ctx?.drawImage(img, 0, 0)
-    }
-    img.src = imageUrl
-  }, [imageUrl])
-
-  // Redraw whenever the highlighted lot changes
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current
-    const img    = imgRef.current
-    if (!canvas || !img) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    // Always start with clean photo
-    ctx.drawImage(img, 0, 0)
-
-    if (highlightId === null) return
-
-    const g = groups.find(g => g.id === highlightId)
-    if (!g) return
-
-    const { x: bx, y: by, w: bw, h: bh } = g.bounds
-    const px = (bx / 100) * img.naturalWidth
-    const py = (by / 100) * img.naturalHeight
-    const pw = (bw / 100) * img.naturalWidth
-    const ph = (bh / 100) * img.naturalHeight
-
-    const { r, g: gv, b } = hexToRgb(g.colour)
-
-    // Dim everything outside the box
-    ctx.fillStyle = "rgba(0,0,0,0.45)"
-    ctx.fillRect(0,  0,  img.naturalWidth, py)                     // above
-    ctx.fillRect(0,  py, px, ph)                                   // left
-    ctx.fillRect(px + pw, py, img.naturalWidth - px - pw, ph)      // right
-    ctx.fillRect(0,  py + ph, img.naturalWidth, img.naturalHeight - py - ph) // below
-
-    // Coloured border
-    ctx.strokeStyle = `rgba(${r},${gv},${b},0.95)`
-    ctx.lineWidth   = Math.max(3, img.naturalWidth * 0.004)
-    ctx.strokeRect(px, py, pw, ph)
-
-    // Subtle fill inside
-    ctx.fillStyle = `rgba(${r},${gv},${b},0.12)`
-    ctx.fillRect(px, py, pw, ph)
-
-    // Number badge
-    const fontSize = Math.max(14, Math.min(28, img.naturalWidth * 0.025))
-    const pad      = fontSize * 0.55
-    const label    = `${g.id}`
-    ctx.font       = `bold ${fontSize}px sans-serif`
-    const tw       = ctx.measureText(label).width
-    const badgeW   = tw + pad * 2
-    const badgeH   = fontSize + pad * 1.2
-    const badgeX   = px + 8
-    const badgeY   = py + 8
-
-    ctx.fillStyle = `rgba(${r},${gv},${b},1)`
-    ctx.beginPath()
-    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 5)
-    ctx.fill()
-
-    ctx.fillStyle = "white"
-    ctx.fillText(label, badgeX + pad, badgeY + fontSize * 0.88)
-  }, [groups, highlightId])
-
-  useEffect(() => { draw() }, [draw])
+  const g = highlightId !== null ? groups.find(x => x.id === highlightId) ?? null : null
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="w-full h-auto rounded-xl object-contain"
-    />
+    <div className="relative rounded-xl overflow-hidden">
+      <img src={imageUrl} alt="Upload" className="w-full h-auto block" />
+
+      {g && (
+        <>
+          {/* Dark vignette outside the box using box-shadow trick */}
+          <div
+            className="absolute rounded pointer-events-none"
+            style={{
+              left:      `${g.bounds.x}%`,
+              top:       `${g.bounds.y}%`,
+              width:     `${g.bounds.w}%`,
+              height:    `${g.bounds.h}%`,
+              boxShadow: `0 0 0 9999px rgba(0,0,0,0.5)`,
+              border:    `3px solid ${g.colour}`,
+              backgroundColor: `${g.colour}22`,
+            }}
+          />
+          {/* Number badge */}
+          <div
+            className="absolute text-white text-xs font-bold px-2 py-0.5 rounded pointer-events-none"
+            style={{
+              left:            `calc(${g.bounds.x}% + 6px)`,
+              top:             `calc(${g.bounds.y}% + 6px)`,
+              backgroundColor: g.colour,
+            }}
+          >
+            {g.id}
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -232,9 +176,9 @@ export default function LottingUpPage() {
 
             <div className="rounded-xl overflow-hidden bg-[#1C1C1E] border border-gray-800">
               {result ? (
-                <OverlayCanvas imageUrl={imageUrl} groups={result.groups} highlightId={highlightId} />
+                <PhotoOverlay imageUrl={imageUrl} groups={result.groups} highlightId={highlightId} />
               ) : (
-                <img src={imageUrl} alt="Upload" className="w-full h-auto" />
+                <img src={imageUrl} alt="Upload" className="w-full h-auto block" />
               )}
             </div>
 
