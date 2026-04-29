@@ -505,6 +505,17 @@ model ParcelLot {
   @@unique([parcelId, lotId])
 }
 
+model MacroFile {
+  id          String   @id @default(cuid())
+  name        String
+  filename    String
+  description String?  @db.Text
+  content     Bytes
+  mimeType    String   @default("text/plain")
+  size        Int
+  createdAt   DateTime @default(now())
+}
+
 model HeroSlide {
   id        String   @id @default(cuid())
   order     Int      @default(0)

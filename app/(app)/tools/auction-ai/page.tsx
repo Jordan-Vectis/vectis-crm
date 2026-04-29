@@ -5,6 +5,7 @@ import * as XLSX from "xlsx"
 import { PRESETS } from "@/lib/auction-ai-presets"
 import { applyAiDescriptionOne } from "@/lib/actions/catalogue"
 import { showError } from "@/lib/error-modal"
+import { MacroTab } from "./macro-tab"
 
 // ─── Toast system ─────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ function ToastContainer() {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "kpruns" | "instructions" | "kpcheck"
+type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "kpruns" | "instructions" | "kpcheck" | "macro"
 
 type ChatMessage = {
   role: "user" | "model"
@@ -2359,6 +2360,7 @@ const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
   { id: "copier",       label: "Description Copier", icon: "📋" },
   { id: "kpcheck",      label: "Key Points Check",   icon: "✓"  },
   { id: "instructions", label: "Instructions",       icon: "📝" },
+  { id: "macro",        label: "Macro Downloader",   icon: "⌨️" },
 ]
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -2444,6 +2446,7 @@ export default function AuctionAIPage() {
         <div className={tab === "copier"       ? "" : "hidden"}><CopierTab /></div>
         <div className={tab === "kpcheck"      ? "" : "hidden"}><KeyPointsCheckTab model={model} /></div>
         <div className={tab === "instructions" ? "" : "hidden"}><InstructionsTab /></div>
+        <div className={tab === "macro"        ? "" : "hidden"}><MacroTab /></div>
       </main>
     </div>
   )
