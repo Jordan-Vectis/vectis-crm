@@ -19,30 +19,21 @@ function PhotoOverlay({ imageUrl, groups, highlightId }: {
 
       {g && (
         <>
-          {/* Four dark strips covering everything outside the highlight box */}
-          {/* Top */}
-          <div className="absolute inset-x-0 top-0 bg-black/50 pointer-events-none rounded-t-xl"
+          {/* Dark strip above the highlighted band */}
+          <div className="absolute inset-x-0 top-0 bg-black/55 pointer-events-none rounded-t-xl"
             style={{ height: `${g.bounds.y}%` }} />
-          {/* Bottom */}
-          <div className="absolute inset-x-0 bottom-0 bg-black/50 pointer-events-none rounded-b-xl"
+          {/* Dark strip below the highlighted band */}
+          <div className="absolute inset-x-0 bottom-0 bg-black/55 pointer-events-none rounded-b-xl"
             style={{ height: `${100 - g.bounds.y - g.bounds.h}%` }} />
-          {/* Left */}
-          <div className="absolute left-0 bg-black/50 pointer-events-none"
-            style={{ top: `${g.bounds.y}%`, width: `${g.bounds.x}%`, height: `${g.bounds.h}%` }} />
-          {/* Right */}
-          <div className="absolute right-0 bg-black/50 pointer-events-none"
-            style={{ top: `${g.bounds.y}%`, width: `${100 - g.bounds.x - g.bounds.w}%`, height: `${g.bounds.h}%` }} />
 
-          {/* Highlight box */}
+          {/* Coloured border on the highlighted band */}
           <div
-            className="absolute pointer-events-none"
+            className="absolute inset-x-0 pointer-events-none"
             style={{
-              left:            `${g.bounds.x}%`,
               top:             `${g.bounds.y}%`,
-              width:           `${g.bounds.w}%`,
               height:          `${g.bounds.h}%`,
               border:          `3px solid ${g.colour}`,
-              backgroundColor: `${g.colour}22`,
+              backgroundColor: `${g.colour}18`,
             }}
           />
 
@@ -50,7 +41,7 @@ function PhotoOverlay({ imageUrl, groups, highlightId }: {
           <div
             className="absolute text-white text-xs font-bold px-2 py-0.5 rounded pointer-events-none"
             style={{
-              left:            `calc(${g.bounds.x}% + 6px)`,
+              left:            `6px`,
               top:             `calc(${g.bounds.y}% + 6px)`,
               backgroundColor: g.colour,
             }}

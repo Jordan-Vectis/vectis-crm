@@ -41,7 +41,7 @@ You will be given a photo of items laid out for cataloguing. Your job is to:
 2. Group them into logical auction lots based on type, theme, value, and what collectors would want together
 3. Estimate a sale value for each lot based on typical Vectis auction results
 4. Also estimate the total value of everything in the photo
-5. For each group, provide a bounding box showing where those items appear in the photo
+5. For each group, identify where vertically in the image those items appear
 
 Return ONLY valid JSON in this exact format — no markdown, no explanation, just the JSON:
 
@@ -55,38 +55,27 @@ Return ONLY valid JSON in this exact format — no markdown, no explanation, jus
       "items": ["<item 1>", "<item 2>"],
       "estimateLow": <number>,
       "estimateHigh": <number>,
-      "bounds": {
-        "x": <0-100>,
-        "y": <0-100>,
-        "w": <0-100>,
-        "h": <0-100>
-      },
+      "yTop": <number 0-100>,
+      "yBottom": <number 0-100>,
       "notes": "<any condition notes or relevant detail>"
     }
   ]
 }
 
-BOUNDING BOX RULES — read carefully:
-The image is treated as a 100×100 percentage grid.
-  - x=0 is the LEFT edge of the image, x=100 is the RIGHT edge
-  - y=0 is the TOP edge of the image, y=100 is the BOTTOM edge
-  - x,y is the TOP-LEFT corner of the bounding box
-  - w is the width of the box (how far it extends to the RIGHT from x)
-  - h is the height of the box (how far it extends DOWNWARD from y)
-  - The box must stay within the image: x+w <= 100, y+h <= 100
+VERTICAL POSITION RULES — very important:
+yTop and yBottom describe where this lot's items appear vertically in the image.
+  - 0 = the very top of the image
+  - 100 = the very bottom of the image
+  - yTop is where this lot starts (top edge)
+  - yBottom is where this lot ends (bottom edge)
+  - yBottom must always be greater than yTop
+  - If items span the whole image: yTop=0, yBottom=100
+  - If items are in the top half: yTop=0, yBottom=50
+  - If items are in the bottom half: yTop=50, yBottom=100
+  - If items are in the middle third: yTop=33, yBottom=67
 
-Examples of correct bounds:
-  - Items filling the entire image: {x:0, y:0, w:100, h:100}
-  - Items in the top half only: {x:0, y:0, w:100, h:50}
-  - Items in the bottom half only: {x:0, y:50, w:100, h:50}
-  - Items in the top-left quarter: {x:0, y:0, w:50, h:50}
-  - Items in the centre: {x:25, y:25, w:50, h:50}
-
-Before writing each bounds value, look at the image and estimate:
-  1. Where is the TOP of this group? That is y.
-  2. Where is the BOTTOM of this group? h = bottom - y.
-  3. Where is the LEFT edge? That is x.
-  4. Where is the RIGHT edge? w = right - x.
+For shelving units: count visible shelves from top. If there are 12 shelves and lot items are on shelves 3-5, those shelves start at roughly yTop=17 and end at yBottom=42.
+If items from one lot appear on multiple non-adjacent shelves, use the range that covers from the topmost to bottommost item.
 
 Other rules:
 - Combine items of similar type/theme/value into sensible lots
@@ -121,20 +110,24 @@ export async function POST(req: NextRequest) {
     ])
 
     const raw = result.response.text().trim()
+    console.log("[lotting-up] raw response:", raw.slice(0, 500))
     const json = raw.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim()
-    const parsed: LottingUpResult = JSON.parse(json)
+    type RawGroup = LotGroup & { yTop?: number; yBottom?: number }
+    const parsed = JSON.parse(json) as { totalEstimateLow: number; totalEstimateHigh: number; groups: RawGroup[] }
 
-    // Assign colours and clamp bounds
-    parsed.groups = parsed.groups.map((g, i) => {
-      const b = g.bounds ?? { x: 0, y: 0, w: 100, h: 100 }
+    // Convert yTop/yBottom to x/y/w/h bounds
+    parsed.groups = parsed.groups.map((g: RawGroup, i: number) => {
+      const yTop    = Math.max(0, Math.min(98, g.yTop    ?? 0))
+      const yBottom = Math.max(yTop + 2, Math.min(100, g.yBottom ?? 100))
+      console.log(`[lotting-up] group ${g.id} "${g.title}": yTop=${g.yTop} yBottom=${g.yBottom} → y=${yTop} h=${yBottom - yTop}`)
       return {
         ...g,
         colour: COLOURS[i % COLOURS.length],
         bounds: {
-          x: Math.max(0, Math.min(100, b.x)),
-          y: Math.max(0, Math.min(100, b.y)),
-          w: Math.max(1, Math.min(100 - b.x, b.w)),
-          h: Math.max(1, Math.min(100 - b.y, b.h)),
+          x: 0,
+          y: yTop,
+          w: 100,
+          h: yBottom - yTop,
         },
       }
     })
