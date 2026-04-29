@@ -93,10 +93,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const formData = await req.formData()
-    const files = formData.getAll("photo") as File[]
-    if (!files.length) return NextResponse.json({ error: "No photo provided" }, { status: 400 })
+    const file = formData.get("photo") as File | null
+    if (!file) return NextResponse.json({ error: "No photo provided" }, { status: 400 })
     const modelId     = (formData.get("model") as string | null) ?? "gemini-2.5-flash-preview-04-17"
     const minLotValue = parseInt(formData.get("minLotValue") as string ?? "", 10) || null
+
+    const buffer = await file.arrayBuffer()
+    const base64 = Buffer.from(buffer).toString("base64")
+    const mimeType = file.type || "image/jpeg"
 
     const genai = new GoogleGenerativeAI(apiKey)
     const model = genai.getGenerativeModel({ model: modelId })
@@ -108,19 +112,9 @@ export async function POST(req: NextRequest) {
         `Do not create any lot with estimateLow below £${minLotValue}.`
       : ""
 
-    const multiPhotoNote = files.length > 1
-      ? `\n\nNote: You have been given ${files.length} photos. Treat all photos as one collection — group items across all photos into lots. The yTop/yBottom bounds should be ignored when multiple photos are provided; just set yTop=0 and yBottom=100 for all groups.`
-      : ""
-
-    // Build inline image parts for all photos
-    const imageParts = await Promise.all(files.map(async f => {
-      const buffer = await f.arrayBuffer()
-      return { inlineData: { data: Buffer.from(buffer).toString("base64"), mimeType: f.type || "image/jpeg" } }
-    }))
-
     const result = await model.generateContent([
-      SYSTEM_PROMPT + minValueInstruction + multiPhotoNote,
-      ...imageParts,
+      SYSTEM_PROMPT + minValueInstruction,
+      { inlineData: { data: base64, mimeType } },
     ])
 
     const raw = result.response.text().trim()
