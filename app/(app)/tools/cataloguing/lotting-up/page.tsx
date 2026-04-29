@@ -5,8 +5,6 @@ import type { LotGroup, LottingUpResult } from "@/app/api/lotting-up/route"
 import { showError } from "@/lib/error-modal"
 
 // ── Photo with CSS overlay ────────────────────────────────────────────────────
-// Uses percentage-based absolute positioning so coordinates always match the
-// displayed image regardless of screen size — no canvas scaling issues.
 
 function PhotoOverlay({ imageUrl, groups, highlightId }: {
   imageUrl:    string
@@ -16,24 +14,38 @@ function PhotoOverlay({ imageUrl, groups, highlightId }: {
   const g = highlightId !== null ? groups.find(x => x.id === highlightId) ?? null : null
 
   return (
-    <div className="relative rounded-xl overflow-hidden">
-      <img src={imageUrl} alt="Upload" className="w-full h-auto block" />
+    <div className="relative">
+      <img src={imageUrl} alt="Upload" className="w-full h-auto block rounded-xl" />
 
       {g && (
         <>
-          {/* Dark vignette outside the box using box-shadow trick */}
+          {/* Four dark strips covering everything outside the highlight box */}
+          {/* Top */}
+          <div className="absolute inset-x-0 top-0 bg-black/50 pointer-events-none rounded-t-xl"
+            style={{ height: `${g.bounds.y}%` }} />
+          {/* Bottom */}
+          <div className="absolute inset-x-0 bottom-0 bg-black/50 pointer-events-none rounded-b-xl"
+            style={{ height: `${100 - g.bounds.y - g.bounds.h}%` }} />
+          {/* Left */}
+          <div className="absolute left-0 bg-black/50 pointer-events-none"
+            style={{ top: `${g.bounds.y}%`, width: `${g.bounds.x}%`, height: `${g.bounds.h}%` }} />
+          {/* Right */}
+          <div className="absolute right-0 bg-black/50 pointer-events-none"
+            style={{ top: `${g.bounds.y}%`, width: `${100 - g.bounds.x - g.bounds.w}%`, height: `${g.bounds.h}%` }} />
+
+          {/* Highlight box */}
           <div
-            className="absolute rounded pointer-events-none"
+            className="absolute pointer-events-none"
             style={{
-              left:      `${g.bounds.x}%`,
-              top:       `${g.bounds.y}%`,
-              width:     `${g.bounds.w}%`,
-              height:    `${g.bounds.h}%`,
-              boxShadow: `0 0 0 9999px rgba(0,0,0,0.5)`,
-              border:    `3px solid ${g.colour}`,
+              left:            `${g.bounds.x}%`,
+              top:             `${g.bounds.y}%`,
+              width:           `${g.bounds.w}%`,
+              height:          `${g.bounds.h}%`,
+              border:          `3px solid ${g.colour}`,
               backgroundColor: `${g.colour}22`,
             }}
           />
+
           {/* Number badge */}
           <div
             className="absolute text-white text-xs font-bold px-2 py-0.5 rounded pointer-events-none"
@@ -53,7 +65,8 @@ function PhotoOverlay({ imageUrl, groups, highlightId }: {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_MODEL = "gemini-2.5-flash-preview-04-17"
+const DEFAULT_MODEL   = "gemini-2.5-flash-preview-04-17"
+const MODEL_STORAGE_KEY = "lotting-up-model"
 
 export default function LottingUpPage() {
   const [imageUrl,    setImageUrl]    = useState<string | null>(null)
@@ -61,7 +74,9 @@ export default function LottingUpPage() {
   const [result,      setResult]      = useState<LottingUpResult | null>(null)
   const [analysing,   setAnalysing]   = useState(false)
   const [highlightId, setHighlightId] = useState<number | null>(null)
-  const [model,       setModel]       = useState(DEFAULT_MODEL)
+  const [model,       setModel]       = useState(() =>
+    (typeof window !== "undefined" ? localStorage.getItem(MODEL_STORAGE_KEY) : null) ?? DEFAULT_MODEL
+  )
   const [modelList,   setModelList]   = useState<string[]>([DEFAULT_MODEL])
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -127,7 +142,7 @@ export default function LottingUpPage() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <label className="text-xs text-gray-500">Model</label>
-          <select value={model} onChange={e => setModel(e.target.value)}
+          <select value={model} onChange={e => { setModel(e.target.value); localStorage.setItem(MODEL_STORAGE_KEY, e.target.value) }}
             className="bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-[#2AB4A6]">
             {modelList.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
@@ -174,11 +189,11 @@ export default function LottingUpPage() {
               </div>
             </div>
 
-            <div className="rounded-xl overflow-hidden bg-[#1C1C1E] border border-gray-800">
+            <div className="rounded-xl bg-[#1C1C1E] border border-gray-800">
               {result ? (
                 <PhotoOverlay imageUrl={imageUrl} groups={result.groups} highlightId={highlightId} />
               ) : (
-                <img src={imageUrl} alt="Upload" className="w-full h-auto block" />
+                <img src={imageUrl} alt="Upload" className="w-full h-auto block rounded-xl" />
               )}
             </div>
 
