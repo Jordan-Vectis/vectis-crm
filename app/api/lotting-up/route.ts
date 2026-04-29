@@ -41,7 +41,7 @@ You will be given a photo of items laid out for cataloguing. Your job is to:
 2. Group them into logical auction lots based on type, theme, value, and what collectors would want together
 3. Estimate a sale value for each lot based on typical Vectis auction results
 4. Also estimate the total value of everything in the photo
-5. For each group, provide a precise bounding box showing exactly where those items appear in the photo
+5. For each group, provide a bounding box showing where those items appear in the photo
 
 Return ONLY valid JSON in this exact format — no markdown, no explanation, just the JSON:
 
@@ -66,11 +66,27 @@ Return ONLY valid JSON in this exact format — no markdown, no explanation, jus
   ]
 }
 
-Rules for bounds:
-- x and y are the top-left corner of the bounding box as a percentage of the image width and height
-- w and h are the width and height of the box as a percentage of the image width and height
-- Be as precise as possible — tightly wrap the actual items in each group
-- All values must be 0–100 and the box must not exceed the image edges (x+w <= 100, y+h <= 100)
+BOUNDING BOX RULES — read carefully:
+The image is treated as a 100×100 percentage grid.
+  - x=0 is the LEFT edge of the image, x=100 is the RIGHT edge
+  - y=0 is the TOP edge of the image, y=100 is the BOTTOM edge
+  - x,y is the TOP-LEFT corner of the bounding box
+  - w is the width of the box (how far it extends to the RIGHT from x)
+  - h is the height of the box (how far it extends DOWNWARD from y)
+  - The box must stay within the image: x+w <= 100, y+h <= 100
+
+Examples of correct bounds:
+  - Items filling the entire image: {x:0, y:0, w:100, h:100}
+  - Items in the top half only: {x:0, y:0, w:100, h:50}
+  - Items in the bottom half only: {x:0, y:50, w:100, h:50}
+  - Items in the top-left quarter: {x:0, y:0, w:50, h:50}
+  - Items in the centre: {x:25, y:25, w:50, h:50}
+
+Before writing each bounds value, look at the image and estimate:
+  1. Where is the TOP of this group? That is y.
+  2. Where is the BOTTOM of this group? h = bottom - y.
+  3. Where is the LEFT edge? That is x.
+  4. Where is the RIGHT edge? w = right - x.
 
 Other rules:
 - Combine items of similar type/theme/value into sensible lots

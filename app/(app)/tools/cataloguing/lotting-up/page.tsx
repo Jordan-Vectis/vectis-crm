@@ -78,6 +78,10 @@ export default function LottingUpPage() {
     (typeof window !== "undefined" ? localStorage.getItem(MODEL_STORAGE_KEY) : null) ?? DEFAULT_MODEL
   )
   const [modelList,   setModelList]   = useState<string[]>([DEFAULT_MODEL])
+  const [savedDefault, setSavedDefault] = useState(() =>
+    (typeof window !== "undefined" ? localStorage.getItem(MODEL_STORAGE_KEY) : null) ?? DEFAULT_MODEL
+  )
+  const [defaultSaved, setDefaultSaved] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -142,10 +146,32 @@ export default function LottingUpPage() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <label className="text-xs text-gray-500">Model</label>
-          <select value={model} onChange={e => { setModel(e.target.value); localStorage.setItem(MODEL_STORAGE_KEY, e.target.value) }}
+          <select value={model} onChange={e => setModel(e.target.value)}
             className="bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-[#2AB4A6]">
-            {modelList.map(m => <option key={m} value={m}>{m}</option>)}
+            {modelList.map(m => (
+              <option key={m} value={m}>{m}{m === savedDefault ? " ★" : ""}</option>
+            ))}
           </select>
+          {defaultSaved ? (
+            <span className="text-xs text-[#2AB4A6]">✓ Saved</span>
+          ) : (
+            <button
+              onClick={() => {
+                localStorage.setItem(MODEL_STORAGE_KEY, model)
+                setSavedDefault(model)
+                setDefaultSaved(true)
+                setTimeout(() => setDefaultSaved(false), 2000)
+              }}
+              className={`text-xs px-2 py-1 rounded border transition-colors ${
+                model === savedDefault
+                  ? "border-gray-700 text-gray-600 cursor-default"
+                  : "border-[#2AB4A6]/50 text-[#2AB4A6] hover:bg-[#2AB4A6]/10"
+              }`}
+              disabled={model === savedDefault}
+            >
+              {model === savedDefault ? "★ Default" : "Set as default"}
+            </button>
+          )}
         </div>
       </div>
 
