@@ -64,7 +64,9 @@ export default function LottingUpPage() {
   const [imageFile,   setImageFile]   = useState<File | null>(null)
   const [result,      setResult]      = useState<LottingUpResult | null>(null)
   const [analysing,   setAnalysing]   = useState(false)
-  const [highlightId, setHighlightId] = useState<number | null>(null)
+  const [hoverId,     setHoverId]     = useState<number | null>(null)
+  const [selectedId,  setSelectedId]  = useState<number | null>(null)
+  const highlightId = selectedId ?? hoverId
   const [model,       setModel]       = useState(() =>
     (typeof window !== "undefined" ? localStorage.getItem(MODEL_STORAGE_KEY) : null) ?? DEFAULT_MODEL
   )
@@ -86,7 +88,8 @@ export default function LottingUpPage() {
     if (!file.type.startsWith("image/")) return
     setImageFile(file)
     setResult(null)
-    setHighlightId(null)
+    setHoverId(null)
+    setSelectedId(null)
     const reader = new FileReader()
     reader.onload = e => setImageUrl(e.target?.result as string)
     reader.readAsDataURL(file)
@@ -248,18 +251,30 @@ export default function LottingUpPage() {
                 </div>
 
                 {/* Lot cards */}
+                {selectedId !== null && (
+                  <p className="text-xs text-gray-500 text-center">
+                    Lot {selectedId} pinned —{" "}
+                    <button onClick={() => setSelectedId(null)} className="text-[#2AB4A6] hover:underline">
+                      clear
+                    </button>
+                  </p>
+                )}
                 <div className="space-y-2">
-                  {result.groups.map(g => (
+                  {result.groups.map(g => {
+                    const isSelected = selectedId === g.id
+                    const isHighlighted = highlightId === g.id
+                    return (
                     <div
                       key={g.id}
-                      onMouseEnter={() => setHighlightId(g.id)}
-                      onMouseLeave={() => setHighlightId(null)}
-                      className={`rounded-xl border transition-all cursor-default ${
-                        highlightId === g.id
-                          ? "border-opacity-60 bg-[#2C2C2E]"
+                      onMouseEnter={() => setHoverId(g.id)}
+                      onMouseLeave={() => setHoverId(null)}
+                      onClick={() => setSelectedId(isSelected ? null : g.id)}
+                      className={`rounded-xl border transition-all cursor-pointer ${
+                        isHighlighted
+                          ? "bg-[#2C2C2E]"
                           : "border-gray-800 bg-[#1C1C1E] hover:bg-[#232323]"
                       }`}
-                      style={{ borderColor: highlightId === g.id ? g.colour : undefined }}
+                      style={{ borderColor: isHighlighted ? g.colour : undefined }}
                     >
                       {/* Card header */}
                       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-800">
@@ -268,9 +283,17 @@ export default function LottingUpPage() {
                           {g.id}
                         </div>
                         <p className="text-sm font-medium text-white flex-1">{g.title}</p>
-                        <p className="text-sm font-semibold text-[#2AB4A6] flex-shrink-0">
-                          £{g.estimateLow}–{g.estimateHigh}
-                        </p>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {isSelected && (
+                            <span className="text-xs px-1.5 py-0.5 rounded font-medium text-white"
+                              style={{ backgroundColor: g.colour }}>
+                              pinned
+                            </span>
+                          )}
+                          <p className="text-sm font-semibold text-[#2AB4A6]">
+                            £{g.estimateLow}–{g.estimateHigh}
+                          </p>
+                        </div>
                       </div>
 
                       {/* Items + notes */}
@@ -288,7 +311,7 @@ export default function LottingUpPage() {
                         )}
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </>
             )}
