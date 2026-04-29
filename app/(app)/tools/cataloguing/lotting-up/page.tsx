@@ -190,8 +190,8 @@ export default function LottingUpPage() {
       {imageUrl && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-          {/* Left — photo with overlays */}
-          <div className="space-y-3">
+          {/* Left — photo with overlays (sticky so it follows scroll) */}
+          <div className="space-y-3 sticky top-6">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-gray-300">Photo</p>
               <div className="flex gap-2">
