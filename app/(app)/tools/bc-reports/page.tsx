@@ -40,7 +40,7 @@ type ShipData = {
   meta:      { total: number; countries: number; cities: number }
 }
 
-type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "location" | "shipping"
+type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "location" | "shipping" | "heatmap"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1502,6 +1502,10 @@ const toolReports: NavItem[] = [
     id: "explorer", label: "Data Explorer", activeColor: "text-purple-400",
     icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
   },
+  {
+    id: "heatmap", label: "Warehouse Map", activeColor: "text-orange-400",
+    icon: "M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7",
+  },
 ]
 
 function SidebarBtn({ r, active, onClick }: { r: NavItem; active: boolean; onClick: () => void }) {
@@ -1637,9 +1641,254 @@ export default function BCReportsPage() {
             {activeReport === "explorer"    && <DataExplorerTab />}
             {activeReport === "location"    && <LocationHistoryTab />}
             {activeReport === "shipping"    && <ShippingTab />}
+            {activeReport === "heatmap"     && <WarehouseHeatmapTab />}
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+// ─── Warehouse Heatmap Tab ────────────────────────────────────────────────────
+
+type HeatLocation = {
+  code: string
+  total: number
+  totes: number
+  barcodes: number
+  items: { id: string; type: string; description: string; receiptId: string }[]
+}
+
+type HeatData = {
+  locations: HeatLocation[]
+  unlocated: HeatLocation & { code: "UNLOCATED" }
+  meta: { totalContainers: number; totalLocations: number; occupiedLocations: number }
+}
+
+function heatColour(count: number, max: number): string {
+  if (count === 0) return "bg-[#1a1d2e] border-gray-800 text-gray-600"
+  const ratio = count / Math.max(max, 1)
+  if (ratio < 0.25) return "bg-emerald-950 border-emerald-800 text-emerald-300"
+  if (ratio < 0.5)  return "bg-yellow-950 border-yellow-700 text-yellow-300"
+  if (ratio < 0.75) return "bg-orange-950 border-orange-700 text-orange-300"
+  return "bg-red-950 border-red-700 text-red-300"
+}
+
+function parseGrid(locations: HeatLocation[]) {
+  const parsed = locations.map(loc => {
+    const m = loc.code.match(/^([A-Za-z]+)[^0-9]*([0-9]+)$/)
+    return m ? { ...loc, row: m[1].toUpperCase(), col: parseInt(m[2]) } : null
+  })
+  if (parsed.some(p => p === null)) return null
+  const rows = [...new Set(parsed.map(p => p!.row))].sort()
+  const cols = [...new Set(parsed.map(p => p!.col))].sort((a, b) => a - b)
+  const grid = new Map(parsed.map(p => [`${p!.row}${p!.col}`, p!]))
+  return { rows, cols, grid }
+}
+
+function WarehouseHeatmapTab() {
+  const [data, setData]         = useState<HeatData | null>(null)
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState<string | null>(null)
+  const [selected, setSelected] = useState<HeatLocation | null>(null)
+
+  useEffect(() => {
+    fetch("/api/warehouse/heatmap")
+      .then(r => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error)))
+      .then(setData)
+      .catch((e: any) => setError(String(e)))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <p className="text-gray-500 text-sm py-10 text-center">Loading warehouse data…</p>
+  if (error)   return <p className="text-red-400 text-sm py-10 text-center">{error}</p>
+  if (!data)   return null
+
+  const max      = Math.max(...data.locations.map(l => l.total), 1)
+  const gridData = parseGrid(data.locations)
+  const busiest  = data.locations.reduce((a, b) => a.total > b.total ? a : b, { code: "—", total: 0 } as any)
+
+  function BigNum({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+    return (
+      <div className="bg-[#1C1C1E] border border-gray-800 rounded-xl px-5 py-4">
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{label}</p>
+        <p className="text-2xl font-bold text-white">{value}</p>
+        {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-white mb-1">Warehouse Map</h2>
+      <p className="text-gray-500 text-sm mb-5">
+        Current occupancy per location — each container's position is based on its most recent movement.
+      </p>
+
+      {/* Headline stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <BigNum label="Total containers" value={data.meta.totalContainers} />
+        <BigNum label="Locations" value={`${data.meta.occupiedLocations} / ${data.meta.totalLocations}`} sub="occupied / total" />
+        <BigNum label="Busiest location" value={busiest.code} sub={`${max} items`} />
+        <BigNum label="Unlocated" value={data.unlocated.total} sub="no movement recorded" />
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 mb-4 text-xs text-gray-500">
+        <span>Occupancy:</span>
+        {[
+          { label: "Empty",  cls: "bg-[#1a1d2e] border-gray-700" },
+          { label: "Low",    cls: "bg-emerald-900 border-emerald-700" },
+          { label: "Medium", cls: "bg-yellow-900 border-yellow-600" },
+          { label: "High",   cls: "bg-orange-900 border-orange-600" },
+          { label: "Full",   cls: "bg-red-900 border-red-600" },
+        ].map(({ label, cls }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <div className={`w-4 h-4 rounded border ${cls}`} />
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Grid view */}
+      {gridData ? (
+        <div className="mb-6 overflow-x-auto">
+          <table className="border-separate border-spacing-1">
+            <thead>
+              <tr>
+                <th className="w-8" />
+                {gridData.cols.map(c => (
+                  <th key={c} className="text-xs text-gray-600 font-normal text-center w-14">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {gridData.rows.map(row => (
+                <tr key={row}>
+                  <td className="text-xs text-gray-600 font-normal pr-1 text-right">{row}</td>
+                  {gridData.cols.map(col => {
+                    const loc = gridData.grid.get(`${row}${col}`)
+                    if (!loc) return (
+                      <td key={col}>
+                        <div className="w-14 h-12 rounded border border-dashed border-gray-800/40 bg-transparent" />
+                      </td>
+                    )
+                    return (
+                      <td key={col}>
+                        <button
+                          onClick={() => setSelected(selected?.code === loc.code ? null : loc)}
+                          title={`${loc.code}: ${loc.total} items`}
+                          className={`w-14 h-12 rounded border transition-all hover:scale-105 flex flex-col items-center justify-center gap-0.5 ${heatColour(loc.total, max)} ${selected?.code === loc.code ? "ring-2 ring-white/50" : ""}`}
+                        >
+                          <span className="text-[10px] font-bold leading-none">{loc.code}</span>
+                          <span className="text-[9px] opacity-70 leading-none">{loc.total}</span>
+                        </button>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-1.5 mb-6">
+          {data.locations.map(loc => (
+            <button
+              key={loc.code}
+              onClick={() => setSelected(selected?.code === loc.code ? null : loc)}
+              className={`rounded border p-2 text-center transition-all hover:scale-105 ${heatColour(loc.total, max)} ${selected?.code === loc.code ? "ring-2 ring-white/50" : ""}`}
+            >
+              <p className="text-[10px] font-bold truncate">{loc.code}</p>
+              <p className="text-base font-bold">{loc.total}</p>
+              {loc.totes > 0 && <p className="text-[9px] opacity-60">{loc.totes}T {loc.barcodes}B</p>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Unlocated pill */}
+      {data.unlocated.total > 0 && (
+        <button
+          onClick={() => setSelected(selected?.code === "UNLOCATED" ? null : data.unlocated)}
+          className={`mb-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-all ${
+            selected?.code === "UNLOCATED"
+              ? "bg-gray-700 border-gray-500 text-white ring-2 ring-white/30"
+              : "bg-gray-900 border-gray-700 text-gray-400 hover:text-white"
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-gray-500 inline-block" />
+          {data.unlocated.total} containers not yet located
+        </button>
+      )}
+
+      {/* Drill-down panel */}
+      {selected && (
+        <div className="bg-[#0d0f1a] border border-gray-700 rounded-xl p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-white font-semibold text-base">
+                {selected.code === "UNLOCATED" ? "Unlocated Containers" : `Location ${selected.code}`}
+              </h3>
+              <p className="text-gray-500 text-xs mt-0.5">
+                {selected.total} containers — {selected.totes} totes, {selected.barcodes} other
+              </p>
+            </div>
+            <button onClick={() => setSelected(null)} className="text-gray-600 hover:text-white text-lg leading-none">✕</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 text-xs border-b border-gray-800">
+                  <th className="text-left pb-2 pr-4">Container ID</th>
+                  <th className="text-left pb-2 pr-4">Type</th>
+                  <th className="text-left pb-2 pr-4">Receipt</th>
+                  <th className="text-left pb-2">Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {selected.items.map(item => (
+                  <tr key={item.id} className="text-gray-300 hover:bg-white/5">
+                    <td className="py-1.5 pr-4 font-mono text-xs text-gray-400">{item.id}</td>
+                    <td className="py-1.5 pr-4">{item.type || "—"}</td>
+                    <td className="py-1.5 pr-4 text-blue-400">{item.receiptId || "—"}</td>
+                    <td className="py-1.5 text-gray-400 truncate max-w-xs">{item.description || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Bar chart */}
+      {data.locations.filter(l => l.total > 0).length > 0 && (
+        <div className="mt-2">
+          <h3 className="text-sm font-medium text-gray-400 mb-3">Occupancy by Location</h3>
+          <div className="space-y-1.5">
+            {[...data.locations]
+              .filter(l => l.total > 0)
+              .sort((a, b) => b.total - a.total)
+              .map(loc => (
+                <div key={loc.code} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-14 text-right shrink-0">{loc.code}</span>
+                  <div className="flex-1 bg-gray-800 rounded-full h-2 overflow-hidden">
+                    <div
+                      className={`h-2 rounded-full transition-all ${
+                        loc.total / max < 0.25 ? "bg-emerald-500" :
+                        loc.total / max < 0.5  ? "bg-yellow-500"  :
+                        loc.total / max < 0.75 ? "bg-orange-500"  :
+                                                 "bg-red-500"
+                      }`}
+                      style={{ width: `${(loc.total / max) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400 w-6 text-right shrink-0">{loc.total}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
