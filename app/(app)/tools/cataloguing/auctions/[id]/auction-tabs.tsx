@@ -8,12 +8,13 @@ import PhotoOnlyTab from "./photo-only-tab"
 import ImportTab from "./import-tab"
 import PhotoUploadTab from "./photo-upload-tab"
 import AiUpgradeTab from "./ai-upgrade-tab"
+import StatsTab from "./stats-tab"
 import * as XLSX from "xlsx"
 import JSZip from "jszip"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "import" | "upload-photos" | "ai-upgrade"
+type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "import" | "upload-photos" | "ai-upgrade" | "stats"
 
 interface Auction {
   id: string; code: string; name: string; auctionDate: Date | null
@@ -95,6 +96,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
     { id: "import",        label: "Import Lots" },
     { id: "upload-photos", label: "Upload Photos" },
     { id: "ai-upgrade",   label: "✨ AI Upgrade" },
+    { id: "stats",        label: "📊 Statistics" },
     { id: "settings",     label: "Auction Settings" },
   ]
 
@@ -208,6 +210,8 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
             onDone={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)}
           />
         )}
+
+        {tab === "stats" && <StatsTab lots={lots} auction={auction} />}
       </div>
     </div>
   )
