@@ -306,9 +306,10 @@ model CatalogueLot {
   currentBid   Int?
   hammerPrice  Int?
   condition    String?
-  vendor       String?
-  tote         String?
-  receipt      String?
+  vendor          String?
+  tote            String?
+  receipt         String?
+  receiptUniqueId String?
   category     String?
   subCategory  String?
   brand        String?

@@ -25,7 +25,7 @@ interface Lot {
   id: string; lotNumber: string; barcode: string | null; title: string; keyPoints: string; description: string
   estimateLow: number | null; estimateHigh: number | null; startingBid: number | null; reserve: number | null
   hammerPrice: number | null; condition: string | null; vendor: string | null
-  tote: string | null; receipt: string | null; category: string | null
+  tote: string | null; receipt: string | null; receiptUniqueId: string | null; category: string | null
   subCategory: string | null; brand: string | null; notes: string | null
   status: string; aiUpgraded: boolean; createdByName: string | null; imageUrls: string[]
 }
@@ -1034,7 +1034,9 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                 <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">{lot.barcode ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-200 max-w-[160px] truncate">{lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.vendor ?? "—"}</td>
-                <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.receipt ?? "—"}</td>
+                <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
+                  {lot.receiptUniqueId ?? lot.receipt ?? "—"}
+                </td>
                 <td className="px-4 py-3 text-gray-400 text-xs font-mono whitespace-nowrap">{lot.tote ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs">
                   {lot.category ? (
@@ -1292,6 +1294,11 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
                 <label className={lbl}>Receipt</label>
                 <input name="receipt" defaultValue={lot.receipt ?? ""} className={input} />
               </div>
+            </div>
+            <div>
+              <label className={lbl}>Receipt Unique ID</label>
+              <input name="receiptUniqueId" defaultValue={lot.receiptUniqueId ?? ""} className={input}
+                placeholder="e.g. R007523-1 (auto-assigned on create)" />
             </div>
             <div>
               <label className={lbl}>Category</label>
