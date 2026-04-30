@@ -11,10 +11,11 @@ function parseEstimate(est: string): { low: number | null; high: number | null }
   }
 }
 
-// Extract a short title from the AI description (first sentence, capped at 100 chars)
+// Extract a short title from the AI description (first sentence, capped at 83 chars)
+const TITLE_LIMIT = 83
 function titleFromDescription(desc: string): string {
   const first = desc.split(/[.\n]/)[0].trim()
-  return first.length > 100 ? first.slice(0, 97) + "…" : first || "Untitled"
+  return first.length > TITLE_LIMIT ? first.slice(0, TITLE_LIMIT - 1) + "…" : first || "Untitled"
 }
 
 // POST /api/auction-ai/runs/[id]/apply
