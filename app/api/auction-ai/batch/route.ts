@@ -64,10 +64,10 @@ export async function POST(req: NextRequest) {
         { text: userPrompt },
       ])
 
-      // Split description and estimate
-      const lines = text.trim().split("\n").filter(Boolean)
+      // Split description and estimate — preserve newlines so list formatting is kept
+      const lines = text.trim().split("\n")
       const estimateLine = lines.find((l) => l.toLowerCase().startsWith("estimate:")) ?? ""
-      const description  = lines.filter((l) => !l.toLowerCase().startsWith("estimate:")).join(" ").trim()
+      const description  = lines.filter((l) => !l.toLowerCase().startsWith("estimate:")).join("\n").trim()
 
       results.push({ lot, description, estimate: estimateLine.replace(/^Estimate:\s*/i, "").trim(), status: "OK" })
 
