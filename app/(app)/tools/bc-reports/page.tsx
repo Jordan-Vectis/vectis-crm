@@ -1756,6 +1756,7 @@ function WarehouseHeatmapTab() {
       {loading && !progress && <p className="text-xs text-gray-500 mb-4">{stageLabel}</p>}
       {!loading && data && <LoadBtn loading={loading} onClick={load} />}
 
+      {data && <>
       {/* Headline stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <BigNum label="Total totes" value={data.meta.totalTotes} />
@@ -1924,6 +1925,7 @@ function WarehouseHeatmapTab() {
           </div>
         </div>
       )}
+      </>}
     </div>
   )
 }
