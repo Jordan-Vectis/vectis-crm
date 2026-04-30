@@ -630,6 +630,58 @@ function BatchTab({ model }: { model: string }) {
 
   const pct = total ? Math.round((done / total) * 100) : 0
 
+  // ── Post-run save state ───────────────────────────────────────────────────
+  const [saveCode,    setSaveCode]    = useState("")
+  const [saving,      setSaving]      = useState(false)
+  const [saveErrors,  setSaveErrors]  = useState<{ lot: string; code: string; message: string }[]>([])
+  const [savedCount,  setSavedCount]  = useState<number | null>(null)
+
+  // Keep saveCode in sync with auctionCode field
+  useEffect(() => { if (auctionCode) setSaveCode(auctionCode) }, [auctionCode])
+
+  const unsavedOkResults = results.filter(r => r.status === "OK" && !savedLots.has(r.lot))
+
+  async function saveToRun() {
+    const code = saveCode.trim().toUpperCase()
+    if (!code) {
+      setSaveErrors([{ lot: "—", code: "SAVE-001", message: "No auction code entered" }])
+      return
+    }
+    setSaving(true)
+    setSaveErrors([])
+    setSavedCount(null)
+
+    const errors: typeof saveErrors = []
+    let saved = 0
+
+    for (const r of unsavedOkResults) {
+      try {
+        const res = await fetch("/api/auction-ai/runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, preset, lot: r.lot, description: r.description, estimate: r.estimate }),
+        })
+        if (!res.ok) {
+          let msg = `HTTP ${res.status}`
+          try { const j = await res.json(); msg = j.error ?? msg } catch {}
+          errors.push({ lot: r.lot, code: `SAVE-002`, message: msg })
+        } else {
+          saved++
+          setSavedLots(s => new Set([...s, r.lot]))
+        }
+      } catch (e: any) {
+        errors.push({ lot: r.lot, code: "SAVE-003", message: e.message ?? "Network error" })
+      }
+    }
+
+    setSavedCount(saved)
+    setSaveErrors(errors)
+    setSaving(false)
+
+    // Update run list so Saved Runs tab reflects new count
+    fetch("/api/auction-ai/runs").then(r => r.json()).then(setRunList).catch(() => {})
+  }
+
   return (
     <div className="flex flex-col h-full gap-3">
       <h2 className="text-lg font-semibold text-white">Batch Run</h2>
@@ -755,6 +807,47 @@ function BatchTab({ model }: { model: string }) {
           <div className="w-full bg-gray-800 rounded-full h-2">
             <div className="bg-[#C8A96E] h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
           </div>
+        </div>
+      )}
+
+      {/* ── Save to Run panel ── */}
+      {unsavedOkResults.length > 0 && !loading && (
+        <div className="flex-shrink-0 bg-[#1a1a2e] border border-[#C8A96E]/40 rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-[#C8A96E]">💾 Save {unsavedOkResults.length} lot{unsavedOkResults.length !== 1 ? "s" : ""} to a Run</p>
+            {savedCount !== null && saveErrors.length === 0 && (
+              <span className="text-xs text-green-400">✓ {savedCount} saved</span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={saveCode}
+              onChange={e => setSaveCode(e.target.value.toUpperCase())}
+              placeholder="Auction code e.g. F051"
+              className="flex-1 bg-[#2C2C2E] border border-gray-600 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] placeholder:text-gray-600 font-mono"
+            />
+            <button onClick={saveToRun} disabled={saving}
+              className="px-4 py-1.5 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-50 text-black text-sm font-bold rounded transition-colors whitespace-nowrap">
+              {saving ? "Saving…" : "Save to Run"}
+            </button>
+          </div>
+          {saveErrors.length > 0 && (
+            <div className="space-y-1">
+              {saveErrors.map((e, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-red-300 bg-red-950/60 border border-red-800 rounded px-3 py-1.5">
+                  <span className="font-mono text-red-500 flex-shrink-0">[{e.code}]</span>
+                  <span className="flex-shrink-0 text-gray-500">{e.lot}</span>
+                  <span>{e.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {savedCount !== null && savedCount > 0 && (
+            <p className="text-xs text-green-400">
+              ✓ {savedCount} lot{savedCount !== 1 ? "s" : ""} saved under <span className="font-mono text-[#C8A96E]">{saveCode}</span>
+              {saveErrors.length > 0 && <span className="text-yellow-400 ml-2">· {saveErrors.length} failed — see errors above</span>}
+            </p>
+          )}
         </div>
       )}
 
