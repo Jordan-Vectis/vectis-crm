@@ -557,42 +557,64 @@ function BatchTab({ model }: { model: string }) {
       }
       addLog(`Processing ${i + 1} / ${selectedNames.length}  ·  ${lot}  (${files.length} image${files.length !== 1 ? "s" : ""})`)
 
-      try {
-        const fd = new FormData()
-        fd.append("systemInstruction", systemInstruction)
-        fd.append("model", model)
-        files.forEach((f, j) => fd.append(`lot_${lot}_image_${j}`, f, f.name))
+      // Retry up to 2 times on network/timeout failures
+      // Don't retry content blocks — they won't succeed on retry
+      const MAX_RETRIES = 2
+      let lastError = ""
+      let succeeded = false
 
-        const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.error ?? res.statusText)
-        all.push(...json.results)
-        // Save to DB if auction code provided
-        if (auctionCode.trim()) {
-          const r = json.results[0]
-          if (r?.status === "OK") {
-            const saveRes = await fetch("/api/auction-ai/runs", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
-            })
-            if (!saveRes.ok) {
-              const txt = await saveRes.text().catch(() => "")
-              let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
-              showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
-              addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const wait = attempt * 12000
+          addLog(`↺ ${lot} — retrying in ${wait / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES + 1})…`)
+          await new Promise(r => setTimeout(r, wait))
+          if (cancelRef.current) break
+        }
+        try {
+          const fd = new FormData()
+          fd.append("systemInstruction", systemInstruction)
+          fd.append("model", model)
+          files.forEach((f, j) => fd.append(`lot_${lot}_image_${j}`, f, f.name))
+
+          const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
+          const json = await res.json()
+          if (!res.ok) throw new Error(json.error ?? res.statusText)
+          all.push(...json.results)
+
+          // Save to DB if auction code provided
+          if (auctionCode.trim()) {
+            const r = json.results[0]
+            if (r?.status === "OK") {
+              const saveRes = await fetch("/api/auction-ai/runs", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
+              })
+              if (!saveRes.ok) {
+                const txt = await saveRes.text().catch(() => "")
+                let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
+                showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
+                addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
+              } else {
+                addLog(`✓ ${lot} — OK  ·  saved`)
+              }
             } else {
-              addLog(`✓ ${lot} — OK  ·  saved`)
+              addLog(`✓ ${lot} — OK`)
             }
           } else {
             addLog(`✓ ${lot} — OK`)
           }
-        } else {
-          addLog(`✓ ${lot} — OK`)
+          succeeded = true
+          break
+        } catch (e: any) {
+          lastError = e.message ?? String(e)
+          if (lastError.toLowerCase().includes("block")) break // don't retry blocks
         }
-      } catch (e: any) {
-        all.push({ lot, description: "", estimate: "", status: "FAILED", error: e.message })
-        addLog(`✗ ${lot} — FAILED: ${e.message}`)
+      }
+
+      if (!succeeded) {
+        all.push({ lot, description: "", estimate: "", status: "FAILED", error: lastError })
+        addLog(`✗ ${lot} — FAILED after ${MAX_RETRIES + 1} attempts: ${lastError}`)
       }
       setResults([...all])
 
