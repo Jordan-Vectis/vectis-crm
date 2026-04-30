@@ -10,38 +10,24 @@ function enc(obj: object) {
   return new TextEncoder().encode(JSON.stringify(obj) + "\n")
 }
 
-// Batch a list of IDs into OR-filter BC queries and return the latest
-// location per ID from ChangeLogEntries.
-async function batchLocations(
+// Exactly the same query Location History uses, but $top=1 (we only need the latest)
+async function getLatestLocation(
   token: string,
-  ids: string[],
-  keyField: "Primary_Key_Field_1_Value" | "Primary_Key_Field_2_Value",
+  keyField: string,
+  keyValue: string,
   fieldCaption: string,
-  batchSize = 40,
-  onProgress?: (done: number, total: number) => void,
-): Promise<Map<string, string>> {
-  const locationMap = new Map<string, string>()
-  for (let i = 0; i < ids.length; i += batchSize) {
-    const batch  = ids.slice(i, i + batchSize)
-    const orPart = batch.map(id => `${keyField} eq '${id}'`).join(" or ")
-    const filter = `Field_Caption eq '${fieldCaption}' and (${orPart})`
-    try {
-      const rows = await bcPage(token, "ChangeLogEntries", {
-        $filter:  filter,
-        $select:  `Primary_Key_Field_1_Value,Primary_Key_Field_2_Value,New_Value,Date_and_Time`,
-        $orderby: "Date_and_Time desc",
-        $top:     500,
-      })
-      // rows are newest-first — record the first (latest) location per id
-      for (const r of rows) {
-        const id  = String(r[keyField] ?? "").trim()
-        const loc = String(r.New_Value ?? "").trim()
-        if (id && !locationMap.has(id)) locationMap.set(id, loc)
-      }
-    } catch { /* skip failed batch */ }
-    onProgress?.(Math.min(i + batchSize, ids.length), ids.length)
+): Promise<string> {
+  try {
+    const rows = await bcPage(token, "ChangeLogEntries", {
+      $filter:  `${keyField} eq '${keyValue}' and Field_Caption eq '${fieldCaption}'`,
+      $select:  "New_Value,Date_and_Time",
+      $orderby: "Date_and_Time desc",
+      $top:     1,
+    })
+    return String(rows[0]?.New_Value ?? "").trim()
+  } catch {
+    return ""
   }
-  return locationMap
 }
 
 export async function GET() {
@@ -56,7 +42,7 @@ export async function GET() {
 
   ;(async () => {
     try {
-      // ── Stage 1: Fetch totes from BC + barcodes from DB in parallel ──────────
+      // ── Stage 1: Fetch totes from BC + barcodes from DB ──────────────────────
       await writer.write(enc({ type: "stage", label: "Fetching totes and barcodes…", stage: 1, stages: 3 }))
 
       const [toteRows, lotRows] = await Promise.all([
@@ -69,11 +55,14 @@ export async function GET() {
         }),
       ])
 
-      // Tote info map
-      const toteInfo = new Map<string, { description: string; category: string; catalogued: boolean; type: "tote" }>()
+      type Item = { id: string; description: string; category: string; catalogued: boolean; type: "tote" | "barcode" }
+
+      // Tote list
+      const totes: Item[] = []
       for (const r of toteRows) {
         const id = String(r["No_"] ?? r["EVA_TOT_No"] ?? "").trim()
-        if (id) toteInfo.set(id, {
+        if (id) totes.push({
+          id,
           description: String(r["Description"] ?? r["EVA_TOT_Description"] ?? "").trim(),
           category:    String(r["EVA_TOT_ArticleCategory"] ?? "").trim(),
           catalogued:  r["EVA_TOT_Catalogued"] === true,
@@ -81,10 +70,11 @@ export async function GET() {
         })
       }
 
-      // Barcode info map
-      const barcodeInfo = new Map<string, { description: string; category: string; catalogued: boolean; type: "barcode" }>()
+      // Barcode list
+      const barcodes: Item[] = []
       for (const l of lotRows) {
-        if (l.barcode) barcodeInfo.set(l.barcode, {
+        if (l.barcode) barcodes.push({
+          id:          l.barcode,
           description: l.title,
           category:    l.lotNumber,
           catalogued:  l.status !== "ENTERED",
@@ -92,68 +82,62 @@ export async function GET() {
         })
       }
 
-      const toteIds    = [...toteInfo.keys()]
-      const barcodeIds = [...barcodeInfo.keys()]
-
-      // ── Stage 2: Locate totes via Field_Caption eq 'Location' ────────────────
-      // (same approach as Location History tab for totes)
+      // ── Stage 2: Look up current location for each tote ──────────────────────
+      // Same query as Location History tab: Primary_Key_Field_1_Value eq '{id}' and Field_Caption eq 'Location'
       await writer.write(enc({ type: "stage", label: "Locating totes in BC…", stage: 2, stages: 3 }))
 
-      const toteLocation = await batchLocations(
-        token, toteIds, "Primary_Key_Field_1_Value", "Location", 40,
-        (done, total) => writer.write(enc({ type: "progress", done, total, stage: 2, label: "Locating totes…" })),
-      )
+      const toteLocation = new Map<string, string>()
+      const PARALLEL = 20
 
-      // ── Stage 3: Locate barcodes via Field_Caption eq 'Article Location Code' ─
-      // (same approach as Location History tab for barcodes)
-      await writer.write(enc({ type: "stage", label: "Locating barcoded items in BC…", stage: 3, stages: 3 }))
-
-      const barcodeLocation = await batchLocations(
-        token, barcodeIds, "Primary_Key_Field_2_Value", "Article Location Code", 40,
-        (done, total) => writer.write(enc({ type: "progress", done, total, stage: 3, label: "Locating barcodes…" })),
-      )
-
-      // ── Build result ─────────────────────────────────────────────────────────
-      type Item = { id: string; description: string; category: string; catalogued: boolean; type: "tote" | "barcode" }
-      const locationItems = new Map<string, Item[]>()
-
-      function place(id: string, info: Omit<Item, "id">, loc: string) {
-        const key = loc || "__UNLOCATED__"
-        if (!locationItems.has(key)) locationItems.set(key, [])
-        locationItems.get(key)!.push({ id, ...info })
+      for (let i = 0; i < totes.length; i += PARALLEL) {
+        const batch = totes.slice(i, i + PARALLEL)
+        await Promise.all(batch.map(async t => {
+          const loc = await getLatestLocation(token, "Primary_Key_Field_1_Value", t.id, "Location")
+          if (loc) toteLocation.set(t.id, loc)
+        }))
+        await writer.write(enc({ type: "progress", done: Math.min(i + PARALLEL, totes.length), total: totes.length, label: "Locating totes…" }))
       }
 
-      for (const id of toteIds)    place(id, toteInfo.get(id)!,    toteLocation.get(id) ?? "")
-      for (const id of barcodeIds) place(id, barcodeInfo.get(id)!, barcodeLocation.get(id) ?? "")
+      // ── Stage 3: Look up current location for each barcode ───────────────────
+      // Same query as Location History tab: Primary_Key_Field_2_Value eq '{barcode}' and Field_Caption eq 'Article Location Code'
+      await writer.write(enc({ type: "stage", label: "Locating barcoded items in BC…", stage: 3, stages: 3 }))
+
+      const barcodeLocation = new Map<string, string>()
+
+      for (let i = 0; i < barcodes.length; i += PARALLEL) {
+        const batch = barcodes.slice(i, i + PARALLEL)
+        await Promise.all(batch.map(async b => {
+          const loc = await getLatestLocation(token, "Primary_Key_Field_2_Value", b.id, "Article Location Code")
+          if (loc) barcodeLocation.set(b.id, loc)
+        }))
+        await writer.write(enc({ type: "progress", done: Math.min(i + PARALLEL, barcodes.length), total: barcodes.length, label: "Locating barcodes…" }))
+      }
+
+      // ── Build result ─────────────────────────────────────────────────────────
+      const locationItems = new Map<string, Item[]>()
+
+      function place(item: Item, loc: string) {
+        const key = loc || "__UNLOCATED__"
+        if (!locationItems.has(key)) locationItems.set(key, [])
+        locationItems.get(key)!.push(item)
+      }
+
+      for (const t of totes)    place(t, toteLocation.get(t.id) ?? "")
+      for (const b of barcodes) place(b, barcodeLocation.get(b.id) ?? "")
 
       const unlocatedItems = locationItems.get("__UNLOCATED__") ?? []
       locationItems.delete("__UNLOCATED__")
 
       const usedCodes = new Set<string>()
-
       const locations = [
         ...LOCATIONS.map((loc: any) => {
           const items = locationItems.get(loc.code) ?? []
           usedCodes.add(loc.code)
-          return {
-            code:         loc.code,
-            name:         loc.name,
-            total:        items.length,
-            catalogued:   items.filter(i => i.catalogued).length,
-            uncatalogued: items.filter(i => !i.catalogued).length,
-            items,
-          }
+          return { code: loc.code, name: loc.name, total: items.length, catalogued: items.filter(i => i.catalogued).length, uncatalogued: items.filter(i => !i.catalogued).length, items }
         }),
         ...[...locationItems.entries()]
           .filter(([code]) => !usedCodes.has(code))
-          .map(([code, items]) => ({
-            code,
-            name:         code,
-            total:        items.length,
-            catalogued:   items.filter(i => i.catalogued).length,
-            uncatalogued: items.filter(i => !i.catalogued).length,
-            items,
-          })),
+          .map(([code, items]) => ({ code, name: code, total: items.length, catalogued: items.filter(i => i.catalogued).length, uncatalogued: items.filter(i => !i.catalogued).length, items })),
       ].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: "base" }))
 
       await writer.write(enc({
@@ -161,16 +145,15 @@ export async function GET() {
         data: {
           locations,
           unlocated: {
-            code: "UNLOCATED",
-            name: "No Location",
-            total:        unlocatedItems.length,
-            catalogued:   unlocatedItems.filter(i => i.catalogued).length,
+            code: "UNLOCATED", name: "No Location",
+            total: unlocatedItems.length,
+            catalogued: unlocatedItems.filter(i => i.catalogued).length,
             uncatalogued: unlocatedItems.filter(i => !i.catalogued).length,
             items: unlocatedItems,
           },
           meta: {
-            totalTotes:        toteIds.length,
-            totalBarcodes:     barcodeIds.length,
+            totalTotes:        totes.length,
+            totalBarcodes:     barcodes.length,
             totalLocations:    LOCATIONS.length,
             occupiedLocations: locations.filter(l => l.total > 0).length,
             matchedTotes:      toteLocation.size,
