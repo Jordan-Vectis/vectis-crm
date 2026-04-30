@@ -16,67 +16,76 @@ interface LotGroup {
 }
 
 type Phase = "idle" | "scanning" | "preview" | "uploading" | "done"
-type Mode  = "barcode" | "filename"
+type Mode  = "scan" | "filename"
+
+// ── Filename barcode / unique-ID parser ───────────────────────────────────────
+// Strips the extension then removes any trailing _N suffix so that:
+//   "F066001.jpg"      → "F066001"
+//   "F066001_2.jpg"    → "F066001"
+//   "R000016-413_1.jpg"→ "R000016-413"
+function parseBarcode(filename: string): string {
+  const noExt = filename.replace(/\.[^.]+$/, "")  // strip extension
+  return noExt.replace(/_\d+$/, "")               // strip trailing _N suffix
+}
 
 export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
-  const inputRef                  = useRef<HTMLInputElement>(null)
-  const filenameRef               = useRef<HTMLInputElement>(null)
-  const [mode, setMode]           = useState<Mode>("barcode")
-  const [phase, setPhase]         = useState<Phase>("idle")
-  const [groups, setGroups]       = useState<LotGroup[]>([])
-  const [scanProgress, setScanProgress] = useState({ done: 0, total: 0 })
+  const scanInputRef               = useRef<HTMLInputElement>(null)
+  const filenameInputRef           = useRef<HTMLInputElement>(null)
+  const [mode, setMode]            = useState<Mode | null>(null)
+  const [phase, setPhase]          = useState<Phase>("idle")
+  const [groups, setGroups]        = useState<LotGroup[]>([])
+  const [scanProgress, setScanProgress]     = useState({ done: 0, total: 0 })
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 })
-  const [error, setError]         = useState<string | null>(null)
-  const [skipped, setSkipped]     = useState<string[]>([])
+  const [error, setError]          = useState<string | null>(null)
+  const [skipped, setSkipped]      = useState<string[]>([])
 
-  // Lookup: barcode / lotNumber / receiptUniqueId → lot id
+  // Lookup: lotNumber / barcode / receiptUniqueId → lot id
   const lotMap = new Map([
     ...lots.map(l => [l.lotNumber.toLowerCase().trim(), l.id] as [string, string]),
     ...lots.filter(l => l.barcode).map(l => [l.barcode!.toLowerCase().trim(), l.id] as [string, string]),
     ...lots.filter(l => l.receiptUniqueId).map(l => [l.receiptUniqueId!.toLowerCase().trim(), l.id] as [string, string]),
   ])
 
-  // Lookup: receiptUniqueId → lot id (e.g. "R000016-413" → lot.id)
-  const uniqueIdMap = new Map(
-    lots.filter(l => l.receiptUniqueId).map(l => [l.receiptUniqueId!.toLowerCase().trim(), l.id] as [string, string])
-  )
+  // ── Reset to idle ─────────────────────────────────────────────────────────────
+  function reset() {
+    setMode(null)
+    setPhase("idle")
+    setGroups([])
+    setSkipped([])
+    setError(null)
+  }
 
-  // ── Filename-based matching ──────────────────────────────────────────────────
-  // e.g. "R000016-413_1.jpg" → uniqueId "R000016-413"
-  // Everything before the first underscore is the unique ID.
+  // ── MODE: match by filename ───────────────────────────────────────────────────
   function handleFilenameFiles(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null)
     const files = Array.from(e.target.files ?? []).filter(
       f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(f.name)
     )
+    e.target.value = ""
     if (files.length === 0) return
 
-    // Sort by filename so order matches capture sequence
+    // Sort by filename so _1, _2 etc. end up in order
     files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
 
-    const map: Record<string, { lotId: string | null; photos: File[] }> = {}
+    // Group by extracted barcode / unique-ID
+    const groupMap = new Map<string, LotGroup>()
+    const orderedKeys: string[] = []
 
     for (const file of files) {
-      const nameNoExt = file.name.replace(/\.[^.]+$/, "")
-      const uniqueId  = nameNoExt.split("_")[0].trim().toLowerCase()
-      if (!uniqueId) continue
-      if (!map[uniqueId]) {
-        const lotId = uniqueIdMap.get(uniqueId) ?? lotMap.get(uniqueId) ?? null
-        map[uniqueId] = { lotId, photos: [] }
+      const barcode = parseBarcode(file.name)
+      const key     = barcode.toLowerCase().trim()
+      if (!groupMap.has(key)) {
+        const lotId = lotMap.get(key) ?? null
+        groupMap.set(key, { lotId, lotNumber: barcode, photos: [] })
+        orderedKeys.push(key)
       }
-      map[uniqueId].photos.push(file)
+      groupMap.get(key)!.photos.push(file)
     }
 
-    e.target.value = ""
-
-    const result: LotGroup[] = Object.entries(map).map(([uid, { lotId, photos }]) => ({
-      lotId,
-      lotNumber: uid,
-      photos,
-    }))
+    const result = orderedKeys.map(k => groupMap.get(k)!)
 
     if (result.length === 0) {
-      setError("No files found. Make sure filenames contain the unique ID before the first underscore, e.g. R000016-413_1.jpg")
+      setError("No files selected.")
       return
     }
 
@@ -84,26 +93,23 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     setPhase("preview")
   }
 
-  async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+  // ── MODE: scan barcodes from images ──────────────────────────────────────────
+  async function handleScanFiles(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null)
     const files = Array.from(e.target.files ?? []).filter(
       f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(f.name)
     )
     if (files.length === 0) return
 
-    // Sort by filename so order matches capture sequence
     files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
 
     setPhase("scanning")
     setScanProgress({ done: 0, total: files.length })
 
-    // Prefer native BarcodeDetector (Chrome/Edge) — far more reliable for real photos.
-    // Fall back to ZXing for browsers that don't support it.
     const nativeDetector = "BarcodeDetector" in window
       ? new (window as any).BarcodeDetector({ formats: ["code_128", "code_39", "qr_code", "ean_13"] })
       : null
 
-    // ZXing fallback — load once for the batch
     const [{ HTMLCanvasElementLuminanceSource }, { MultiFormatReader, BinaryBitmap, HybridBinarizer, DecodeHintType }] =
       await Promise.all([import("@zxing/browser"), import("@zxing/library")])
     const hints = new Map()
@@ -111,7 +117,6 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     const zxing = new MultiFormatReader()
     zxing.setHints(hints)
 
-    // Load a File into an HTMLImageElement (respects EXIF rotation)
     function loadImgElement(file: File): Promise<HTMLImageElement> {
       return new Promise((res, rej) => {
         const url = URL.createObjectURL(file)
@@ -132,14 +137,11 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
 
     async function decodeBarcode(file: File): Promise<string | null> {
       try {
-        // Load via <img> so EXIF rotation is applied before scanning
-        const imgEl = await loadImgElement(file)
-
+        const imgEl    = await loadImgElement(file)
         const naturalW = imgEl.naturalWidth
         const naturalH = imgEl.naturalHeight
 
-        // Draw image to canvas at targetW, optionally with contrast boost or B&W threshold
-        function toCanvas(targetW: number, mode: "normal" | "contrast" | "bw" = "normal"): HTMLCanvasElement {
+        function toCanvas(targetW: number, scanMode: "normal" | "contrast" | "bw" = "normal"): HTMLCanvasElement {
           const scale = Math.min(1, targetW / naturalW)
           const w = Math.round(naturalW * scale)
           const h = Math.round(naturalH * scale)
@@ -148,12 +150,9 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
           const ctx = c.getContext("2d")!
           ctx.fillStyle = "#ffffff"
           ctx.fillRect(0, 0, w, h)
-          if (mode === "contrast") {
-            ctx.filter = "contrast(400%) grayscale(100%)"
-          }
+          if (scanMode === "contrast") ctx.filter = "contrast(400%) grayscale(100%)"
           ctx.drawImage(imgEl, 0, 0, w, h)
-          if (mode === "bw") {
-            // Hard threshold to pure black/white — maximises bar edge sharpness
+          if (scanMode === "bw") {
             const id = ctx.getImageData(0, 0, w, h)
             for (let i = 0; i < id.data.length; i += 4) {
               const v = 0.299 * id.data[i] + 0.587 * id.data[i+1] + 0.114 * id.data[i+2] > 128 ? 255 : 0
@@ -164,11 +163,10 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
           return c
         }
 
-        // Native BarcodeDetector — try normal, contrast-boosted and B&W at two scales
         if (nativeDetector) {
           for (const targetW of [naturalW, 900]) {
-            for (const mode of ["normal", "contrast", "bw"] as const) {
-              const c = toCanvas(targetW, mode)
+            for (const scanMode of ["normal", "contrast", "bw"] as const) {
+              const c = toCanvas(targetW, scanMode)
               try {
                 const bmp     = await createImageBitmap(c)
                 const results = await nativeDetector.detect(bmp)
@@ -181,14 +179,13 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
           }
         }
 
-        // ZXing fallback — normal and B&W at multiple scales
         for (const targetW of [2000, 1200]) {
-          for (const mode of ["normal", "bw"] as const) {
-            const c = toCanvas(targetW, mode)
+          for (const scanMode of ["normal", "bw"] as const) {
+            const c = toCanvas(targetW, scanMode)
             try {
               const luminance = new HTMLCanvasElementLuminanceSource(c)
-              const bitmap = new BinaryBitmap(new HybridBinarizer(luminance))
-              const decoded = zxing.decodeWithState(bitmap).getText().replace(/[^\x20-\x7E]/g, "").trim()
+              const bitmap    = new BinaryBitmap(new HybridBinarizer(luminance))
+              const decoded   = zxing.decodeWithState(bitmap).getText().replace(/[^\x20-\x7E]/g, "").trim()
               if (isVectisBarcode(decoded)) return decoded
             } catch {}
           }
@@ -215,7 +212,6 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
       } else if (current) {
         current.photos.push(file)
       }
-      // Images before the first detected barcode are ignored
     }
 
     e.target.value = ""
@@ -230,6 +226,7 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     setPhase("preview")
   }
 
+  // ── Upload (shared by both modes) ─────────────────────────────────────────────
   async function handleUpload() {
     const uploadable = groups.filter(g => g.lotId && g.photos.length > 0)
     if (uploadable.length === 0) { setError("No matched lots with photos to upload."); return }
@@ -267,70 +264,63 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
 
   return (
     <div className="p-4 md:p-6 max-w-3xl">
-      <div className="mb-5">
-        <h2 className="text-sm font-semibold text-gray-200">Smart Photo Uploader</h2>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Upload photos and automatically assign them to the right lots.
-        </p>
-      </div>
 
-      {/* ── Idle ── */}
+      {/* ── Idle — mode selection ── */}
       {phase === "idle" && (
         <>
-          {/* Mode toggle */}
-          <div className="flex gap-2 mb-4">
+          <div className="mb-5">
+            <h2 className="text-sm font-semibold text-gray-200">Upload Photos</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Choose how to match photos to lots.
+            </p>
+          </div>
+
+          {/* Hidden inputs */}
+          <input ref={scanInputRef} type="file" multiple
+            // @ts-ignore
+            webkitdirectory=""
+            className="hidden"
+            onChange={handleScanFiles}
+          />
+          <input ref={filenameInputRef} type="file" multiple accept="image/*"
+            className="hidden"
+            onChange={handleFilenameFiles}
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Option A — filename */}
             <button
-              onClick={() => setMode("filename")}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                mode === "filename"
-                  ? "bg-[#2AB4A6] border-[#2AB4A6] text-black"
-                  : "border-gray-700 text-gray-400 hover:border-gray-500"
-              }`}
+              onClick={() => { setMode("filename"); filenameInputRef.current?.click() }}
+              className="group flex flex-col items-center gap-3 py-10 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors px-6"
             >
-              📄 Match by Filename
+              <span className="text-4xl">📂</span>
+              <span className="text-sm font-semibold text-center">Match by filename</span>
+              <span className="text-xs text-gray-600 text-center leading-relaxed">
+                Filenames must include the barcode or receipt ID.<br />
+                e.g. <span className="font-mono text-gray-500">F066001.jpg</span>,{" "}
+                <span className="font-mono text-gray-500">F066001_2.jpg</span>
+              </span>
             </button>
+
+            {/* Option B — scan */}
             <button
-              onClick={() => setMode("barcode")}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                mode === "barcode"
-                  ? "bg-[#2AB4A6] border-[#2AB4A6] text-black"
-                  : "border-gray-700 text-gray-400 hover:border-gray-500"
-              }`}
+              onClick={() => { setMode("scan"); scanInputRef.current?.click() }}
+              className="group flex flex-col items-center gap-3 py-10 rounded-xl border-2 border-dashed border-gray-600 hover:border-purple-500 text-gray-400 hover:text-purple-400 transition-colors px-6"
             >
-              📷 Scan Barcodes
+              <span className="text-4xl">📷</span>
+              <span className="text-sm font-semibold text-center">Smart scan folder</span>
+              <span className="text-xs text-gray-600 text-center leading-relaxed">
+                Select a photo folder — barcodes are read<br />
+                from each image automatically.
+              </span>
             </button>
           </div>
 
-          {mode === "filename" ? (
-            <>
-              <input ref={filenameRef} type="file" multiple accept="image/*"
-                className="hidden" onChange={handleFilenameFiles} />
-              <button onClick={() => filenameRef.current?.click()}
-                className="w-full py-10 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex flex-col items-center gap-2">
-                <span className="text-4xl">📄</span>
-                <span className="text-sm font-medium">Select photos</span>
-                <span className="text-xs text-gray-600">Filename must start with the unique ID — e.g. R000016-413_1.jpg</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <input ref={inputRef} type="file" multiple
-                // @ts-ignore
-                webkitdirectory=""
-                className="hidden" onChange={handleFiles} />
-              <button onClick={() => inputRef.current?.click()}
-                className="w-full py-10 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex flex-col items-center gap-2">
-                <span className="text-4xl">📁</span>
-                <span className="text-sm font-medium">Select photo folder</span>
-                <span className="text-xs text-gray-600">Barcodes will be automatically detected from the images</span>
-              </button>
-            </>
-          )}
           {error && <p className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2 mt-3">{error}</p>}
         </>
       )}
 
-      {/* ── Scanning ── */}
+      {/* ── Scanning (scan mode only) ── */}
       {phase === "scanning" && (
         <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl px-6 py-10 flex flex-col items-center gap-4">
           <div className="w-8 h-8 border-2 border-[#2AB4A6] border-t-transparent rounded-full animate-spin" />
@@ -343,9 +333,20 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
         </div>
       )}
 
-      {/* ── Preview ── */}
+      {/* ── Preview (shared) ── */}
       {phase === "preview" && (
         <div className="space-y-4">
+          <div className="mb-2">
+            <h2 className="text-sm font-semibold text-gray-200">
+              {mode === "filename" ? "Filename match preview" : "Scan results preview"}
+            </h2>
+            {mode === "filename" && (
+              <p className="text-xs text-gray-500 mt-0.5">
+                IDs extracted from filenames — suffixes like <span className="font-mono">_1</span>, <span className="font-mono">_2</span> are stripped automatically.
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl px-4 py-3 text-center">
               <p className="text-2xl font-bold text-[#2AB4A6]">{matchedGroups.length}</p>
@@ -359,55 +360,61 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
               <p className={`text-2xl font-bold ${unmatchedGroups.length > 0 ? "text-yellow-400" : "text-gray-600"}`}>
                 {unmatchedGroups.length}
               </p>
-              <p className="text-xs text-gray-500 mt-0.5">Unmatched barcodes</p>
+              <p className="text-xs text-gray-500 mt-0.5">Unmatched</p>
             </div>
           </div>
 
           {unmatchedGroups.length > 0 && (
             <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg px-3 py-2">
               <p className="text-xs text-yellow-400 font-medium mb-1">
-                {mode === "filename" ? "Unique IDs not matched to any lot in this auction:" : "Barcodes detected but not found in this auction:"}
+                {mode === "filename"
+                  ? "IDs not matched to any lot in this auction:"
+                  : "Barcodes detected but not found in this auction:"}
               </p>
-              <p className="text-xs text-yellow-600">{unmatchedGroups.map(g => g.lotNumber).join(", ")}</p>
+              <p className="text-xs text-yellow-600 font-mono">{unmatchedGroups.map(g => g.lotNumber).join(", ")}</p>
             </div>
           )}
           {emptyGroups.length > 0 && (
             <div className="bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-2">
-              <p className="text-xs text-gray-500">Lots with no photos after their barcode: {emptyGroups.map(g => g.lotNumber).join(", ")}</p>
+              <p className="text-xs text-gray-500">
+                Lots matched but no photos found: <span className="font-mono">{emptyGroups.map(g => g.lotNumber).join(", ")}</span>
+              </p>
             </div>
           )}
 
-          <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-[#141416] border-b border-gray-700 sticky top-0">
-                <tr>
-                  <th className="text-left px-4 py-2 text-gray-500 font-medium">Lot</th>
-                  <th className="text-left px-4 py-2 text-gray-500 font-medium">Photos</th>
-                  <th className="text-left px-4 py-2 text-gray-500 font-medium">Files</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matchedGroups.map(g => (
-                  <tr key={g.lotNumber} className="border-b border-gray-800 last:border-0">
-                    <td className="px-4 py-2 font-mono text-[#2AB4A6]">{g.lotNumber}</td>
-                    <td className="px-4 py-2 text-gray-300">{g.photos.length}</td>
-                    <td className="px-4 py-2 text-gray-600 truncate max-w-[200px]">{g.photos.map(p => p.name).join(", ")}</td>
+          {matchedGroups.length > 0 && (
+            <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-[#141416] border-b border-gray-700 sticky top-0">
+                  <tr>
+                    <th className="text-left px-4 py-2 text-gray-500 font-medium">Barcode / ID</th>
+                    <th className="text-left px-4 py-2 text-gray-500 font-medium">Photos</th>
+                    <th className="text-left px-4 py-2 text-gray-500 font-medium">Files</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {matchedGroups.map(g => (
+                    <tr key={g.lotNumber} className="border-b border-gray-800 last:border-0">
+                      <td className="px-4 py-2 font-mono text-[#2AB4A6]">{g.lotNumber}</td>
+                      <td className="px-4 py-2 text-gray-300">{g.photos.length}</td>
+                      <td className="px-4 py-2 text-gray-600 truncate max-w-[200px]">{g.photos.map(p => p.name).join(", ")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {error && <p className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
 
           <div className="flex gap-3">
-            <button onClick={() => { setGroups([]); setPhase("idle") }}
+            <button onClick={reset}
               className="px-5 py-2.5 rounded-lg border border-gray-700 text-gray-400 text-sm hover:border-gray-500 transition-colors">
               ← Back
             </button>
             <button onClick={handleUpload} disabled={matchedGroups.length === 0}
               className="flex-1 py-2.5 bg-[#2AB4A6] hover:bg-[#24a090] disabled:opacity-50 text-black font-semibold rounded-lg text-sm transition-colors">
-              Upload {totalPhotos} photos to {matchedGroups.length} lots
+              Upload {totalPhotos} photo{totalPhotos !== 1 ? "s" : ""} to {matchedGroups.length} lot{matchedGroups.length !== 1 ? "s" : ""}
             </button>
           </div>
         </div>
@@ -431,16 +438,18 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
           <div className="bg-[#2AB4A6]/10 border border-[#2AB4A6]/30 rounded-xl px-6 py-8 flex flex-col items-center gap-2">
             <span className="text-4xl">✓</span>
             <p className="text-sm font-semibold text-[#2AB4A6]">Upload complete</p>
-            <p className="text-xs text-gray-400">{uploadProgress.done} photos uploaded to {matchedGroups.length} lots</p>
+            <p className="text-xs text-gray-400">
+              {uploadProgress.done} photo{uploadProgress.done !== 1 ? "s" : ""} uploaded to {matchedGroups.length} lot{matchedGroups.length !== 1 ? "s" : ""}
+            </p>
           </div>
           {skipped.length > 0 && (
             <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg px-3 py-2">
-              <p className="text-xs text-yellow-400">{skipped.length} photos failed: {skipped.join(", ")}</p>
+              <p className="text-xs text-yellow-400">{skipped.length} photo{skipped.length !== 1 ? "s" : ""} failed: {skipped.join(", ")}</p>
             </div>
           )}
-          <button onClick={() => { setGroups([]); setSkipped([]); setPhase("idle") }}
+          <button onClick={reset}
             className="w-full py-2.5 rounded-lg border border-gray-700 text-gray-400 text-sm hover:border-gray-500 transition-colors">
-            Upload another folder
+            Upload more photos
           </button>
         </div>
       )}
