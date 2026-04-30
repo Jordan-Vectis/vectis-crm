@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { getBCToken, bcPage } from "@/lib/bc"
 import { prisma } from "@/lib/prisma"
@@ -27,13 +27,18 @@ function parseFloat_(v: any): number | null {
 
 // POST /api/warehouse/sync/receipt-lines
 // Incrementally syncs Receipt_Lines_Excel into WarehouseItem.
-// On first run fetches everything. Subsequent runs filter by EVA_SystemModifiedAt.
-export async function POST() {
+// Accepts optional body: { maxPages?: number } to cap pages per call (default 50).
+// Returns { more: true } when there are additional pages to fetch — caller should
+// keep calling until more === false to handle very large initial syncs.
+export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
   const token = await getBCToken()
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
+
+  let maxPages = 50
+  try { const body = await req.json(); if (body?.maxPages) maxPages = body.maxPages } catch {}
 
   // Find last successful sync to determine start point
   const lastSync = await prisma.warehouseSyncLog.findFirst({
@@ -52,9 +57,11 @@ export async function POST() {
     const BATCH = 500
     let page  = 0
     let done  = false
+    let more  = false
     let newestTimestamp = lastTimestamp
 
     while (!done) {
+      if (page >= maxPages) { more = true; break }
       const params: Record<string, any> = {
         $top:     BATCH,
         $skip:    page * BATCH,
@@ -160,7 +167,7 @@ export async function POST() {
       },
     })
 
-    return NextResponse.json({ ok: true, itemsProcessed, incremental: !!lastTimestamp })
+    return NextResponse.json({ ok: true, itemsProcessed, incremental: !!lastTimestamp, more })
   } catch (e: any) {
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },
