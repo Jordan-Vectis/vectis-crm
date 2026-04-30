@@ -61,7 +61,7 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
       const uniqueId  = nameNoExt.split("_")[0].trim().toLowerCase()
       if (!uniqueId) continue
       if (!map[uniqueId]) {
-        const lotId = uniqueIdMap.get(uniqueId) ?? null
+        const lotId = uniqueIdMap.get(uniqueId) ?? lotMap.get(uniqueId) ?? null
         map[uniqueId] = { lotId, photos: [] }
       }
       map[uniqueId].photos.push(file)

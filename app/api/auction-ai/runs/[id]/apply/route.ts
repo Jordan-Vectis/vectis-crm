@@ -36,7 +36,7 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
     // Find the matching catalogue auction by code
     const auction = await prisma.catalogueAuction.findUnique({
       where: { code: run.code },
-      select: { id: true, lots: { select: { lotNumber: true } } },
+      select: { id: true, lots: { select: { lotNumber: true, receiptUniqueId: true } } },
     })
     if (!auction) {
       return NextResponse.json(
@@ -45,28 +45,37 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
       )
     }
 
-    // Track existing lot numbers so we don't create duplicates
-    const existingLotNumbers = new Set(auction.lots.map(l => l.lotNumber))
+    // Track existing identifiers so we don't create duplicates
+    const existingLotNumbers  = new Set(auction.lots.map(l => l.lotNumber))
+    const existingUniqueIds   = new Set(auction.lots.filter(l => l.receiptUniqueId).map(l => l.receiptUniqueId!))
 
     const skipped: string[] = []
     let created = 0
 
     await Promise.all(
       run.lots.map(async l => {
-        if (existingLotNumbers.has(l.lot)) {
+        const isUniqueIdFormat = /^[A-Za-z]\d{4,7}-\d{1,6}$/.test(l.lot.trim())
+        const alreadyExists = isUniqueIdFormat
+          ? existingUniqueIds.has(l.lot)
+          : existingLotNumbers.has(l.lot)
+        if (alreadyExists) {
           skipped.push(l.lot)
           return
         }
         const { low, high } = parseEstimate(l.estimate)
+        // Detect receipt unique ID format e.g. R000016-413 — store in receiptUniqueId,
+        // not lotNumber (lot numbers are catalogue sequence numbers, assigned separately)
+        const isUniqueId = /^[A-Za-z]\d{4,7}-\d{1,6}$/.test(l.lot.trim())
         await prisma.catalogueLot.create({
           data: {
-            auctionId:    auction.id,
-            lotNumber:    l.lot,
-            title:        titleFromDescription(l.description),
-            description:  l.description,
-            estimateLow:  low,
-            estimateHigh: high,
-            aiUpgraded:   true,
+            auctionId:       auction.id,
+            lotNumber:       isUniqueId ? "" : l.lot,
+            receiptUniqueId: isUniqueId ? l.lot : null,
+            title:           titleFromDescription(l.description),
+            description:     l.description,
+            estimateLow:     low,
+            estimateHigh:    high,
+            aiUpgraded:      true,
           },
         })
         created++
