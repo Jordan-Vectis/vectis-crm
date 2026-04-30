@@ -30,6 +30,33 @@ type ChecklistAuction = { code: string; name: string; date: string | null; lots:
 
 type Report = "warehouse" | "location" | "heatmap" | "sale-checklist" | "search"
 
+// ─── Session cache ────────────────────────────────────────────────────────────
+// Stores loaded data in sessionStorage so navigating away and back skips the fetch.
+// TTL: 30 minutes. Clear with clearSessionCache() or the REFRESH ALL DATA button.
+
+const CACHE_TTL_MS = 30 * 60 * 1000
+
+function readCache<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return null
+    const { data, ts } = JSON.parse(raw)
+    if (Date.now() - ts > CACHE_TTL_MS) { sessionStorage.removeItem(key); return null }
+    return data as T
+  } catch { return null }
+}
+
+function writeCache(key: string, data: unknown) {
+  try { sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })) } catch { /* storage full — skip */ }
+}
+
+function clearSessionCache() {
+  try {
+    sessionStorage.removeItem("bc_heatmap")
+    sessionStorage.removeItem("bc_sale_checklist")
+  } catch { /* ignore */ }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function exportXlsx(rows: object[], filename: string) {
@@ -249,14 +276,20 @@ export default function BcWarehousePage() {
   const [heatStage, setHeatStage]       = useState("")
   const [heatProgress, setHeatProgress] = useState<{ done: number; total: number; label: string; found?: number; page?: number; scanned?: number } | null>(null)
 
-  const loadHeatmap = useCallback(async () => {
+  const loadHeatmap = useCallback(async (bustCache = false) => {
+    // Check session cache first (skip on explicit reload)
+    if (!bustCache) {
+      const cached = readCache<HeatData>("bc_heatmap")
+      if (cached) { setHeatData(cached); return }
+    }
+
     setHeatLoading(true); setHeatError(null); setHeatProgress(null); setHeatStage("Connecting…")
     try {
       await readStream(
         "/api/bc/warehouse-heatmap",
         label => { setHeatStage(label); setHeatProgress(null) },
         (done, total, label, raw) => setHeatProgress({ done, total, label, found: raw?.found, page: raw?.page, scanned: raw?.scanned }),
-        data => setHeatData(data),
+        data => { setHeatData(data); writeCache("bc_heatmap", data) },
         msg  => setHeatError(msg),
       )
     } catch (e: any) {
@@ -302,7 +335,9 @@ export default function BcWarehousePage() {
           </div>
           <button
             onClick={async () => {
+              clearSessionCache()
               await fetch("/api/bc/cache-bust", { method: "POST" }).catch(() => {})
+              setHeatData(null); setHeatError(null)
               setRefreshKey(k => k + 1)
             }}
             className="w-full bg-red-700 hover:bg-red-600 text-white text-xs font-bold py-1.5 px-2 rounded transition-colors"
@@ -443,7 +478,15 @@ function SaleChecklistTab() {
   const [openAuctions, setOpenAuctions] = useState<Set<string>>(new Set())
   const [filter, setFilter]     = useState<"all" | "located" | "missing">("all")
 
-  async function load() {
+  async function load(bustCache = false) {
+    if (!bustCache) {
+      const cached = readCache<ChecklistAuction[]>("bc_sale_checklist")
+      if (cached) {
+        setData(cached)
+        setOpenAuctions(new Set(cached.map(a => a.code)))
+        return
+      }
+    }
     setLoading(true); setError(null); setProgress(null); setStageLabel("Connecting…")
     try {
       await readStream(
@@ -454,6 +497,7 @@ function SaleChecklistTab() {
           const auctions: ChecklistAuction[] = d.auctions ?? d
           setData(auctions)
           setOpenAuctions(new Set(auctions.map(a => a.code)))
+          writeCache("bc_sale_checklist", auctions)
         },
         msg => setError(msg),
       )
@@ -478,7 +522,7 @@ function SaleChecklistTab() {
 
       {loading && <ProgressBar done={progress?.done ?? 0} total={progress?.total ?? 0} label={stageLabel} />}
       {error && <ErrorCard message={error} onRetry={load} />}
-      {!loading && data && <LoadBtn loading={loading} onClick={load} />}
+      {!loading && data && <LoadBtn loading={loading} onClick={() => load(true)} />}
 
       {data && (
         <>
@@ -874,7 +918,7 @@ function HeatmapLoadingCard({ stage, progress }: {
 function WarehouseHeatmapTab({ data, loading, error, stageLabel, progress, onLoad }: {
   data: HeatData | null; loading: boolean; error: string | null
   stageLabel: string; progress: { done: number; total: number; label: string; found?: number; page?: number; scanned?: number } | null
-  onLoad: () => void
+  onLoad: (bust?: boolean) => void
 }) {
   const [selected, setSelected] = useState<HeatLocation | null>(null)
 
@@ -903,7 +947,7 @@ function WarehouseHeatmapTab({ data, loading, error, stageLabel, progress, onLoa
       <p className="text-gray-500 text-sm mb-5">Tote occupancy per BC location — current position based on BC location change log.</p>
 
       {loading && <HeatmapLoadingCard stage={stageLabel} progress={progress} />}
-      {!loading && data && <LoadBtn loading={loading} onClick={onLoad} />}
+      {!loading && data && <LoadBtn loading={loading} onClick={() => onLoad(true)} />}
 
       {data && <>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
