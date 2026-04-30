@@ -19,9 +19,15 @@ export async function GET() {
   const writer = stream.writable.getWriter()
 
   ;(async () => {
+    let closed = false
+    async function safeWrite(obj: object) {
+      if (closed) return
+      try { await writer.write(enc(obj)) } catch { closed = true }
+    }
+
     try {
       // ── Stage 1: Fetch all auction receipt lines from BC ─────────────────────
-      await writer.write(enc({ type: "stage", label: "Fetching auction lines from BC…" }))
+      await safeWrite({ type: "stage", label: "Fetching auction lines from BC…" })
 
       const lines = await bcFetchAllWithProgress(
         token,
@@ -30,7 +36,7 @@ export async function GET() {
         undefined,
         500,
         (done, total) => {
-          writer.write(enc({ type: "progress", done, total, label: "Fetching auction lines…", found: done, scanned: done }))
+          safeWrite({ type: "progress", done, total, label: "Fetching auction lines…", found: done, scanned: done })
         },
       )
 
@@ -77,7 +83,8 @@ export async function GET() {
         }
       } else {
         // Look up location via ChangeLogEntries — same query as Location History tab
-        await writer.write(enc({ type: "stage", label: "Fetching BC item locations…" }))
+        if (closed) return
+      await safeWrite({ type: "stage", label: "Fetching BC item locations…" })
 
         const uniqueBarcodes = [...new Set(barcodes)]
         const PARALLEL = 20
@@ -97,7 +104,7 @@ export async function GET() {
             } catch { /* skip */ }
           }))
           const locatedSoFar = locationMap.size
-          await writer.write(enc({
+          await safeWrite({
             type:    "progress",
             done:    Math.min(i + PARALLEL, uniqueBarcodes.length),
             total:   uniqueBarcodes.length,
@@ -133,11 +140,11 @@ export async function GET() {
       const result = [...auctionMap.values()]
         .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
 
-      await writer.write(enc({ type: "result", data: { auctions: result, fields } }))
+      await safeWrite({ type: "result", data: { auctions: result, fields } })
     } catch (err: any) {
-      await writer.write(enc({ type: "error", message: err.message ?? "Unknown error" }))
+      await safeWrite({ type: "error", message: err.message ?? "Unknown error" })
     } finally {
-      await writer.close()
+      try { await writer.close() } catch { /* already closed */ }
     }
   })()
 

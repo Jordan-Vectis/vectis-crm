@@ -63,32 +63,42 @@ export async function GET() {
   const writer = stream.writable.getWriter()
 
   ;(async () => {
+    let closed = false
+    async function safeWrite(obj: object) {
+      if (closed) return
+      try { await writer.write(enc(obj)) } catch { closed = true }
+    }
+
     try {
       // ── Stage 1: Read tote locations from change log ──────────────────────────
       // Field_Caption eq 'Location', Primary_Key_Field_1_Value = tote ID
       // Ordered newest-first — exactly how Location History works, just in bulk
-      await writer.write(enc({ type: "stage", label: "Reading tote locations from BC…", stage: 1, stages: 2 }))
+      await safeWrite({ type: "stage", label: "Reading tote locations from BC…", stage: 1, stages: 2 })
 
       const toteLocations = await readChangeLog(
         token, "Location", "Primary_Key_Field_1_Value",
-        (found, page, scanned) => writer.write(enc({
+        (found, page, scanned) => safeWrite({
           type: "progress", done: page, total: 100,
           label: `Page ${page} — ${found.toLocaleString()} totes found (${scanned.toLocaleString()} entries scanned)`,
           found, page, scanned,
-        })),
+        }),
       )
 
+      if (closed) return
+
       // ── Stage 2: Read barcode locations from change log ───────────────────────
-      await writer.write(enc({ type: "stage", label: "Reading barcode locations from BC…", stage: 2, stages: 2 }))
+      await safeWrite({ type: "stage", label: "Reading barcode locations from BC…", stage: 2, stages: 2 })
 
       const barcodeLocations = await readChangeLog(
         token, "Article Location Code", "Primary_Key_Field_2_Value",
-        (found, page, scanned) => writer.write(enc({
+        (found, page, scanned) => safeWrite({
           type: "progress", done: page, total: 100,
           label: `Page ${page} — ${found.toLocaleString()} barcodes found (${scanned.toLocaleString()} entries scanned)`,
           found, page, scanned,
-        })),
+        }),
       )
+
+      if (closed) return
 
       // ── Build result ─────────────────────────────────────────────────────────
       type Item = { id: string; type: "tote" | "barcode" }
@@ -118,7 +128,7 @@ export async function GET() {
         })),
       ].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: "base" }))
 
-      await writer.write(enc({
+      await safeWrite({
         type: "result",
         data: {
           locations,
@@ -138,9 +148,9 @@ export async function GET() {
         },
       }))
     } catch (err: any) {
-      await writer.write(enc({ type: "error", message: err.message ?? "Unknown error" }))
+      await safeWrite({ type: "error", message: err.message ?? "Unknown error" })
     } finally {
-      await writer.close()
+      try { await writer.close() } catch { /* already closed */ }
     }
   })()
 
