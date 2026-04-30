@@ -29,10 +29,11 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
   const [error, setError]         = useState<string | null>(null)
   const [skipped, setSkipped]     = useState<string[]>([])
 
-  // Lookup: barcode → lot id (falls back to lotNumber for older lots pre-migration)
+  // Lookup: barcode / lotNumber / receiptUniqueId → lot id
   const lotMap = new Map([
     ...lots.map(l => [l.lotNumber.toLowerCase().trim(), l.id] as [string, string]),
     ...lots.filter(l => l.barcode).map(l => [l.barcode!.toLowerCase().trim(), l.id] as [string, string]),
+    ...lots.filter(l => l.receiptUniqueId).map(l => [l.receiptUniqueId!.toLowerCase().trim(), l.id] as [string, string]),
   ])
 
   // Lookup: receiptUniqueId → lot id (e.g. "R000016-413" → lot.id)
@@ -121,10 +122,12 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
       })
     }
 
-    // Only accept Vectis-format barcodes: one letter followed by 6 or 7 digits
-    // e.g. F066001, F0660012 — rejects product EANs, ISBNs, etc.
+    // Accept both Vectis barcode formats:
+    //   F066001 / F0660012  — tote/item barcodes (letter + 6-7 digits)
+    //   R000016-413         — receipt unique IDs (letter + digits + dash + digits)
+    // Rejects product EANs, ISBNs, etc.
     function isVectisBarcode(s: string): boolean {
-      return /^[A-Za-z]\d{6,7}$/.test(s.trim())
+      return /^[A-Za-z]\d{6,7}$/.test(s.trim()) || /^[A-Za-z]\d{4,7}-\d{1,6}$/.test(s.trim())
     }
 
     async function decodeBarcode(file: File): Promise<string | null> {
