@@ -1054,7 +1054,7 @@ function SavedRunsTab() {
   const [loading,       setLoading]       = useState(false)
   const [deleting,      setDeleting]      = useState<string | null>(null)
   const [applying,      setApplying]      = useState(false)
-  const [applyResult,   setApplyResult]   = useState<{ applied: number; notFound: string[]; auctionId: string } | null>(null)
+  const [applyResult,   setApplyResult]   = useState<{ created: number; skipped: string[]; auctionId: string } | null>(null)
   const [applyError,    setApplyError]    = useState<string | null>(null)
 
   useEffect(() => { loadRuns() }, [])
@@ -1099,7 +1099,7 @@ function SavedRunsTab() {
   }
 
   async function applyToAuction(runId: string) {
-    if (!confirm("This will overwrite the description and estimate for every matched lot in the catalogue. Continue?")) return
+    if (!confirm("This will create new catalogue lots from the AI run results. Lots that already exist in the auction will be skipped. Continue?")) return
     setApplying(true)
     setApplyResult(null)
     setApplyError(null)
@@ -1187,9 +1187,9 @@ function SavedRunsTab() {
 
                     {applyResult && expanded === run.id && (
                       <div className="px-4 py-2 bg-green-950 border-t border-green-800 text-xs text-green-300 flex flex-wrap items-center gap-3">
-                        <span>✓ Applied {applyResult.applied} lots</span>
-                        {applyResult.notFound.length > 0 && (
-                          <span className="text-yellow-400">⚠ {applyResult.notFound.length} not matched: {applyResult.notFound.join(", ")}</span>
+                        <span>✓ Created {applyResult.created} lots</span>
+                        {applyResult.skipped.length > 0 && (
+                          <span className="text-yellow-400">⚠ {applyResult.skipped.length} already existed (skipped): {applyResult.skipped.join(", ")}</span>
                         )}
                         <a href={`/tools/cataloguing/auctions/${applyResult.auctionId}`} target="_blank" rel="noreferrer"
                           className="ml-auto text-blue-400 hover:text-blue-300 underline">
