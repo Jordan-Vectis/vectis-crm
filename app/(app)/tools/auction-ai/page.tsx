@@ -1075,9 +1075,12 @@ function SavedRunsTab() {
     setApplyResult(null)
     setApplyError(null)
     setLoadingDetail(true)
-    const r = await fetch(`/api/auction-ai/runs/${run.id}`)
-    setDetail(await r.json())
-    setLoadingDetail(false)
+    try {
+      const r = await fetch(`/api/auction-ai/runs/${run.id}`)
+      setDetail(await r.json())
+    } catch { /* swallow — spinner will just stop */ } finally {
+      setLoadingDetail(false)
+    }
   }
 
   async function deleteRun(id: string) {
