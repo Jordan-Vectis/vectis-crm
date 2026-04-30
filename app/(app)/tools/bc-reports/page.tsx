@@ -1684,21 +1684,45 @@ function parseGrid(locations: HeatLocation[]) {
 
 function WarehouseHeatmapTab() {
   const [data, setData]         = useState<HeatData | null>(null)
-  const [loading, setLoading]   = useState(true)
+  const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState<string | null>(null)
   const [selected, setSelected] = useState<HeatLocation | null>(null)
+  const [stageLabel, setStageLabel] = useState("")
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
-  useEffect(() => {
-    fetch("/api/bc/warehouse-heatmap")
-      .then(r => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error ?? e.message ?? "Failed")))
-      .then(setData)
-      .catch((e: any) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [])
+  async function load() {
+    setLoading(true); setError(null); setProgress(null); setStageLabel("Connecting…")
+    try {
+      const res = await fetch("/api/bc/warehouse-heatmap")
+      if (!res.body) throw new Error("No response body")
+      const reader = res.body.getReader()
+      const dec = new TextDecoder()
+      let buf = ""
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split("\n")
+        buf = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "stage")    { setStageLabel(msg.label); setProgress(null) }
+          if (msg.type === "progress") { setStageLabel(msg.label); setProgress({ done: msg.done, total: msg.total }) }
+          if (msg.type === "result")   setData(msg.data)
+          if (msg.type === "error")    setError(msg.message)
+        }
+      }
+    } catch (e: any) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  if (loading) return <p className="text-gray-500 text-sm py-10 text-center">Loading BC warehouse data… this may take a moment</p>
-  if (error)   return <p className="text-red-400 text-sm py-10 text-center">{error}</p>
-  if (!data)   return null
+  useEffect(() => { load() }, [])
+
+  if (!loading && !data) return null
 
   const max      = Math.max(...data.locations.map(l => l.total), 1)
   const gridData = parseGrid(data.locations)
@@ -1714,12 +1738,23 @@ function WarehouseHeatmapTab() {
     )
   }
 
+  if (error) return (
+    <div>
+      <p className="text-red-400 text-sm mb-3">{error}</p>
+      <button onClick={load} className="px-4 py-2 bg-[#0078D4] hover:bg-blue-500 text-white text-sm rounded">↺ Retry</button>
+    </div>
+  )
+
   return (
     <div>
       <h2 className="text-lg font-semibold text-white mb-1">Warehouse Map</h2>
       <p className="text-gray-500 text-sm mb-5">
         Tote occupancy per BC location — current position based on BC location change log.
       </p>
+
+      {loading && progress && <ProgressBar done={progress.done} total={progress.total} label={stageLabel} />}
+      {loading && !progress && <p className="text-xs text-gray-500 mb-4">{stageLabel}</p>}
+      {!loading && data && <LoadBtn loading={loading} onClick={load} />}
 
       {/* Headline stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
