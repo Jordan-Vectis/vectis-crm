@@ -1110,7 +1110,7 @@ function CopierTab() {
           {row && (
             <div className="bg-[#141416] border border-gray-800 rounded-lg p-5 mb-4">
               {row.folder && <p className="text-xs text-gray-600 uppercase tracking-wider mb-2">{row.folder}</p>}
-              <p className="text-gray-200 text-sm leading-relaxed">{row.description}</p>
+              <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
               {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
             </div>
           )}
