@@ -541,3 +541,75 @@ model ResearchLog {
   @@index([userId])
   @@index([savedAt])
 }
+
+// ─── Warehouse Sync ────────────────────────────────────────────────────────────
+
+model WarehouseItem {
+  id           String  @id @default(cuid())
+  uniqueId     String  @unique  // EVA_UniqueID e.g. R000006-1
+
+  // Identity
+  receiptNo    String?           // EVA_ReceiptNo
+  articleNo    String?           // EVA_ArticleNo
+  stockNo      String?           // EVA_StockNo
+  barcode      String?           // PTE_InternalBarcode
+
+  // Description
+  description  String?           // EVA_ShortDescription
+  artist       String?           // EVA_Artist
+  category     String?           // EVA_ArticleCategoryCode
+  subcategory  String?           // EVA_ArticleSubcategoryCode
+
+  // Vendor
+  vendorNo     String?           // EVA_VendorNo
+  vendorName   String?           // EVA_VendorName
+  vendorEmail  String?           // EVA_VendorEmail (auction lines)
+
+  // Sale / Auction
+  auctionCode  String?           // EVA_SalesAllocation
+  auctionDate  String?           // EVA_AuctionDate
+  lotNo        String?           // EVA_LotNo
+  currentLotNo String?           // EVA_CurrentLotNo (auction lines)
+  lowEstimate  Float?            // EVA_LowEstimate
+  highEstimate Float?            // EVA_HighEstimate
+  hammerPrice  Float?            // EVA_HammerPrice
+  reservePrice Float?            // EVA_ReservePrice
+
+  // Physical location
+  location     String?           // EVA_ArticleLocationCode
+  binCode      String?           // EVA_ArticleBinCode
+  toteNo       String?           // EVA_ArticleToteNo
+  locationScannedAt DateTime?    // from ChangeLogEntries — when location was last scanned
+
+  // Status
+  catalogued        Boolean?     // EVA_Catalogued
+  cataloguedBy      String?      // EVA_CataloguedBy
+  cataloguedAt      DateTime?    // EVA_CataloguedDateTime
+  noOfPhotos        Int?         // EVA_NoOfPhotos
+  goodsReceived     Boolean?     // EVA_GoodsReceived
+  goodsReceivedDate DateTime?    // EVA_GoodsReceivedDate
+  collected         Boolean?     // EVA_Collected
+  withdrawLot       Boolean?     // EVA_WithdrawLot (auction lines)
+
+  // Sync metadata
+  bcModifiedAt DateTime?         // EVA_SystemModifiedAt — used for incremental sync
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([auctionCode])
+  @@index([location])
+  @@index([toteNo])
+  @@index([barcode])
+}
+
+model WarehouseSyncLog {
+  id             String    @id @default(cuid())
+  source         String    // "receipt_lines" | "auction_lines" | "changelog"
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  status         String    @default("running") // "running" | "complete" | "failed"
+  itemsProcessed Int       @default(0)
+  lastTimestamp  String?   // ISO string — resume point for incremental syncs
+  error          String?
+}
