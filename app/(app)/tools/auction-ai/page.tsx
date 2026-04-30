@@ -1046,12 +1046,16 @@ type RunLot     = { id: string; lot: string; description: string; estimate: stri
 type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: RunLot[] }
 
 function SavedRunsTab() {
-  const [runs,     setRuns]     = useState<RunSummary[]>([])
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const [detail,   setDetail]   = useState<RunDetail | null>(null)
-  const [search,   setSearch]   = useState("")
-  const [loading,  setLoading]  = useState(false)
-  const [deleting, setDeleting] = useState<string | null>(null)
+  const [runs,          setRuns]          = useState<RunSummary[]>([])
+  const [expanded,      setExpanded]      = useState<string | null>(null)
+  const [detail,        setDetail]        = useState<RunDetail | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
+  const [search,        setSearch]        = useState("")
+  const [loading,       setLoading]       = useState(false)
+  const [deleting,      setDeleting]      = useState<string | null>(null)
+  const [applying,      setApplying]      = useState(false)
+  const [applyResult,   setApplyResult]   = useState<{ applied: number; notFound: string[]; auctionId: string } | null>(null)
+  const [applyError,    setApplyError]    = useState<string | null>(null)
 
   useEffect(() => { loadRuns() }, [])
 
@@ -1065,10 +1069,15 @@ function SavedRunsTab() {
   }
 
   async function expand(run: RunSummary) {
-    if (expanded === run.id) { setExpanded(null); setDetail(null); return }
+    if (expanded === run.id) { setExpanded(null); setDetail(null); setApplyResult(null); setApplyError(null); return }
     setExpanded(run.id)
+    setDetail(null)
+    setApplyResult(null)
+    setApplyError(null)
+    setLoadingDetail(true)
     const r = await fetch(`/api/auction-ai/runs/${run.id}`)
     setDetail(await r.json())
+    setLoadingDetail(false)
   }
 
   async function deleteRun(id: string) {
@@ -1076,7 +1085,7 @@ function SavedRunsTab() {
     setDeleting(id)
     await fetch("/api/auction-ai/runs", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
     setRuns(r => r.filter(x => x.id !== id))
-    if (expanded === id) { setExpanded(null); setDetail(null) }
+    if (expanded === id) { setExpanded(null); setDetail(null); setApplyResult(null); setApplyError(null) }
     setDeleting(null)
   }
 
@@ -1084,6 +1093,23 @@ function SavedRunsTab() {
     await fetch(`/api/auction-ai/runs/${lotId}`, { method: "DELETE" })
     setDetail(d => d ? { ...d, lots: d.lots.filter(l => l.id !== lotId) } : d)
     setRuns(r => r.map(x => x.id === detail?.id ? { ...x, _count: { lots: x._count.lots - 1 } } : x))
+  }
+
+  async function applyToAuction(runId: string) {
+    if (!confirm("This will overwrite the description and estimate for every matched lot in the catalogue. Continue?")) return
+    setApplying(true)
+    setApplyResult(null)
+    setApplyError(null)
+    try {
+      const r = await fetch(`/api/auction-ai/runs/${runId}/apply`, { method: "POST" })
+      const j = await r.json()
+      if (!r.ok) { setApplyError(j.error ?? "Failed to apply"); return }
+      setApplyResult(j)
+    } catch (e: any) {
+      setApplyError(e.message ?? "Network error")
+    } finally {
+      setApplying(false)
+    }
   }
 
   function exportRun(run: RunDetail) {
@@ -1131,26 +1157,63 @@ function SavedRunsTab() {
               <span className="text-gray-600 text-xs">{expanded === run.id ? "▲" : "▼"}</span>
             </div>
 
-            {expanded === run.id && detail?.id === run.id && (
+            {expanded === run.id && (
               <div className="border-t border-gray-700">
-                <div className="flex items-center justify-between px-4 py-2 bg-[#1C1C1E]">
-                  <span className="text-xs text-gray-500">{detail.lots.length} lots</span>
-                  <button onClick={() => exportRun(detail)}
-                    className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] text-black font-semibold rounded transition-colors">
-                    ⬇ Export to Excel
-                  </button>
-                </div>
-                <div className="max-h-96 overflow-y-auto">
-                  {detail.lots.map(l => (
-                    <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 border-t border-gray-800 hover:bg-[#2C2C2E] group">
-                      <span className="text-xs font-mono text-[#C8A96E] flex-shrink-0 w-20">{l.lot}</span>
-                      <span className="text-xs text-gray-300 flex-1 line-clamp-2">{l.description}</span>
-                      <span className="text-xs text-gray-500 flex-shrink-0 w-20 text-right">{l.estimate}</span>
-                      <button onClick={() => deleteLot(l.id)}
-                        className="text-xs text-red-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">✕</button>
+                {loadingDetail && (
+                  <div className="px-4 py-4 text-xs text-gray-500 flex items-center gap-2">
+                    <span className="animate-spin inline-block w-3 h-3 border border-gray-500 border-t-transparent rounded-full" />
+                    Loading lots…
+                  </div>
+                )}
+
+                {!loadingDetail && detail?.id === run.id && (
+                  <>
+                    <div className="flex items-center justify-between gap-2 px-4 py-2 bg-[#1C1C1E] flex-wrap">
+                      <span className="text-xs text-gray-500">{detail.lots.length} lots</span>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => exportRun(detail)}
+                          className="text-xs px-3 py-1 bg-[#2C2C2E] hover:bg-[#3A3A3C] border border-gray-600 text-gray-300 rounded transition-colors">
+                          ⬇ Export Excel
+                        </button>
+                        <button onClick={() => applyToAuction(run.id)} disabled={applying}
+                          className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-50 text-black font-semibold rounded transition-colors">
+                          {applying ? "Applying…" : "✓ Apply to Auction"}
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
+
+                    {applyResult && expanded === run.id && (
+                      <div className="px-4 py-2 bg-green-950 border-t border-green-800 text-xs text-green-300 flex flex-wrap items-center gap-3">
+                        <span>✓ Applied {applyResult.applied} lots</span>
+                        {applyResult.notFound.length > 0 && (
+                          <span className="text-yellow-400">⚠ {applyResult.notFound.length} not matched: {applyResult.notFound.join(", ")}</span>
+                        )}
+                        <a href={`/tools/cataloguing/auctions/${applyResult.auctionId}`} target="_blank" rel="noreferrer"
+                          className="ml-auto text-blue-400 hover:text-blue-300 underline">
+                          Open in Cataloguing →
+                        </a>
+                      </div>
+                    )}
+
+                    {applyError && expanded === run.id && (
+                      <div className="px-4 py-2 bg-red-950 border-t border-red-800 text-xs text-red-300">
+                        ✕ {applyError}
+                      </div>
+                    )}
+
+                    <div className="max-h-96 overflow-y-auto">
+                      {detail.lots.map(l => (
+                        <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 border-t border-gray-800 hover:bg-[#2C2C2E] group">
+                          <span className="text-xs font-mono text-[#C8A96E] flex-shrink-0 w-20">{l.lot}</span>
+                          <span className="text-xs text-gray-300 flex-1 line-clamp-2">{l.description}</span>
+                          <span className="text-xs text-gray-500 flex-shrink-0 w-20 text-right">{l.estimate}</span>
+                          <button onClick={() => deleteLot(l.id)}
+                            className="text-xs text-red-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
