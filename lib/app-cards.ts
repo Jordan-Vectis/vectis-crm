@@ -101,6 +101,18 @@ export const APP_CARD_DEFS: AppCardDef[] = [
     appKey:             "WAREHOUSE",
   },
   {
+    key:                "BC_API_VIEWER",
+    href:               "/tools/bc-api-viewer",
+    defaultLabel:       "BC API Viewer",
+    defaultDescription: "Inspect field names and sample data from any Business Central endpoint.",
+    icon:               "🔍",
+    border:             "border-indigo-500",
+    iconBg:             "text-indigo-400",
+    btnBg:              "bg-indigo-600 hover:bg-indigo-500",
+    glow:               "hover:shadow-indigo-900/40",
+    appKey:             "BC_WAREHOUSE",
+  },
+  {
     key:                "ADMIN",
     href:               "/admin",
     defaultLabel:       "Admin",

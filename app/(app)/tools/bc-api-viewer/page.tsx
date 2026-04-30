@@ -6,6 +6,7 @@ import { useState } from "react"
 
 const KNOWN_ENDPOINTS = [
   { label: "Auction Receipt Lines",  value: "Auction_Receipt_Lines_Excel" },
+  { label: "Receipt Lines",          value: "Receipt_Lines_Excel" },
   { label: "Receipt Totes",          value: "Receipt_Totes_Excel" },
   { label: "Change Log Entries",     value: "ChangeLogEntries" },
   { label: "Shipment Requests",      value: "ShipmentRequestAPI" },
