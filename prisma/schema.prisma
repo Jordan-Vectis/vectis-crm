@@ -529,3 +529,15 @@ model HeroSlide {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model ResearchLog {
+  id         String   @id @default(cuid())
+  userId     String
+  userName   String
+  durationMs Int      // active milliseconds spent on the Research page
+  startedAt  DateTime // when the session began
+  savedAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([savedAt])
+}

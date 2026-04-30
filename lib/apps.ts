@@ -45,6 +45,7 @@ export const APP_SECTIONS: Partial<Record<AppKey, { key: string; label: string }
     { key: "AUCTION_MANAGER",    label: "Auction Manager" },
     { key: "TABLET_CATALOGUING", label: "Tablet Cataloguing" },
     { key: "LOTTING_UP",         label: "Lotting Up" },
+    { key: "RESEARCH",           label: "Research" },
   ],
   AUCTION_AI: [
     { key: "chat",         label: "Chat Window" },
