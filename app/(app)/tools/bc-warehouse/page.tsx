@@ -42,7 +42,7 @@ function exportXlsx(rows: object[], filename: string) {
 async function readStream(
   url: string,
   onStage:    (label: string) => void,
-  onProgress: (done: number, total: number, label: string) => void,
+  onProgress: (done: number, total: number, label: string, raw?: any) => void,
   onResult:   (data: any) => void,
   onError:    (msg: string) => void,
 ) {
@@ -73,7 +73,7 @@ async function readStream(
       try {
         const msg = JSON.parse(line)
         if (msg.type === "stage")    onStage(msg.label)
-        if (msg.type === "progress") onProgress(msg.done, msg.total, msg.label ?? "")
+        if (msg.type === "progress") onProgress(msg.done, msg.total, msg.label ?? "", msg)
         if (msg.type === "result")   onResult(msg.data)
         if (msg.type === "error")    onError(msg.message)
         // Handle plain BC JSON errors that lack a `type` field
@@ -247,7 +247,7 @@ export default function BcWarehousePage() {
   const [heatLoading, setHeatLoading]   = useState(false)
   const [heatError, setHeatError]       = useState<string | null>(null)
   const [heatStage, setHeatStage]       = useState("")
-  const [heatProgress, setHeatProgress] = useState<{ done: number; total: number } | null>(null)
+  const [heatProgress, setHeatProgress] = useState<{ done: number; total: number; label: string; found?: number; page?: number; scanned?: number } | null>(null)
 
   const loadHeatmap = useCallback(async () => {
     setHeatLoading(true); setHeatError(null); setHeatProgress(null); setHeatStage("Connecting…")
@@ -255,7 +255,7 @@ export default function BcWarehousePage() {
       await readStream(
         "/api/bc/warehouse-heatmap",
         label => { setHeatStage(label); setHeatProgress(null) },
-        (done, total, label) => { setHeatStage(label); setHeatProgress({ done, total }) },
+        (done, total, label, raw) => setHeatProgress({ done, total, label, found: raw?.found, page: raw?.page, scanned: raw?.scanned }),
         data => setHeatData(data),
         msg  => setHeatError(msg),
       )
@@ -600,7 +600,7 @@ function SearchByLocationTab({
   heatData, heatLoading, heatError, heatStage, heatProgress, onLoad,
 }: {
   heatData: HeatData | null; heatLoading: boolean; heatError: string | null
-  heatStage: string; heatProgress: { done: number; total: number } | null
+  heatStage: string; heatProgress: { done: number; total: number; label: string; found?: number; page?: number; scanned?: number } | null
   onLoad: () => void
 }) {
   const [query, setQuery] = useState("")
@@ -627,7 +627,7 @@ function SearchByLocationTab({
         </div>
       )}
 
-      {heatLoading && <ProgressBar done={heatProgress?.done ?? 0} total={heatProgress?.total ?? 0} label={heatStage} />}
+      {heatLoading && <HeatmapLoadingCard stage={heatStage} progress={heatProgress} />}
       {heatError && <ErrorCard message={heatError} onRetry={onLoad} />}
 
       {heatData && (
@@ -823,9 +823,57 @@ function LocationHistoryTab() {
 
 // ─── Warehouse Map tab ────────────────────────────────────────────────────────
 
+function HeatmapLoadingCard({ stage, progress }: {
+  stage: string
+  progress: { done: number; total: number; label: string; found?: number; page?: number; scanned?: number } | null
+}) {
+  return (
+    <div className="bg-[#0d0f1a] border border-gray-800 rounded-xl p-6 max-w-xl space-y-4">
+      {/* Pulsing indicator */}
+      <div className="flex items-center gap-3">
+        <span className="relative flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+        </span>
+        <p className="text-white text-sm font-medium">{stage || "Connecting…"}</p>
+      </div>
+
+      {/* Progress bar */}
+      {progress && (
+        <div>
+          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-full bg-[#0078D4] rounded-full transition-all duration-300"
+              style={{ width: progress.total > 0 ? `${Math.round((progress.done / progress.total) * 100)}%` : "15%" }} />
+          </div>
+        </div>
+      )}
+
+      {/* Live counters */}
+      {progress && (
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="bg-[#07070f] rounded-lg p-3">
+            <p className="text-2xl font-bold text-blue-400 tabular-nums">{(progress.found ?? 0).toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-1">Items found</p>
+          </div>
+          <div className="bg-[#07070f] rounded-lg p-3">
+            <p className="text-2xl font-bold text-gray-300 tabular-nums">{(progress.page ?? 0).toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-1">Pages scanned</p>
+          </div>
+          <div className="bg-[#07070f] rounded-lg p-3">
+            <p className="text-2xl font-bold text-gray-300 tabular-nums">{((progress.scanned ?? 0) / 1000).toFixed(1)}k</p>
+            <p className="text-xs text-gray-500 mt-1">Log entries read</p>
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-600">Reading BC change log newest-first — this may take 30–60 seconds</p>
+    </div>
+  )
+}
+
 function WarehouseHeatmapTab({ data, loading, error, stageLabel, progress, onLoad }: {
   data: HeatData | null; loading: boolean; error: string | null
-  stageLabel: string; progress: { done: number; total: number } | null
+  stageLabel: string; progress: { done: number; total: number; label: string; found?: number; page?: number; scanned?: number } | null
   onLoad: () => void
 }) {
   const [selected, setSelected] = useState<HeatLocation | null>(null)
@@ -854,7 +902,7 @@ function WarehouseHeatmapTab({ data, loading, error, stageLabel, progress, onLoa
       <h2 className="text-lg font-semibold text-white mb-1">Warehouse Map</h2>
       <p className="text-gray-500 text-sm mb-5">Tote occupancy per BC location — current position based on BC location change log.</p>
 
-      {loading && <ProgressBar done={progress?.done ?? 0} total={progress?.total ?? 0} label={stageLabel} />}
+      {loading && <HeatmapLoadingCard stage={stageLabel} progress={progress} />}
       {!loading && data && <LoadBtn loading={loading} onClick={onLoad} />}
 
       {data && <>

@@ -15,13 +15,16 @@ async function readChangeLog(
   token: string,
   fieldCaption: string,
   keyField: "Primary_Key_Field_1_Value" | "Primary_Key_Field_2_Value",
-  onProgress: (done: number, page: number) => void,
+  onProgress: (found: number, page: number, scanning: number) => void,
 ): Promise<Map<string, string>> {
-  const locationMap = new Map<string, string>() // id → current location
+  const locationMap = new Map<string, string>()
   const BATCH = 500
   const MAX_PAGES = 100
 
   for (let page = 0; page < MAX_PAGES; page++) {
+    // Emit BEFORE the fetch so user sees the page tick immediately
+    onProgress(locationMap.size, page + 1, (page + 1) * BATCH)
+
     let rows: any[]
     try {
       rows = await bcPage(token, "ChangeLogEntries", {
@@ -38,13 +41,11 @@ async function readChangeLog(
     for (const r of rows) {
       const id  = String(r[keyField] ?? "").trim()
       const loc = String(r.New_Value ?? "").trim()
-      // Newest first — only record the first (latest) location we see per id
-      if (id && !locationMap.has(id)) {
-        locationMap.set(id, loc)
-      }
+      if (id && !locationMap.has(id)) locationMap.set(id, loc)
     }
 
-    onProgress(locationMap.size, page + 1)
+    // Emit AFTER the fetch with updated count
+    onProgress(locationMap.size, page + 1, (page + 1) * BATCH)
     if (rows.length < BATCH) break
   }
 
@@ -70,16 +71,23 @@ export async function GET() {
 
       const toteLocations = await readChangeLog(
         token, "Location", "Primary_Key_Field_1_Value",
-        (found, page) => writer.write(enc({ type: "progress", done: page, total: 100, label: `${found} totes located (page ${page})…` })),
+        (found, page, scanned) => writer.write(enc({
+          type: "progress", done: page, total: 100,
+          label: `Page ${page} — ${found.toLocaleString()} totes found (${scanned.toLocaleString()} entries scanned)`,
+          found, page, scanned,
+        })),
       )
 
       // ── Stage 2: Read barcode locations from change log ───────────────────────
-      // Field_Caption eq 'Article Location Code', Primary_Key_Field_2_Value = barcode
       await writer.write(enc({ type: "stage", label: "Reading barcode locations from BC…", stage: 2, stages: 2 }))
 
       const barcodeLocations = await readChangeLog(
         token, "Article Location Code", "Primary_Key_Field_2_Value",
-        (found, page) => writer.write(enc({ type: "progress", done: page, total: 100, label: `${found} barcodes located (page ${page})…` })),
+        (found, page, scanned) => writer.write(enc({
+          type: "progress", done: page, total: 100,
+          label: `Page ${page} — ${found.toLocaleString()} barcodes found (${scanned.toLocaleString()} entries scanned)`,
+          found, page, scanned,
+        })),
       )
 
       // ── Build result ─────────────────────────────────────────────────────────
