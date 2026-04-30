@@ -8,12 +8,17 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
   const { id } = await params
-  const run = await prisma.auctionRun.findUnique({
-    where: { id },
-    include: { lots: { orderBy: { createdAt: "asc" } } },
-  })
-  if (!run) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  return NextResponse.json(run)
+  try {
+    const run = await prisma.auctionRun.findUnique({
+      where: { id },
+      include: { lots: { orderBy: { createdAt: "asc" } } },
+    })
+    if (!run) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json(run)
+  } catch (e: any) {
+    console.error("[auction-ai/runs/[id] GET]", e)
+    return NextResponse.json({ error: e.message ?? "Database error" }, { status: 500 })
+  }
 }
 
 // DELETE /api/auction-ai/runs/[id] — delete a specific lot

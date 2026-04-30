@@ -32,12 +32,26 @@ export default async function CataloguingReportsPage() {
   const session = await auth()
   if (!session || session.user.role !== "ADMIN") redirect("/hub")
 
-  const logs = await prisma.catalogueTimingLog.findMany({
-    orderBy: { savedAt: "desc" },
-    include: { auction: { select: { name: true, code: true } } },
-  })
+  const [logs, researchLogs] = await Promise.all([
+    prisma.catalogueTimingLog.findMany({
+      orderBy: { savedAt: "desc" },
+      include: { auction: { select: { name: true, code: true } } },
+    }),
+    prisma.researchLog.findMany({ orderBy: { savedAt: "desc" } }),
+  ])
 
-  if (logs.length === 0) {
+  // ── Research stats ──
+  const researchByUser = new Map<string, { name: string; totalMs: number; sessions: number }>()
+  for (const r of researchLogs) {
+    if (!researchByUser.has(r.userId)) {
+      researchByUser.set(r.userId, { name: r.userName, totalMs: 0, sessions: 0 })
+    }
+    const e = researchByUser.get(r.userId)!
+    e.totalMs  += r.durationMs
+    e.sessions += 1
+  }
+
+  if (logs.length === 0 && researchLogs.length === 0) {
     return (
       <div className="p-8 max-w-3xl">
         <div className="mb-8">
@@ -80,17 +94,20 @@ export default async function CataloguingReportsPage() {
   const userStats = [...userMap.entries()].map(([userId, data]) => {
     const allUserLogs = [...data.wizardLogs, ...data.photoOnlyLogs]
     const durations   = allUserLogs.map(l => l.durationMs)
+    const research    = researchByUser.get(userId)
     return {
       userId,
-      name:          data.name,
-      totalLots:     allUserLogs.length,
-      wizardLots:    data.wizardLogs.length,
-      photoOnlyLots: data.photoOnlyLogs.length,
-      avgMs:         avg(durations),
-      fastestMs:     Math.min(...durations),
-      slowestMs:     Math.max(...durations),
-      wizardAvgMs:   data.wizardLogs.length   ? avg(data.wizardLogs.map(l => l.durationMs))    : 0,
-      photoAvgMs:    data.photoOnlyLogs.length ? avg(data.photoOnlyLogs.map(l => l.durationMs)) : 0,
+      name:            data.name,
+      totalLots:       allUserLogs.length,
+      wizardLots:      data.wizardLogs.length,
+      photoOnlyLots:   data.photoOnlyLogs.length,
+      avgMs:           avg(durations),
+      fastestMs:       Math.min(...durations),
+      slowestMs:       Math.max(...durations),
+      wizardAvgMs:     data.wizardLogs.length   ? avg(data.wizardLogs.map(l => l.durationMs))    : 0,
+      photoAvgMs:      data.photoOnlyLogs.length ? avg(data.photoOnlyLogs.map(l => l.durationMs)) : 0,
+      researchMs:      research?.totalMs  ?? 0,
+      researchSessions: research?.sessions ?? 0,
     }
   }).sort((a, b) => b.totalLots - a.totalLots)
 
@@ -154,6 +171,7 @@ export default async function CataloguingReportsPage() {
                 <th className="text-right px-5 py-3">Photo Avg</th>
                 <th className="text-right px-5 py-3">Fastest</th>
                 <th className="text-right px-5 py-3">Slowest</th>
+                <th className="text-right px-5 py-3">Research Time</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -173,6 +191,12 @@ export default async function CataloguingReportsPage() {
                   <td className="px-5 py-3 text-right font-mono text-gray-500">{u.photoOnlyLots ? fmtDuration(u.photoAvgMs)  : "—"}</td>
                   <td className="px-5 py-3 text-right font-mono text-green-600 font-semibold">{fmtDuration(u.fastestMs)}</td>
                   <td className="px-5 py-3 text-right font-mono text-red-500">{fmtDuration(u.slowestMs)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-amber-600">
+                    {u.researchMs ? fmtDuration(u.researchMs) : "—"}
+                    {u.researchSessions > 0 && (
+                      <span className="text-gray-400 text-xs ml-1">({u.researchSessions})</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -202,6 +226,37 @@ export default async function CataloguingReportsPage() {
                     </td>
                     <td className="px-5 py-3 text-right font-bold text-gray-700">{a.total}</td>
                     <td className="px-5 py-3 text-right font-mono text-gray-600">{fmtDuration(a.avgMs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Research time summary */}
+      {researchLogs.length > 0 && (
+        <div>
+          <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3">Research Time (last 30 sessions)</h2>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50 text-xs text-gray-400 uppercase tracking-wider">
+                  <th className="text-left px-5 py-3">Date / Time</th>
+                  <th className="text-left px-5 py-3">Cataloguer</th>
+                  <th className="text-right px-5 py-3">Active Research Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {researchLogs.slice(0, 30).map(r => (
+                  <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-5 py-3 text-gray-400 text-xs whitespace-nowrap font-mono">
+                      {format(r.savedAt, "dd/MM/yyyy HH:mm")}
+                    </td>
+                    <td className="px-5 py-3 font-medium text-gray-700">{r.userName}</td>
+                    <td className="px-5 py-3 text-right font-mono font-bold text-amber-600">
+                      {fmtDuration(r.durationMs)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

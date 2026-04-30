@@ -48,8 +48,33 @@ export async function POST(req: NextRequest) {
   if (message) contentParts.push({ text: message })
 
   try {
-    const result = await chat.sendMessage(contentParts)
-    const reply  = result.response.text()
+    const result   = await chat.sendMessage(contentParts)
+    const response = result.response
+
+    // Check if the prompt itself was blocked before a response was generated
+    const promptBlock = response.promptFeedback?.blockReason
+    if (promptBlock) {
+      return NextResponse.json(
+        { error: `Request blocked by Gemini (prompt): ${promptBlock}. Try simplifying the system instruction or removing unusual phrases.` },
+        { status: 422 }
+      )
+    }
+
+    // Check if the candidate response was blocked
+    const candidate    = response.candidates?.[0]
+    const finishReason = candidate?.finishReason
+    if (finishReason && finishReason !== "STOP" && finishReason !== "MAX_TOKENS") {
+      const safetyRatings = candidate?.safetyRatings
+        ?.filter((r: any) => r.probability !== "NEGLIGIBLE" && r.probability !== "LOW")
+        ?.map((r: any) => `${r.category}: ${r.probability}`)
+        ?.join(", ") ?? ""
+      return NextResponse.json(
+        { error: `Response blocked by Gemini (${finishReason})${safetyRatings ? ` — ${safetyRatings}` : ""}. The system instruction may contain phrases that trigger content filters.` },
+        { status: 422 }
+      )
+    }
+
+    const reply = response.text()
     return NextResponse.json({ reply })
   } catch (e: any) {
     const msg = e?.message ?? String(e)

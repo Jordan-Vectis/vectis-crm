@@ -77,19 +77,31 @@ export default async function CataloguingUserReportPage({
   const activeRange: RangeKey = (RANGES.find(r => r.key === range)?.key) ?? "30d"
   const since = rangeStart(activeRange)
 
-  const logs = await prisma.catalogueTimingLog.findMany({
-    where:   {
-      userId,
-      ...(since ? { savedAt: { gte: since } } : {}),
-    },
-    orderBy: { savedAt: "desc" },
-    include: { auction: { select: { name: true, code: true } } },
-  })
+  const [logs, researchLogs] = await Promise.all([
+    prisma.catalogueTimingLog.findMany({
+      where:   {
+        userId,
+        ...(since ? { savedAt: { gte: since } } : {}),
+      },
+      orderBy: { savedAt: "desc" },
+      include: { auction: { select: { name: true, code: true } } },
+    }),
+    prisma.researchLog.findMany({
+      where:   {
+        userId,
+        ...(since ? { savedAt: { gte: since } } : {}),
+      },
+      orderBy: { savedAt: "desc" },
+    }),
+  ])
 
   // Need the user name even if no logs in range — fetch one unfiltered log
   const anyLog = await prisma.catalogueTimingLog.findFirst({ where: { userId } })
   if (!anyLog) notFound()
   const userName = anyLog.userName
+
+  // ── Research summary ──
+  const totalResearchMs = researchLogs.reduce((s, r) => s + r.durationMs, 0)
 
   const rangeLabel = RANGES.find(r => r.key === activeRange)?.label ?? "All time"
 
@@ -182,16 +194,18 @@ export default async function CataloguingUserReportPage({
       {logs.length > 0 && (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             {[
-              { label: "Lots in Range",  value: logs.length.toLocaleString(),  sub: rangeLabel },
-              { label: "Avg Time / Lot", value: fmtDuration(overallAvg),       sub: "all methods" },
-              { label: "Lots Today",     value: lotsToday.toLocaleString(),     sub: format(new Date(), "d MMM yyyy") },
-              { label: "This Week",      value: lotsThisWeek.toLocaleString(),  sub: "last 7 days" },
+              { label: "Lots in Range",    value: logs.length.toLocaleString(),            sub: rangeLabel,                       colour: "text-slate-800" },
+              { label: "Avg Time / Lot",   value: fmtDuration(overallAvg),                 sub: "all methods",                    colour: "text-slate-800" },
+              { label: "Lots Today",       value: lotsToday.toLocaleString(),               sub: format(new Date(), "d MMM yyyy"), colour: "text-slate-800" },
+              { label: "This Week",        value: lotsThisWeek.toLocaleString(),            sub: "last 7 days",                    colour: "text-slate-800" },
+              { label: "Research Time",    value: totalResearchMs ? fmtDuration(totalResearchMs) : "—",
+                                           sub: `${researchLogs.length} session${researchLogs.length !== 1 ? "s" : ""}`,         colour: "text-amber-600" },
             ].map(card => (
               <div key={card.label} className="bg-white border border-gray-200 rounded-xl p-5">
                 <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">{card.label}</p>
-                <p className="text-3xl font-bold text-slate-800">{card.value}</p>
+                <p className={`text-3xl font-bold ${card.colour}`}>{card.value}</p>
                 <p className="text-xs text-gray-400 mt-1">{card.sub}</p>
               </div>
             ))}

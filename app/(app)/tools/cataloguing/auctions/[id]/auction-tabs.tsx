@@ -2,18 +2,19 @@
 
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids, toggleLotAiUpgraded, massCreateLots } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids, toggleLotAiUpgraded, massCreateLots, bulkAssignUniqueIds } from "@/lib/actions/catalogue"
 import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import ImportTab from "./import-tab"
 import PhotoUploadTab from "./photo-upload-tab"
 import AiUpgradeTab from "./ai-upgrade-tab"
+import StatsTab from "./stats-tab"
 import * as XLSX from "xlsx"
 import JSZip from "jszip"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "import" | "upload-photos" | "ai-upgrade"
+type Tab = "settings" | "add-lot" | "manage-lots" | "photo-only" | "import" | "upload-photos" | "ai-upgrade" | "stats"
 
 interface Auction {
   id: string; code: string; name: string; auctionDate: Date | null
@@ -95,6 +96,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
     { id: "import",        label: "Import Lots" },
     { id: "upload-photos", label: "Upload Photos" },
     { id: "ai-upgrade",   label: "✨ AI Upgrade" },
+    { id: "stats",        label: "📊 Statistics" },
     { id: "settings",     label: "Auction Settings" },
   ]
 
@@ -208,6 +210,8 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
             onDone={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)}
           />
         )}
+
+        {tab === "stats" && <StatsTab lots={lots} auction={auction} />}
       </div>
     </div>
   )
@@ -355,7 +359,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   const [photoMsg, setPhotoMsg]     = useState<string | null>(null)
 
   // Column sort
-  type SortCol = "lotNumber" | "barcode" | "title" | "vendor" | "receipt" | "tote" | "category" | "photos" | "status"
+  type SortCol = "lotNumber" | "barcode" | "receiptUniqueId" | "title" | "vendor" | "receipt" | "tote" | "category" | "photos" | "status"
   const [sortCol, setSortCol] = useState<SortCol>("lotNumber")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
@@ -390,17 +394,25 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   const [bidsMsg, setBidsMsg]   = useState<string | null>(null)
   const [bidsPending, startBids] = useTransition()
 
+  // Unique ID Matcher panel
+  const uniqueIdInputRef = useRef<HTMLInputElement>(null)
+  const [showUniqueIdMatcher, setShowUniqueIdMatcher] = useState(false)
+  const [uniqueIdPairs, setUniqueIdPairs] = useState<{ barcode: string; uniqueId: string }[]>([])
+  const [uniqueIdMsg, setUniqueIdMsg]     = useState<string | null>(null)
+  const [uniqueIdPending, startUniqueId]  = useTransition()
+
   // ── Per-column filters ──────────────────────────────────────────────────
-  const [fLotNo,    setFLotNo]    = useState("")
-  const [fBarcode,  setFBarcode]  = useState("")
-  const [fTitle,    setFTitle]    = useState("")
-  const [fVendor,   setFVendor]   = useState("")
-  const [fReceipt,  setFReceipt]  = useState("")
-  const [fTote,     setFTote]     = useState("")
-  const [fCategory, setFCategory] = useState("")
-  const [fPhotos,      setFPhotos]      = useState("")   // "any" | "none" | ""
-  const [fAiUpgraded,  setFAiUpgraded]  = useState("")   // "yes" | "no" | ""
-  const [fStatus,      setFStatus]      = useState("")
+  const [fLotNo,         setFLotNo]         = useState("")
+  const [fBarcode,       setFBarcode]       = useState("")
+  const [fUniqueId,      setFUniqueId]      = useState("")
+  const [fTitle,         setFTitle]         = useState("")
+  const [fVendor,        setFVendor]        = useState("")
+  const [fReceipt,       setFReceipt]       = useState("")
+  const [fTote,          setFTote]          = useState("")
+  const [fCategory,      setFCategory]      = useState("")
+  const [fPhotos,        setFPhotos]        = useState("")   // "any" | "none" | ""
+  const [fAiUpgraded,    setFAiUpgraded]    = useState("")   // "yes" | "no" | ""
+  const [fStatus,        setFStatus]        = useState("")
 
   const uniqueStatuses = useMemo(() => Array.from(new Set(lots.map(l => l.status))).sort(), [lots])
 
@@ -408,6 +420,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
     const f = lots.filter(l =>
       colMatch(l.lotNumber, fLotNo) &&
       colMatch(l.barcode, fBarcode) &&
+      colMatch(l.receiptUniqueId, fUniqueId) &&
       colMatch(l.title, fTitle) &&
       colMatch(l.vendor, fVendor) &&
       colMatch(l.receipt, fReceipt) &&
@@ -425,43 +438,57 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
       } else if (sortCol === "photos") {
         cmp = a.imageUrls.length - b.imageUrls.length
       } else {
-        const va = (sortCol === "barcode" ? a.barcode : sortCol === "title" ? a.title : sortCol === "vendor" ? a.vendor : sortCol === "receipt" ? a.receipt : sortCol === "tote" ? a.tote : sortCol === "category" ? a.category : sortCol === "status" ? a.status : a.lotNumber) ?? ""
-        const vb = (sortCol === "barcode" ? b.barcode : sortCol === "title" ? b.title : sortCol === "vendor" ? b.vendor : sortCol === "receipt" ? b.receipt : sortCol === "tote" ? b.tote : sortCol === "category" ? b.category : sortCol === "status" ? b.status : b.lotNumber) ?? ""
+        const getVal = (l: Lot) => {
+          if (sortCol === "barcode")        return l.barcode
+          if (sortCol === "receiptUniqueId") return l.receiptUniqueId
+          if (sortCol === "title")          return l.title
+          if (sortCol === "vendor")         return l.vendor
+          if (sortCol === "receipt")        return l.receipt
+          if (sortCol === "tote")           return l.tote
+          if (sortCol === "category")       return l.category
+          if (sortCol === "status")         return l.status
+          return l.lotNumber
+        }
+        const va = getVal(a) ?? ""
+        const vb = getVal(b) ?? ""
         cmp = va.localeCompare(vb, undefined, { numeric: true })
       }
       return sortDir === "asc" ? cmp : -cmp
     })
-  }, [lots, fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fAiUpgraded, fStatus, sortCol, sortDir])
+  }, [lots, fLotNo, fBarcode, fUniqueId, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fAiUpgraded, fStatus, sortCol, sortDir])
 
-  const filtersActive = [fLotNo, fBarcode, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fAiUpgraded, fStatus].some(f => f !== "")
+  const filtersActive = [fLotNo, fBarcode, fUniqueId, fTitle, fVendor, fReceipt, fTote, fCategory, fPhotos, fAiUpgraded, fStatus].some(f => f !== "")
 
   function clearFilters() {
-    setFLotNo(""); setFBarcode(""); setFTitle(""); setFVendor(""); setFReceipt("")
+    setFLotNo(""); setFBarcode(""); setFUniqueId(""); setFTitle(""); setFVendor(""); setFReceipt("")
     setFTote(""); setFCategory(""); setFPhotos(""); setFAiUpgraded(""); setFStatus("")
   }
 
   function exportExcel() {
     const rows = filtered.map(l => ({
-      "Lot No.":      l.lotNumber,
-      "Barcode":      l.barcode ?? "",
-      "Title":        l.title,
-      "Description":  l.description,
-      "Estimate Low": l.estimateLow ?? "",
-      "Estimate High":l.estimateHigh ?? "",
-      "Starting Bid": l.startingBid ?? "",
-      "Reserve":      l.reserve ?? "",
-      "Hammer Price": l.hammerPrice ?? "",
-      "Condition":    l.condition ?? "",
-      "Status":       l.status,
-      "Vendor":       l.vendor ?? "",
-      "Tote":         l.tote ?? "",
-      "Receipt":      l.receipt ?? "",
-      "Category":     l.category ?? "",
-      "Sub-Category": l.subCategory ?? "",
-      "Brand":        l.brand ?? "",
-      "Notes":        l.notes ?? "",
-      "Photos":       l.imageUrls.length,
-      "Added By":     l.createdByName ?? "",
+      "Lot No.":       l.lotNumber,
+      "Barcode":       l.barcode ?? "",
+      "Unique ID":     l.receiptUniqueId ?? "",
+      "Title":         l.title,
+      "Key Points":    l.keyPoints,
+      "Description":   l.description,
+      "Estimate Low":  l.estimateLow ?? "",
+      "Estimate High": l.estimateHigh ?? "",
+      "Starting Bid":  l.startingBid ?? "",
+      "Reserve":       l.reserve ?? "",
+      "Hammer Price":  l.hammerPrice ?? "",
+      "Condition":     l.condition ?? "",
+      "Status":        l.status,
+      "Vendor":        l.vendor ?? "",
+      "Tote":          l.tote ?? "",
+      "Receipt":       l.receipt ?? "",
+      "Category":      l.category ?? "",
+      "Sub-Category":  l.subCategory ?? "",
+      "Brand":         l.brand ?? "",
+      "Notes":         l.notes ?? "",
+      "Photos":        l.imageUrls.length,
+      "AI Upgraded":   l.aiUpgraded ? "Yes" : "No",
+      "Added By":      l.createdByName ?? "",
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
@@ -762,15 +789,21 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
             🔢 Auto-number Lots
           </button>
           <button
-            onClick={() => { setShowBids(v => !v); setShowAutolotter(false); setShowMassAdd(false) }}
+            onClick={() => { setShowBids(v => !v); setShowAutolotter(false); setShowMassAdd(false); setShowUniqueIdMatcher(false) }}
             className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showBids ? "border-green-500 text-green-400 bg-green-900/20" : "border-gray-600 text-gray-400 hover:border-green-500 hover:text-green-400"}`}>
             💰 Set Starting Bids
+          </button>
+          <button
+            onClick={() => { setShowUniqueIdMatcher(v => !v); setUniqueIdPairs([]); setUniqueIdMsg(null); setShowBids(false); setShowAutolotter(false); setShowMassAdd(false) }}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showUniqueIdMatcher ? "border-cyan-500 text-cyan-400 bg-cyan-900/20" : "border-gray-600 text-gray-400 hover:border-cyan-500 hover:text-cyan-400"}`}>
+            🔗 Unique ID Matcher
           </button>
           {fillMsg  && <span className="text-xs text-[#2AB4A6]">{fillMsg}</span>}
           {lotterMsg && <span className="text-xs text-yellow-400">{lotterMsg}</span>}
           {bidsMsg  && <span className="text-xs text-green-400">{bidsMsg}</span>}
           {titlesMsg && <span className="text-xs text-[#2AB4A6]">{titlesMsg}</span>}
           {massMsg  && <span className="text-xs text-orange-400">{massMsg}</span>}
+          {uniqueIdMsg && <span className="text-xs text-cyan-400">{uniqueIdMsg}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {selected.size > 0 && (
@@ -969,6 +1002,119 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
         )
       })()}
 
+      {/* ── Unique ID Matcher panel ── */}
+      {showUniqueIdMatcher && (
+        <div className="mb-4 bg-[#1C1C1E] border border-cyan-700/40 rounded-xl p-4 space-y-4">
+          <div>
+            <p className="text-sm font-semibold text-cyan-300">Unique ID Matcher</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Upload a spreadsheet with <span className="font-mono text-gray-400">Internal Barcode</span> and <span className="font-mono text-gray-400">UniqueID</span> columns.
+              The matching lots in this auction will have their Unique ID updated automatically.
+            </p>
+          </div>
+
+          {/* Hidden file input */}
+          <input
+            ref={uniqueIdInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0]
+              e.target.value = ""
+              if (!file) return
+              import("xlsx").then(({ read, utils }) => {
+                const reader = new FileReader()
+                reader.onload = ev => {
+                  const wb   = read(ev.target!.result, { type: "array" })
+                  const ws   = wb.Sheets[wb.SheetNames[0]]
+                  const rows = utils.sheet_to_json<Record<string, string>>(ws)
+                  const pairs: { barcode: string; uniqueId: string }[] = []
+                  for (const row of rows) {
+                    // Accept common column name variants (case-insensitive)
+                    const barcode  = (row["Internal Barcode"] ?? row["Barcode"] ?? row["barcode"] ?? "").toString().trim()
+                    const uniqueId = (row["UniqueID"] ?? row["Unique ID"] ?? row["uniqueId"] ?? row["Receipt Unique ID"] ?? "").toString().trim()
+                    if (barcode && uniqueId) pairs.push({ barcode, uniqueId })
+                  }
+                  setUniqueIdPairs(pairs)
+                  setUniqueIdMsg(null)
+                }
+                reader.readAsArrayBuffer(file)
+              })
+            }}
+          />
+
+          {uniqueIdPairs.length === 0 ? (
+            <button
+              onClick={() => uniqueIdInputRef.current?.click()}
+              className="w-full py-6 rounded-xl border-2 border-dashed border-gray-700 hover:border-cyan-500 text-gray-400 hover:text-cyan-400 transition-colors flex flex-col items-center gap-1.5 text-sm font-medium">
+              <span className="text-2xl">📄</span>
+              Click to select spreadsheet (.xlsx / .csv)
+            </button>
+          ) : (
+            <div className="space-y-3">
+              {/* Preview */}
+              <div className="bg-[#141416] border border-gray-700 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-[#0d0d0f] border-b border-gray-700">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-gray-500 font-medium">Barcode</th>
+                      <th className="text-left px-3 py-2 text-gray-500 font-medium">Unique ID</th>
+                      <th className="text-left px-3 py-2 text-gray-500 font-medium">Match</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uniqueIdPairs.slice(0, 100).map((p, i) => {
+                      const matched = lots.some(l => l.barcode?.toLowerCase() === p.barcode.toLowerCase())
+                      return (
+                        <tr key={i} className="border-b border-gray-800 last:border-0">
+                          <td className="px-3 py-1.5 font-mono text-gray-300">{p.barcode}</td>
+                          <td className="px-3 py-1.5 font-mono text-cyan-400">{p.uniqueId}</td>
+                          <td className="px-3 py-1.5">
+                            {matched
+                              ? <span className="text-green-400">✓</span>
+                              : <span className="text-gray-600">—</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-gray-500">
+                {uniqueIdPairs.length} rows in file ·{" "}
+                <span className="text-green-400 font-medium">
+                  {uniqueIdPairs.filter(p => lots.some(l => l.barcode?.toLowerCase() === p.barcode.toLowerCase())).length} matched
+                </span>
+                {uniqueIdPairs.length > 100 && <span className="text-gray-600"> (showing first 100)</span>}
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setUniqueIdPairs([]); setUniqueIdMsg(null) }}
+                  className="px-4 py-2 rounded-lg border border-gray-700 text-gray-400 text-sm hover:border-gray-500 transition-colors">
+                  ← Change file
+                </button>
+                <button
+                  disabled={uniqueIdPending}
+                  onClick={() => {
+                    startUniqueId(async () => {
+                      const result = await bulkAssignUniqueIds(auctionId, uniqueIdPairs)
+                      setUniqueIdMsg(`✓ Updated ${result.updated} lot${result.updated !== 1 ? "s" : ""}, skipped ${result.skipped}`)
+                      setUniqueIdPairs([])
+                      setShowUniqueIdMatcher(false)
+                      onDelete()
+                      setTimeout(() => setUniqueIdMsg(null), 5000)
+                    })
+                  }}
+                  className="flex-1 py-2 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white font-semibold rounded-lg text-sm transition-colors">
+                  {uniqueIdPending ? "Applying…" : `Apply ${uniqueIdPairs.filter(p => lots.some(l => l.barcode?.toLowerCase() === p.barcode.toLowerCase())).length} matches`}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl overflow-x-auto">
         <table className="w-full text-sm min-w-[700px]">
@@ -978,10 +1124,10 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                 <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length}
                   onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-600 accent-[#2AB4A6]" />
               </th>
-              {(["lotNumber","barcode","title","vendor","receipt","tote","category","photos","status"] as SortCol[]).map((col, i) => (
+              {(["lotNumber","barcode","receiptUniqueId","title","vendor","receipt","tote","category","photos","status"] as SortCol[]).map((col, i) => (
                 <th key={col} onClick={() => toggleSort(col)}
                   className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 select-none whitespace-nowrap">
-                  {["Lot No.","Barcode","Title","Vendor","Receipt","Tote","Category","Photos","Status"][i]}
+                  {["Lot No.","Barcode","Unique ID","Title","Vendor","Receipt","Tote","Category","Photos","Status"][i]}
                   {sortCol === col ? (sortDir === "asc" ? " ▲" : " ▼") : <span className="text-gray-700"> ⇅</span>}
                 </th>
               ))}
@@ -993,6 +1139,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
               <td className="px-4 py-1.5" />
               <td className="px-2 py-1.5"><input value={fLotNo}    onChange={e => setFLotNo(e.target.value)}    placeholder="Filter…" className={COL_INPUT} /></td>
               <td className="px-2 py-1.5"><input value={fBarcode}  onChange={e => setFBarcode(e.target.value)}  placeholder="Filter…" className={COL_INPUT} /></td>
+              <td className="px-2 py-1.5"><input value={fUniqueId} onChange={e => setFUniqueId(e.target.value)} placeholder="Filter…" className={COL_INPUT} /></td>
               <td className="px-2 py-1.5"><input value={fTitle}    onChange={e => setFTitle(e.target.value)}    placeholder="Filter…" className={COL_INPUT} /></td>
               <td className="px-2 py-1.5"><input value={fVendor}   onChange={e => setFVendor(e.target.value)}   placeholder="Filter…" className={COL_INPUT} /></td>
               <td className="px-2 py-1.5"><input value={fReceipt}  onChange={e => setFReceipt(e.target.value)}  placeholder="Filter…" className={COL_INPUT} /></td>
@@ -1032,6 +1179,11 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
                 </td>
                 <td className="px-4 py-3 font-mono font-semibold text-[#2AB4A6] whitespace-nowrap">{lot.lotNumber || "—"}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">{lot.barcode ?? "—"}</td>
+                <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">
+                  {lot.receiptUniqueId
+                    ? <span className="text-cyan-400">{lot.receiptUniqueId}</span>
+                    : <span className="text-gray-700">—</span>}
+                </td>
                 <td className="px-4 py-3 text-gray-200 max-w-[160px] truncate">{lot.title || <span className="text-gray-600 italic">Uncatalogued</span>}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{lot.vendor ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
@@ -1074,7 +1226,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-600 text-sm">No lots match your filters</td></tr>
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-600 text-sm">No lots match your filters</td></tr>
             )}
           </tbody>
         </table>

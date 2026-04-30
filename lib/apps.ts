@@ -1,4 +1,4 @@
-export type AppKey = "CRM" | "AUCTION_AI" | "CATALOGUING" | "BC_REPORTS" | "SALEROOM_TRAINER" | "WAREHOUSE" | "AUCTION_CONTROLLER"
+export type AppKey = "CRM" | "AUCTION_AI" | "CATALOGUING" | "BC_REPORTS" | "SALEROOM_TRAINER" | "WAREHOUSE" | "AUCTION_CONTROLLER" | "BC_WAREHOUSE"
 
 export const ALL_APPS: { key: AppKey; label: string }[] = [
   { key: "CRM",                label: "CRM" },
@@ -8,6 +8,7 @@ export const ALL_APPS: { key: AppKey; label: string }[] = [
   { key: "SALEROOM_TRAINER",   label: "Saleroom Trainer" },
   { key: "WAREHOUSE",          label: "Warehouse" },
   { key: "AUCTION_CONTROLLER", label: "Auction Controller" },
+  { key: "BC_WAREHOUSE",       label: "BC Warehouse" },
 ]
 
 export function hasAppAccess(role: string, allowedApps: string[], appKey: AppKey): boolean {
@@ -44,6 +45,7 @@ export const APP_SECTIONS: Partial<Record<AppKey, { key: string; label: string }
     { key: "AUCTION_MANAGER",    label: "Auction Manager" },
     { key: "TABLET_CATALOGUING", label: "Tablet Cataloguing" },
     { key: "LOTTING_UP",         label: "Lotting Up" },
+    { key: "RESEARCH",           label: "Research" },
   ],
   AUCTION_AI: [
     { key: "chat",         label: "Chat Window" },

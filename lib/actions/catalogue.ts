@@ -429,6 +429,41 @@ export async function importLots(auctionId: string, rows: {
   return rows.length
 }
 
+// Bulk-assign receiptUniqueId values from a spreadsheet mapping barcode → uniqueId.
+// Only updates lots that belong to the given auction and whose barcode matches a row.
+// Returns { updated, skipped } counts.
+export async function bulkAssignUniqueIds(
+  auctionId: string,
+  pairs: { barcode: string; uniqueId: string }[]
+): Promise<{ updated: number; skipped: number }> {
+  await requireCataloguer()
+
+  // Fetch all lots in this auction that have a barcode
+  const lots = await prisma.catalogueLot.findMany({
+    where:  { auctionId, barcode: { not: null } },
+    select: { id: true, barcode: true },
+  })
+
+  // Build barcode → lotId map (case-insensitive)
+  const barcodeMap = new Map(lots.map(l => [l.barcode!.toLowerCase().trim(), l.id]))
+
+  let updated = 0
+  let skipped = 0
+
+  for (const { barcode, uniqueId } of pairs) {
+    const lotId = barcodeMap.get(barcode.toLowerCase().trim())
+    if (!lotId || !uniqueId.trim()) { skipped++; continue }
+    await prisma.catalogueLot.update({
+      where: { id: lotId },
+      data:  { receiptUniqueId: uniqueId.trim() },
+    })
+    updated++
+  }
+
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+  return { updated, skipped }
+}
+
 // Returns the next receiptUniqueId for a base receipt, e.g. "R000123" → "R000123-4"
 // Counts existing lots whose receiptUniqueId starts with "{base}-"
 async function sequencedReceiptUid(base: string, extra = 0): Promise<string> {

@@ -40,7 +40,7 @@ type ShipData = {
   meta:      { total: number; countries: number; cities: number }
 }
 
-type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "location" | "shipping"
+type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "shipping"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1495,10 +1495,6 @@ const reports: NavItem[] = [
 ]
 const toolReports: NavItem[] = [
   {
-    id: "location", label: "Location History", activeColor: "text-blue-400",
-    icon: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z",
-  },
-  {
     id: "explorer", label: "Data Explorer", activeColor: "text-purple-400",
     icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
   },
@@ -1635,11 +1631,290 @@ export default function BCReportsPage() {
             {activeReport === "packing"     && <PackingTab />}
             {activeReport === "warehouse"   && <WarehouseTab />}
             {activeReport === "explorer"    && <DataExplorerTab />}
-            {activeReport === "location"    && <LocationHistoryTab />}
             {activeReport === "shipping"    && <ShippingTab />}
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+// ─── Warehouse Heatmap Tab ────────────────────────────────────────────────────
+
+type HeatTote = { id: string; description: string; category: string; catalogued: boolean; location: string }
+type HeatLocation = {
+  code: string; total: number; catalogued: number; uncatalogued: number; items: HeatTote[]
+}
+type HeatData = {
+  locations: HeatLocation[]
+  unlocated: HeatLocation
+  meta: { totalTotes: number; totalLocations: number; occupiedLocations: number; directField: string | null }
+}
+
+function heatColour(count: number, max: number): string {
+  if (count === 0) return "bg-[#1a1d2e] border-gray-800 text-gray-600"
+  const ratio = count / Math.max(max, 1)
+  if (ratio < 0.25) return "bg-emerald-950 border-emerald-800 text-emerald-300"
+  if (ratio < 0.5)  return "bg-yellow-950 border-yellow-700 text-yellow-300"
+  if (ratio < 0.75) return "bg-orange-950 border-orange-700 text-orange-300"
+  return "bg-red-950 border-red-700 text-red-300"
+}
+
+function parseGrid(locations: HeatLocation[]) {
+  const parsed = locations.map(loc => {
+    const m = loc.code.match(/^([A-Za-z]+)[^0-9]*([0-9]+)$/)
+    return m ? { ...loc, row: m[1].toUpperCase(), col: parseInt(m[2]) } : null
+  })
+  if (parsed.some(p => p === null)) return null
+  const rows = [...new Set(parsed.map(p => p!.row))].sort()
+  const cols = [...new Set(parsed.map(p => p!.col))].sort((a, b) => a - b)
+  const grid = new Map(parsed.map(p => [`${p!.row}${p!.col}`, p!]))
+  return { rows, cols, grid }
+}
+
+function WarehouseHeatmapTab() {
+  const [data, setData]         = useState<HeatData | null>(null)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string | null>(null)
+  const [selected, setSelected] = useState<HeatLocation | null>(null)
+  const [stageLabel, setStageLabel] = useState("")
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+
+  async function load() {
+    setLoading(true); setError(null); setProgress(null); setStageLabel("Connecting…")
+    try {
+      const res = await fetch("/api/bc/warehouse-heatmap")
+      if (!res.body) throw new Error("No response body")
+      const reader = res.body.getReader()
+      const dec = new TextDecoder()
+      let buf = ""
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split("\n")
+        buf = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "stage")    { setStageLabel(msg.label); setProgress(null) }
+          if (msg.type === "progress") { setStageLabel(msg.label); setProgress({ done: msg.done, total: msg.total }) }
+          if (msg.type === "result")   setData(msg.data)
+          if (msg.type === "error")    setError(msg.message)
+        }
+      }
+    } catch (e: any) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  if (!loading && !data) return null
+
+  const max      = data ? Math.max(...data.locations.map(l => l.total), 1) : 1
+  const gridData = data ? parseGrid(data.locations) : null
+  const busiest  = data ? data.locations.reduce((a, b) => a.total > b.total ? a : b, { code: "—", total: 0 } as any) : null
+
+  function BigNum({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+    return (
+      <div className="bg-[#1C1C1E] border border-gray-800 rounded-xl px-5 py-4">
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{label}</p>
+        <p className="text-2xl font-bold text-white">{value}</p>
+        {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
+      </div>
+    )
+  }
+
+  if (error) return (
+    <div>
+      <p className="text-red-400 text-sm mb-3">{error}</p>
+      <button onClick={load} className="px-4 py-2 bg-[#0078D4] hover:bg-blue-500 text-white text-sm rounded">↺ Retry</button>
+    </div>
+  )
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-white mb-1">Warehouse Map</h2>
+      <p className="text-gray-500 text-sm mb-5">
+        Tote occupancy per BC location — current position based on BC location change log.
+      </p>
+
+      {loading && <ProgressBar done={progress?.done ?? 0} total={progress?.total ?? 0} label={stageLabel} />}
+      {!loading && data && <LoadBtn loading={loading} onClick={load} />}
+
+      {data && <>
+      {/* Headline stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <BigNum label="Total totes" value={data.meta.totalTotes} />
+        <BigNum label="Locations" value={`${data.meta.occupiedLocations} / ${data.meta.totalLocations}`} sub="occupied / total" />
+        <BigNum label="Busiest location" value={busiest?.code ?? "—"} sub={`${max} totes`} />
+        <BigNum label="No location" value={data.unlocated.total} sub="not yet placed in BC" />
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 mb-4 text-xs text-gray-500">
+        <span>Occupancy:</span>
+        {[
+          { label: "Empty",  cls: "bg-[#1a1d2e] border-gray-700" },
+          { label: "Low",    cls: "bg-emerald-900 border-emerald-700" },
+          { label: "Medium", cls: "bg-yellow-900 border-yellow-600" },
+          { label: "High",   cls: "bg-orange-900 border-orange-600" },
+          { label: "Full",   cls: "bg-red-900 border-red-600" },
+        ].map(({ label, cls }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <div className={`w-4 h-4 rounded border ${cls}`} />
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Grid view */}
+      {gridData ? (
+        <div className="mb-6 overflow-x-auto">
+          <table className="border-separate border-spacing-1">
+            <thead>
+              <tr>
+                <th className="w-8" />
+                {gridData.cols.map(c => (
+                  <th key={c} className="text-xs text-gray-600 font-normal text-center w-14">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {gridData.rows.map(row => (
+                <tr key={row}>
+                  <td className="text-xs text-gray-600 font-normal pr-1 text-right">{row}</td>
+                  {gridData.cols.map(col => {
+                    const loc = gridData.grid.get(`${row}${col}`)
+                    if (!loc) return (
+                      <td key={col}>
+                        <div className="w-14 h-12 rounded border border-dashed border-gray-800/40 bg-transparent" />
+                      </td>
+                    )
+                    return (
+                      <td key={col}>
+                        <button
+                          onClick={() => setSelected(selected?.code === loc.code ? null : loc)}
+                          title={`${loc.code}: ${loc.total} totes`}
+                          className={`w-14 h-12 rounded border transition-all hover:scale-105 flex flex-col items-center justify-center gap-0.5 ${heatColour(loc.total, max)} ${selected?.code === loc.code ? "ring-2 ring-white/50" : ""}`}
+                        >
+                          <span className="text-[10px] font-bold leading-none">{loc.code}</span>
+                          <span className="text-[9px] opacity-70 leading-none">{loc.total}</span>
+                        </button>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-1.5 mb-6">
+          {data.locations.map(loc => (
+            <button
+              key={loc.code}
+              onClick={() => setSelected(selected?.code === loc.code ? null : loc)}
+              className={`rounded border p-2 text-center transition-all hover:scale-105 ${heatColour(loc.total, max)} ${selected?.code === loc.code ? "ring-2 ring-white/50" : ""}`}
+            >
+              <p className="text-[10px] font-bold truncate">{loc.code}</p>
+              <p className="text-base font-bold">{loc.total}</p>
+              {loc.uncatalogued > 0 && <p className="text-[9px] opacity-60">{loc.uncatalogued} open</p>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Unlocated pill */}
+      {data.unlocated.total > 0 && (
+        <button
+          onClick={() => setSelected(selected?.code === "UNLOCATED" ? null : data.unlocated)}
+          className={`mb-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-all ${
+            selected?.code === "UNLOCATED"
+              ? "bg-gray-700 border-gray-500 text-white ring-2 ring-white/30"
+              : "bg-gray-900 border-gray-700 text-gray-400 hover:text-white"
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-gray-500 inline-block" />
+          {data.unlocated.total} totes with no BC location
+        </button>
+      )}
+
+      {/* Drill-down panel */}
+      {selected && (
+        <div className="bg-[#0d0f1a] border border-gray-700 rounded-xl p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-white font-semibold text-base">
+                {selected.code === "UNLOCATED" ? "No Location" : `Location ${selected.code}`}
+              </h3>
+              <p className="text-gray-500 text-xs mt-0.5">
+                {selected.total} totes — {selected.catalogued} catalogued, {selected.uncatalogued} open
+              </p>
+            </div>
+            <button onClick={() => setSelected(null)} className="text-gray-600 hover:text-white text-lg leading-none">✕</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 text-xs border-b border-gray-800">
+                  <th className="text-left pb-2 pr-4">Tote / Barcode</th>
+                  <th className="text-left pb-2 pr-4">Category</th>
+                  <th className="text-left pb-2 pr-4">Catalogued</th>
+                  <th className="text-left pb-2">Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {selected.items.map(item => (
+                  <tr key={item.id} className="text-gray-300 hover:bg-white/5">
+                    <td className="py-1.5 pr-4 font-mono text-xs text-gray-400">{item.id}</td>
+                    <td className="py-1.5 pr-4 text-xs">{item.category || "—"}</td>
+                    <td className="py-1.5 pr-4">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${item.catalogued ? "bg-emerald-900 text-emerald-300" : "bg-gray-800 text-gray-400"}`}>
+                        {item.catalogued ? "Yes" : "No"}
+                      </span>
+                    </td>
+                    <td className="py-1.5 text-gray-400 text-xs truncate max-w-xs">{item.description || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Bar chart */}
+      {data.locations.filter(l => l.total > 0).length > 0 && (
+        <div className="mt-2">
+          <h3 className="text-sm font-medium text-gray-400 mb-3">Occupancy by Location</h3>
+          <div className="space-y-1.5">
+            {[...data.locations]
+              .filter(l => l.total > 0)
+              .sort((a, b) => b.total - a.total)
+              .map(loc => (
+                <div key={loc.code} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-16 text-right shrink-0">{loc.code}</span>
+                  <div className="flex-1 bg-gray-800 rounded-full h-2 overflow-hidden">
+                    <div
+                      className={`h-2 rounded-full transition-all ${
+                        loc.total / max < 0.25 ? "bg-emerald-500" :
+                        loc.total / max < 0.5  ? "bg-yellow-500"  :
+                        loc.total / max < 0.75 ? "bg-orange-500"  :
+                                                 "bg-red-500"
+                      }`}
+                      style={{ width: `${(loc.total / max) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400 w-8 text-right shrink-0">{loc.total}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+      </>}
     </div>
   )
 }

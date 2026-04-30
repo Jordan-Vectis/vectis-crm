@@ -630,6 +630,58 @@ function BatchTab({ model }: { model: string }) {
 
   const pct = total ? Math.round((done / total) * 100) : 0
 
+  // ── Post-run save state ───────────────────────────────────────────────────
+  const [saveCode,    setSaveCode]    = useState("")
+  const [saving,      setSaving]      = useState(false)
+  const [saveErrors,  setSaveErrors]  = useState<{ lot: string; code: string; message: string }[]>([])
+  const [savedCount,  setSavedCount]  = useState<number | null>(null)
+
+  // Keep saveCode in sync with auctionCode field
+  useEffect(() => { if (auctionCode) setSaveCode(auctionCode) }, [auctionCode])
+
+  const unsavedOkResults = results.filter(r => r.status === "OK" && !savedLots.has(r.lot))
+
+  async function saveToRun() {
+    const code = saveCode.trim().toUpperCase()
+    if (!code) {
+      setSaveErrors([{ lot: "—", code: "SAVE-001", message: "No auction code entered" }])
+      return
+    }
+    setSaving(true)
+    setSaveErrors([])
+    setSavedCount(null)
+
+    const errors: typeof saveErrors = []
+    let saved = 0
+
+    for (const r of unsavedOkResults) {
+      try {
+        const res = await fetch("/api/auction-ai/runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, preset, lot: r.lot, description: r.description, estimate: r.estimate }),
+        })
+        if (!res.ok) {
+          let msg = `HTTP ${res.status}`
+          try { const j = await res.json(); msg = j.error ?? msg } catch {}
+          errors.push({ lot: r.lot, code: `SAVE-002`, message: msg })
+        } else {
+          saved++
+          setSavedLots(s => new Set([...s, r.lot]))
+        }
+      } catch (e: any) {
+        errors.push({ lot: r.lot, code: "SAVE-003", message: e.message ?? "Network error" })
+      }
+    }
+
+    setSavedCount(saved)
+    setSaveErrors(errors)
+    setSaving(false)
+
+    // Update run list so Saved Runs tab reflects new count
+    fetch("/api/auction-ai/runs").then(r => r.json()).then(setRunList).catch(() => {})
+  }
+
   return (
     <div className="flex flex-col h-full gap-3">
       <h2 className="text-lg font-semibold text-white">Batch Run</h2>
@@ -755,6 +807,47 @@ function BatchTab({ model }: { model: string }) {
           <div className="w-full bg-gray-800 rounded-full h-2">
             <div className="bg-[#C8A96E] h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
           </div>
+        </div>
+      )}
+
+      {/* ── Save to Run panel ── */}
+      {unsavedOkResults.length > 0 && !loading && (
+        <div className="flex-shrink-0 bg-[#1a1a2e] border border-[#C8A96E]/40 rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-[#C8A96E]">💾 Save {unsavedOkResults.length} lot{unsavedOkResults.length !== 1 ? "s" : ""} to a Run</p>
+            {savedCount !== null && saveErrors.length === 0 && (
+              <span className="text-xs text-green-400">✓ {savedCount} saved</span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={saveCode}
+              onChange={e => setSaveCode(e.target.value.toUpperCase())}
+              placeholder="Auction code e.g. F051"
+              className="flex-1 bg-[#2C2C2E] border border-gray-600 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] placeholder:text-gray-600 font-mono"
+            />
+            <button onClick={saveToRun} disabled={saving}
+              className="px-4 py-1.5 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-50 text-black text-sm font-bold rounded transition-colors whitespace-nowrap">
+              {saving ? "Saving…" : "Save to Run"}
+            </button>
+          </div>
+          {saveErrors.length > 0 && (
+            <div className="space-y-1">
+              {saveErrors.map((e, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-red-300 bg-red-950/60 border border-red-800 rounded px-3 py-1.5">
+                  <span className="font-mono text-red-500 flex-shrink-0">[{e.code}]</span>
+                  <span className="flex-shrink-0 text-gray-500">{e.lot}</span>
+                  <span>{e.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {savedCount !== null && savedCount > 0 && (
+            <p className="text-xs text-green-400">
+              ✓ {savedCount} lot{savedCount !== 1 ? "s" : ""} saved under <span className="font-mono text-[#C8A96E]">{saveCode}</span>
+              {saveErrors.length > 0 && <span className="text-yellow-400 ml-2">· {saveErrors.length} failed — see errors above</span>}
+            </p>
+          )}
         </div>
       )}
 
@@ -1017,7 +1110,7 @@ function CopierTab() {
           {row && (
             <div className="bg-[#141416] border border-gray-800 rounded-lg p-5 mb-4">
               {row.folder && <p className="text-xs text-gray-600 uppercase tracking-wider mb-2">{row.folder}</p>}
-              <p className="text-gray-200 text-sm leading-relaxed">{row.description}</p>
+              <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
               {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
             </div>
           )}
@@ -1046,12 +1139,16 @@ type RunLot     = { id: string; lot: string; description: string; estimate: stri
 type RunDetail  = { id: string; code: string; preset: string; updatedAt: string; lots: RunLot[] }
 
 function SavedRunsTab() {
-  const [runs,     setRuns]     = useState<RunSummary[]>([])
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const [detail,   setDetail]   = useState<RunDetail | null>(null)
-  const [search,   setSearch]   = useState("")
-  const [loading,  setLoading]  = useState(false)
-  const [deleting, setDeleting] = useState<string | null>(null)
+  const [runs,          setRuns]          = useState<RunSummary[]>([])
+  const [expanded,      setExpanded]      = useState<string | null>(null)
+  const [detail,        setDetail]        = useState<RunDetail | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
+  const [search,        setSearch]        = useState("")
+  const [loading,       setLoading]       = useState(false)
+  const [deleting,      setDeleting]      = useState<string | null>(null)
+  const [applying,      setApplying]      = useState(false)
+  const [applyResult,   setApplyResult]   = useState<{ created: number; skipped: string[]; auctionId: string } | null>(null)
+  const [applyError,    setApplyError]    = useState<string | null>(null)
 
   useEffect(() => { loadRuns() }, [])
 
@@ -1065,10 +1162,18 @@ function SavedRunsTab() {
   }
 
   async function expand(run: RunSummary) {
-    if (expanded === run.id) { setExpanded(null); setDetail(null); return }
+    if (expanded === run.id) { setExpanded(null); setDetail(null); setApplyResult(null); setApplyError(null); return }
     setExpanded(run.id)
-    const r = await fetch(`/api/auction-ai/runs/${run.id}`)
-    setDetail(await r.json())
+    setDetail(null)
+    setApplyResult(null)
+    setApplyError(null)
+    setLoadingDetail(true)
+    try {
+      const r = await fetch(`/api/auction-ai/runs/${run.id}`)
+      setDetail(await r.json())
+    } catch { /* swallow — spinner will just stop */ } finally {
+      setLoadingDetail(false)
+    }
   }
 
   async function deleteRun(id: string) {
@@ -1076,7 +1181,7 @@ function SavedRunsTab() {
     setDeleting(id)
     await fetch("/api/auction-ai/runs", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
     setRuns(r => r.filter(x => x.id !== id))
-    if (expanded === id) { setExpanded(null); setDetail(null) }
+    if (expanded === id) { setExpanded(null); setDetail(null); setApplyResult(null); setApplyError(null) }
     setDeleting(null)
   }
 
@@ -1084,6 +1189,23 @@ function SavedRunsTab() {
     await fetch(`/api/auction-ai/runs/${lotId}`, { method: "DELETE" })
     setDetail(d => d ? { ...d, lots: d.lots.filter(l => l.id !== lotId) } : d)
     setRuns(r => r.map(x => x.id === detail?.id ? { ...x, _count: { lots: x._count.lots - 1 } } : x))
+  }
+
+  async function applyToAuction(runId: string) {
+    if (!confirm("This will create new catalogue lots from the AI run results. Lots that already exist in the auction will be skipped. Continue?")) return
+    setApplying(true)
+    setApplyResult(null)
+    setApplyError(null)
+    try {
+      const r = await fetch(`/api/auction-ai/runs/${runId}/apply`, { method: "POST" })
+      const j = await r.json()
+      if (!r.ok) { setApplyError(j.error ?? "Failed to apply"); return }
+      setApplyResult(j)
+    } catch (e: any) {
+      setApplyError(e.message ?? "Network error")
+    } finally {
+      setApplying(false)
+    }
   }
 
   function exportRun(run: RunDetail) {
@@ -1131,26 +1253,63 @@ function SavedRunsTab() {
               <span className="text-gray-600 text-xs">{expanded === run.id ? "▲" : "▼"}</span>
             </div>
 
-            {expanded === run.id && detail?.id === run.id && (
+            {expanded === run.id && (
               <div className="border-t border-gray-700">
-                <div className="flex items-center justify-between px-4 py-2 bg-[#1C1C1E]">
-                  <span className="text-xs text-gray-500">{detail.lots.length} lots</span>
-                  <button onClick={() => exportRun(detail)}
-                    className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] text-black font-semibold rounded transition-colors">
-                    ⬇ Export to Excel
-                  </button>
-                </div>
-                <div className="max-h-96 overflow-y-auto">
-                  {detail.lots.map(l => (
-                    <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 border-t border-gray-800 hover:bg-[#2C2C2E] group">
-                      <span className="text-xs font-mono text-[#C8A96E] flex-shrink-0 w-20">{l.lot}</span>
-                      <span className="text-xs text-gray-300 flex-1 line-clamp-2">{l.description}</span>
-                      <span className="text-xs text-gray-500 flex-shrink-0 w-20 text-right">{l.estimate}</span>
-                      <button onClick={() => deleteLot(l.id)}
-                        className="text-xs text-red-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">✕</button>
+                {loadingDetail && (
+                  <div className="px-4 py-4 text-xs text-gray-500 flex items-center gap-2">
+                    <span className="animate-spin inline-block w-3 h-3 border border-gray-500 border-t-transparent rounded-full" />
+                    Loading lots…
+                  </div>
+                )}
+
+                {!loadingDetail && detail?.id === run.id && (
+                  <>
+                    <div className="flex items-center justify-between gap-2 px-4 py-2 bg-[#1C1C1E] flex-wrap">
+                      <span className="text-xs text-gray-500">{detail.lots.length} lots</span>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => exportRun(detail)}
+                          className="text-xs px-3 py-1 bg-[#2C2C2E] hover:bg-[#3A3A3C] border border-gray-600 text-gray-300 rounded transition-colors">
+                          ⬇ Export Excel
+                        </button>
+                        <button onClick={() => applyToAuction(run.id)} disabled={applying}
+                          className="text-xs px-3 py-1 bg-[#C8A96E] hover:bg-[#d4b87a] disabled:opacity-50 text-black font-semibold rounded transition-colors">
+                          {applying ? "Applying…" : "✓ Apply to Auction"}
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
+
+                    {applyResult && expanded === run.id && (
+                      <div className="px-4 py-2 bg-green-950 border-t border-green-800 text-xs text-green-300 flex flex-wrap items-center gap-3">
+                        <span>✓ Created {applyResult.created} lots</span>
+                        {applyResult.skipped.length > 0 && (
+                          <span className="text-yellow-400">⚠ {applyResult.skipped.length} already existed (skipped): {applyResult.skipped.join(", ")}</span>
+                        )}
+                        <a href={`/tools/cataloguing/auctions/${applyResult.auctionId}`} target="_blank" rel="noreferrer"
+                          className="ml-auto text-blue-400 hover:text-blue-300 underline">
+                          Open in Cataloguing →
+                        </a>
+                      </div>
+                    )}
+
+                    {applyError && expanded === run.id && (
+                      <div className="px-4 py-2 bg-red-950 border-t border-red-800 text-xs text-red-300">
+                        ✕ {applyError}
+                      </div>
+                    )}
+
+                    <div className="max-h-96 overflow-y-auto">
+                      {detail.lots.map(l => (
+                        <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 border-t border-gray-800 hover:bg-[#2C2C2E] group">
+                          <span className="text-xs font-mono text-[#C8A96E] flex-shrink-0 w-20">{l.lot}</span>
+                          <span className="text-xs text-gray-300 flex-1 line-clamp-2">{l.description}</span>
+                          <span className="text-xs text-gray-500 flex-shrink-0 w-20 text-right">{l.estimate}</span>
+                          <button onClick={() => deleteLot(l.id)}
+                            className="text-xs text-red-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
