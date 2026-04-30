@@ -161,8 +161,12 @@ export default function BcApiViewerPage() {
 
             {/* ── Field names panel ── */}
             <div className="bg-[#1C1C2E] border border-gray-700 rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-gray-700 bg-[#16162a]">
+              <div className="px-4 py-2.5 border-b border-gray-700 bg-[#16162a] flex items-center justify-between">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Field Names</p>
+                <button onClick={() => { copyText(result.fields.map(f => f.name).join("\n")); setCopiedField("__all__"); setTimeout(() => setCopiedField(null), 1500) }}
+                  className="text-xs px-2.5 py-1 bg-[#C8A96E]/20 hover:bg-[#C8A96E]/40 text-[#C8A96E] rounded transition-colors">
+                  {copiedField === "__all__" ? "✓ Copied" : "Copy All"}
+                </button>
               </div>
               <div className="overflow-y-auto max-h-[600px]">
                 {result.fields.map(f => (
