@@ -1724,9 +1724,9 @@ function WarehouseHeatmapTab() {
 
   if (!loading && !data) return null
 
-  const max      = Math.max(...data.locations.map(l => l.total), 1)
-  const gridData = parseGrid(data.locations)
-  const busiest  = data.locations.reduce((a, b) => a.total > b.total ? a : b, { code: "—", total: 0 } as any)
+  const max      = data ? Math.max(...data.locations.map(l => l.total), 1) : 1
+  const gridData = data ? parseGrid(data.locations) : null
+  const busiest  = data ? data.locations.reduce((a, b) => a.total > b.total ? a : b, { code: "—", total: 0 } as any) : null
 
   function BigNum({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
     return (
@@ -1760,7 +1760,7 @@ function WarehouseHeatmapTab() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <BigNum label="Total totes" value={data.meta.totalTotes} />
         <BigNum label="Locations" value={`${data.meta.occupiedLocations} / ${data.meta.totalLocations}`} sub="occupied / total" />
-        <BigNum label="Busiest location" value={busiest.code} sub={`${max} totes`} />
+        <BigNum label="Busiest location" value={busiest?.code ?? "—"} sub={`${max} totes`} />
         <BigNum label="No location" value={data.unlocated.total} sub="not yet placed in BC" />
       </div>
 
