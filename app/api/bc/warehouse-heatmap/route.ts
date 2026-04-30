@@ -1,12 +1,47 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { getBCToken, bcFetchAllWithProgress, bcPage } from "@/lib/bc"
+import { prisma } from "@/lib/prisma"
 import LOCATIONS from "@/lib/warehouse-locations.json"
 
 export const maxDuration = 120
 
 function enc(obj: object) {
   return new TextEncoder().encode(JSON.stringify(obj) + "\n")
+}
+
+// Batch a list of IDs into OR-filter BC queries and return the latest
+// location per ID from ChangeLogEntries.
+async function batchLocations(
+  token: string,
+  ids: string[],
+  keyField: "Primary_Key_Field_1_Value" | "Primary_Key_Field_2_Value",
+  fieldCaption: string,
+  batchSize = 40,
+  onProgress?: (done: number, total: number) => void,
+): Promise<Map<string, string>> {
+  const locationMap = new Map<string, string>()
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch  = ids.slice(i, i + batchSize)
+    const orPart = batch.map(id => `${keyField} eq '${id}'`).join(" or ")
+    const filter = `Field_Caption eq '${fieldCaption}' and (${orPart})`
+    try {
+      const rows = await bcPage(token, "ChangeLogEntries", {
+        $filter:  filter,
+        $select:  `Primary_Key_Field_1_Value,Primary_Key_Field_2_Value,New_Value,Date_and_Time`,
+        $orderby: "Date_and_Time desc",
+        $top:     500,
+      })
+      // rows are newest-first — record the first (latest) location per id
+      for (const r of rows) {
+        const id  = String(r[keyField] ?? "").trim()
+        const loc = String(r.New_Value ?? "").trim()
+        if (id && !locationMap.has(id)) locationMap.set(id, loc)
+      }
+    } catch { /* skip failed batch */ }
+    onProgress?.(Math.min(i + batchSize, ids.length), ids.length)
+  }
+  return locationMap
 }
 
 export async function GET() {
@@ -21,81 +56,75 @@ export async function GET() {
 
   ;(async () => {
     try {
-      // ── Stage 1: Fetch all totes ─────────────────────────────────────────────
-      await writer.write(enc({ type: "stage", label: "Fetching totes from BC…", stage: 1, stages: 2 }))
+      // ── Stage 1: Fetch totes from BC + barcodes from DB in parallel ──────────
+      await writer.write(enc({ type: "stage", label: "Fetching totes and barcodes…", stage: 1, stages: 3 }))
 
-      const toteRows = await bcFetchAllWithProgress(
-        token,
-        "Receipt_Totes_Excel",
-        undefined,
-        undefined,
-        500,
-        (done, total) => {
+      const [toteRows, lotRows] = await Promise.all([
+        bcFetchAllWithProgress(token, "Receipt_Totes_Excel", undefined, undefined, 500, (done, total) => {
           writer.write(enc({ type: "progress", done, total, stage: 1, label: "Fetching totes…" }))
-        },
-      )
+        }),
+        prisma.catalogueLot.findMany({
+          where:  { barcode: { not: null } },
+          select: { barcode: true, title: true, lotNumber: true, status: true },
+        }),
+      ])
 
-      // Build tote info map
-      const toteInfo = new Map<string, { description: string; category: string; catalogued: boolean }>()
+      // Tote info map
+      const toteInfo = new Map<string, { description: string; category: string; catalogued: boolean; type: "tote" }>()
       for (const r of toteRows) {
         const id = String(r["No_"] ?? r["EVA_TOT_No"] ?? "").trim()
-        if (id) {
-          toteInfo.set(id, {
-            description: String(r["Description"] ?? r["EVA_TOT_Description"] ?? "").trim(),
-            category:    String(r["EVA_TOT_ArticleCategory"] ?? "").trim(),
-            catalogued:  r["EVA_TOT_Catalogued"] === true,
-          })
-        }
+        if (id) toteInfo.set(id, {
+          description: String(r["Description"] ?? r["EVA_TOT_Description"] ?? "").trim(),
+          category:    String(r["EVA_TOT_ArticleCategory"] ?? "").trim(),
+          catalogued:  r["EVA_TOT_Catalogued"] === true,
+          type:        "tote",
+        })
       }
 
-      const toteIds = [...toteInfo.keys()]
-
-      // ── Stage 2: Get current location for each tote — same approach as
-      //   Location History tab: Field_Caption eq 'Location' filtered by
-      //   Primary_Key_Field_1_Value, batched with OR conditions. ───────────────
-      await writer.write(enc({ type: "stage", label: "Fetching tote locations from BC…", stage: 2, stages: 2 }))
-
-      const toteLocation = new Map<string, string>() // toteId → current location
-      const BATCH_SIZE = 40 // tote IDs per OR-filter query
-      const total = toteIds.length
-
-      for (let i = 0; i < toteIds.length; i += BATCH_SIZE) {
-        const batch  = toteIds.slice(i, i + BATCH_SIZE)
-        const orPart = batch.map(id => `Primary_Key_Field_1_Value eq '${id}'`).join(" or ")
-        const filter = `Field_Caption eq 'Location' and (${orPart})`
-
-        try {
-          const rows = await bcPage(token, "ChangeLogEntries", {
-            $filter:  filter,
-            $select:  "Primary_Key_Field_1_Value,New_Value,Date_and_Time",
-            $orderby: "Date_and_Time desc",
-            $top:     500,
-          })
-
-          // rows are newest-first — take the first entry per tote ID
-          for (const r of rows) {
-            const id  = String(r.Primary_Key_Field_1_Value ?? "").trim()
-            const loc = String(r.New_Value ?? "").trim()
-            if (id && !toteLocation.has(id)) {
-              toteLocation.set(id, loc)
-            }
-          }
-        } catch { /* skip failed batch — totes will appear as unlocated */ }
-
-        const done = Math.min(i + BATCH_SIZE, total)
-        await writer.write(enc({ type: "progress", done, total, label: "Locating totes…" }))
+      // Barcode info map
+      const barcodeInfo = new Map<string, { description: string; category: string; catalogued: boolean; type: "barcode" }>()
+      for (const l of lotRows) {
+        if (l.barcode) barcodeInfo.set(l.barcode, {
+          description: l.title,
+          category:    l.lotNumber,
+          catalogued:  l.status !== "ENTERED",
+          type:        "barcode",
+        })
       }
 
-      // ── Stage 3: Build result using static location list as scaffold ─────────
-      const locationItems = new Map<string, { id: string; description: string; category: string; catalogued: boolean }[]>()
+      const toteIds    = [...toteInfo.keys()]
+      const barcodeIds = [...barcodeInfo.keys()]
 
-      for (const toteId of toteIds) {
-        const loc  = toteLocation.get(toteId) ?? ""
-        const info = toteInfo.get(toteId)!
-        const key  = loc || "__UNLOCATED__"
+      // ── Stage 2: Locate totes via Field_Caption eq 'Location' ────────────────
+      // (same approach as Location History tab for totes)
+      await writer.write(enc({ type: "stage", label: "Locating totes in BC…", stage: 2, stages: 3 }))
+
+      const toteLocation = await batchLocations(
+        token, toteIds, "Primary_Key_Field_1_Value", "Location", 40,
+        (done, total) => writer.write(enc({ type: "progress", done, total, stage: 2, label: "Locating totes…" })),
+      )
+
+      // ── Stage 3: Locate barcodes via Field_Caption eq 'Article Location Code' ─
+      // (same approach as Location History tab for barcodes)
+      await writer.write(enc({ type: "stage", label: "Locating barcoded items in BC…", stage: 3, stages: 3 }))
+
+      const barcodeLocation = await batchLocations(
+        token, barcodeIds, "Primary_Key_Field_2_Value", "Article Location Code", 40,
+        (done, total) => writer.write(enc({ type: "progress", done, total, stage: 3, label: "Locating barcodes…" })),
+      )
+
+      // ── Build result ─────────────────────────────────────────────────────────
+      type Item = { id: string; description: string; category: string; catalogued: boolean; type: "tote" | "barcode" }
+      const locationItems = new Map<string, Item[]>()
+
+      function place(id: string, info: Omit<Item, "id">, loc: string) {
+        const key = loc || "__UNLOCATED__"
         if (!locationItems.has(key)) locationItems.set(key, [])
-        locationItems.get(key)!.push({ id: toteId, ...info })
+        locationItems.get(key)!.push({ id, ...info })
       }
+
+      for (const id of toteIds)    place(id, toteInfo.get(id)!,    toteLocation.get(id) ?? "")
+      for (const id of barcodeIds) place(id, barcodeInfo.get(id)!, barcodeLocation.get(id) ?? "")
 
       const unlocatedItems = locationItems.get("__UNLOCATED__") ?? []
       locationItems.delete("__UNLOCATED__")
@@ -115,7 +144,6 @@ export async function GET() {
             items,
           }
         }),
-        // Any location from BC not in the static list
         ...[...locationItems.entries()]
           .filter(([code]) => !usedCodes.has(code))
           .map(([code, items]) => ({
@@ -142,9 +170,11 @@ export async function GET() {
           },
           meta: {
             totalTotes:        toteIds.length,
+            totalBarcodes:     barcodeIds.length,
             totalLocations:    LOCATIONS.length,
             occupiedLocations: locations.filter(l => l.total > 0).length,
             matchedTotes:      toteLocation.size,
+            matchedBarcodes:   barcodeLocation.size,
           },
         },
       }))

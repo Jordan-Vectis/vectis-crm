@@ -17,7 +17,7 @@ type WhData = {
   meta:         { total: number; openTotes: number; categoryCount: number; largestCategory: string }
 }
 
-type HeatTote = { id: string; description: string; category: string; catalogued: boolean; location: string }
+type HeatTote = { id: string; description: string; category: string; catalogued: boolean; location: string; type?: "tote" | "barcode" }
 type HeatLocation = { code: string; total: number; catalogued: number; uncatalogued: number; items: HeatTote[] }
 type HeatData = {
   locations: HeatLocation[]
@@ -953,8 +953,8 @@ function WarehouseHeatmapTab({ data, loading, error, stageLabel, progress, onLoa
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-gray-500 text-xs border-b border-gray-800">
-                    <th className="text-left pb-2 pr-4">Tote / Barcode</th>
-                    <th className="text-left pb-2 pr-4">Category</th>
+                    <th className="text-left pb-2 pr-4">ID / Barcode</th>
+                    <th className="text-left pb-2 pr-4">Type</th>
                     <th className="text-left pb-2 pr-4">Catalogued</th>
                     <th className="text-left pb-2">Description</th>
                   </tr>
@@ -963,7 +963,11 @@ function WarehouseHeatmapTab({ data, loading, error, stageLabel, progress, onLoa
                   {selected.items.map(item => (
                     <tr key={item.id} className="text-gray-300 hover:bg-white/5">
                       <td className="py-1.5 pr-4 font-mono text-xs text-gray-400">{item.id}</td>
-                      <td className="py-1.5 pr-4 text-xs">{item.category || "—"}</td>
+                      <td className="py-1.5 pr-4">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${item.type === "barcode" ? "bg-purple-900 text-purple-300" : "bg-blue-900 text-blue-300"}`}>
+                          {item.type === "barcode" ? "Barcode" : "Tote"}
+                        </span>
+                      </td>
                       <td className="py-1.5 pr-4">
                         <span className={`text-xs px-1.5 py-0.5 rounded ${item.catalogued ? "bg-emerald-900 text-emerald-300" : "bg-gray-800 text-gray-400"}`}>
                           {item.catalogued ? "Yes" : "No"}
