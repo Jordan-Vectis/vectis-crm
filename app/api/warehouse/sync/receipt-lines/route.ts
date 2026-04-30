@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const token = await getBCToken()
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
 
-  let maxPages = 50
+  let maxPages = 5   // 5 pages × 500 = 2,500 items per call — well under Railway's 60s timeout
   try { const body = await req.json(); if (body?.maxPages) maxPages = body.maxPages } catch {}
 
   // Find last successful sync to determine start point

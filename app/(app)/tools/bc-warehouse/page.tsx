@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import Logo from "@/components/logo"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,8 +96,8 @@ function SyncBar({ status, onSync }: { status: SyncStatus | null; onSync: () => 
 
 function FirstSyncPanel({ onComplete }: { onComplete: () => void }) {
   const [phase, setPhase] = useState<"idle" | "running" | "done" | "error">("idle")
-  const [pages, setPages] = useState(0)
   const [items, setItems] = useState(0)
+  const [batch, setBatch] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef(false)
 
@@ -106,20 +105,23 @@ function FirstSyncPanel({ onComplete }: { onComplete: () => void }) {
     abortRef.current = false
     setPhase("running")
     setError(null)
+    setItems(0)
+    setBatch(0)
 
-    // Step 1: receipt lines (may need multiple calls)
+    // Step 1: receipt lines — call repeatedly until more === false
+    // Each call handles 5 pages × 500 = 2,500 items (safe under Railway's 60s limit)
     let more = true
     while (more && !abortRef.current) {
       try {
         const res = await fetch("/api/warehouse/sync/receipt-lines", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ maxPages: 50 }),
+          body: JSON.stringify({ maxPages: 5 }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "receipt-lines failed")
         setItems(i => i + (data.itemsProcessed ?? 0))
-        setPages(p => p + 50)
+        setBatch(b => b + 1)
         more = data.more === true
       } catch (e: any) {
         setError(e.message)
@@ -182,9 +184,9 @@ function FirstSyncPanel({ onComplete }: { onComplete: () => void }) {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
             </svg>
-            <span>Syncing… {items.toLocaleString()} items so far</span>
+            <span>Syncing… {items.toLocaleString()} items ({batch} batches done)</span>
           </div>
-          <p className="text-xs text-gray-500">Do not close this tab</p>
+          <p className="text-xs text-gray-500">Do not close this tab — this may take a few minutes</p>
           <button
             onClick={() => { abortRef.current = true; setPhase("error"); setError("Cancelled") }}
             className="text-xs text-gray-500 hover:text-gray-300"
@@ -707,13 +709,7 @@ export default function BCWarehousePage() {
   ]
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-white">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-800 shrink-0">
-        <Logo className="h-6 w-auto opacity-80" />
-        <span className="text-sm font-medium text-gray-300">BC Warehouse</span>
-      </div>
-
+    <div className="flex flex-col h-full bg-gray-950 text-white">
       {/* Tab bar */}
       <div className="flex gap-1 px-4 pt-3 border-b border-gray-800 shrink-0">
         {tabs.map(t => (

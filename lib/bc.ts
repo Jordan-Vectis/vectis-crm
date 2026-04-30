@@ -104,6 +104,7 @@ export async function bcPage(
       "OData-MaxVersion": "4.0",
       Authorization:     `Bearer ${token}`,
     },
+    signal: AbortSignal.timeout(45_000),
   })
   if (!res.ok) throw new Error(`BC API ${res.status}: ${await res.text()}`)
   return (await res.json()).value ?? []
