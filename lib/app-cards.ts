@@ -77,6 +77,18 @@ export const APP_CARD_DEFS: AppCardDef[] = [
     appKey:             "BC_REPORTS",
   },
   {
+    key:                "BC_WAREHOUSE",
+    href:               "/tools/bc-warehouse",
+    defaultLabel:       "BC Warehouse",
+    defaultDescription: "Business Central warehouse — location history, tote map and stock overview.",
+    icon:               "🗺️",
+    border:             "border-orange-500",
+    iconBg:             "text-orange-400",
+    btnBg:              "bg-orange-600 hover:bg-orange-500",
+    glow:               "hover:shadow-orange-900/40",
+    appKey:             "BC_WAREHOUSE",
+  },
+  {
     key:                "WAREHOUSE",
     href:               "/tools/warehouse",
     defaultLabel:       "Warehouse",
