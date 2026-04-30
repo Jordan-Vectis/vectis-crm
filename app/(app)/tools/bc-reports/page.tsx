@@ -40,7 +40,7 @@ type ShipData = {
   meta:      { total: number; countries: number; cities: number }
 }
 
-type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "location" | "shipping" | "heatmap"
+type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "shipping"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1495,16 +1495,8 @@ const reports: NavItem[] = [
 ]
 const toolReports: NavItem[] = [
   {
-    id: "location", label: "Location History", activeColor: "text-blue-400",
-    icon: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z",
-  },
-  {
     id: "explorer", label: "Data Explorer", activeColor: "text-purple-400",
     icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
-  },
-  {
-    id: "heatmap", label: "Warehouse Map", activeColor: "text-orange-400",
-    icon: "M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7",
   },
 ]
 
@@ -1639,9 +1631,7 @@ export default function BCReportsPage() {
             {activeReport === "packing"     && <PackingTab />}
             {activeReport === "warehouse"   && <WarehouseTab />}
             {activeReport === "explorer"    && <DataExplorerTab />}
-            {activeReport === "location"    && <LocationHistoryTab />}
             {activeReport === "shipping"    && <ShippingTab />}
-            {activeReport === "heatmap"     && <WarehouseHeatmapTab />}
           </div>
         )}
       </main>
@@ -1752,8 +1742,7 @@ function WarehouseHeatmapTab() {
         Tote occupancy per BC location — current position based on BC location change log.
       </p>
 
-      {loading && progress && <ProgressBar done={progress.done} total={progress.total} label={stageLabel} />}
-      {loading && !progress && <p className="text-xs text-gray-500 mb-4">{stageLabel}</p>}
+      {loading && <ProgressBar done={progress?.done ?? 0} total={progress?.total ?? 0} label={stageLabel} />}
       {!loading && data && <LoadBtn loading={loading} onClick={load} />}
 
       {data && <>

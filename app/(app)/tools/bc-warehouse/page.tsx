@@ -532,8 +532,7 @@ function WarehouseHeatmapTab() {
         Tote occupancy per BC location — current position based on BC location change log.
       </p>
 
-      {loading && progress && <ProgressBar done={progress.done} total={progress.total} label={stageLabel} />}
-      {loading && !progress && <p className="text-xs text-gray-500 mb-4">{stageLabel}</p>}
+      {loading && <ProgressBar done={progress?.done ?? 0} total={progress?.total ?? 0} label={stageLabel} />}
       {!loading && data && <LoadBtn loading={loading} onClick={load} />}
 
       {data && (
