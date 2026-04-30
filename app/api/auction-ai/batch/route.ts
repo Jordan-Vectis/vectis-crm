@@ -36,8 +36,19 @@ export async function POST(req: NextRequest) {
   // No retries here — throw immediately so the real Gemini error surfaces in the
   // client log and the client's own backoff loop handles retrying.
   async function generateWithRetry(contents: any[]): Promise<string> {
-    const result = await model.generateContent(contents)
-    return result.response.text()
+    const result   = await model.generateContent(contents)
+    const response = result.response
+
+    const promptBlock = response.promptFeedback?.blockReason
+    if (promptBlock) throw new Error(`Blocked (prompt): ${promptBlock}`)
+
+    const candidate    = response.candidates?.[0]
+    const finishReason = candidate?.finishReason
+    if (finishReason && finishReason !== "STOP" && finishReason !== "MAX_TOKENS") {
+      throw new Error(`Blocked (${finishReason})`)
+    }
+
+    return response.text()
   }
 
   const results: { lot: string; description: string; estimate: string; status: string; error?: string }[] = []
