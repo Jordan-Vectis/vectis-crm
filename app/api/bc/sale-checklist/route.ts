@@ -30,7 +30,7 @@ export async function GET() {
         undefined,
         500,
         (done, total) => {
-          writer.write(enc({ type: "progress", done, total, label: "Fetching auction lines…" }))
+          writer.write(enc({ type: "progress", done, total, label: "Fetching auction lines…", found: done, scanned: done }))
         },
       )
 
@@ -96,11 +96,15 @@ export async function GET() {
               if (loc) locationMap.set(barcode, loc)
             } catch { /* skip */ }
           }))
+          const locatedSoFar = locationMap.size
           await writer.write(enc({
-            type: "progress",
-            done:  Math.min(i + PARALLEL, uniqueBarcodes.length),
-            total: uniqueBarcodes.length,
-            label: "Fetching BC item locations…",
+            type:    "progress",
+            done:    Math.min(i + PARALLEL, uniqueBarcodes.length),
+            total:   uniqueBarcodes.length,
+            label:   `Locating items… ${locatedSoFar} of ${uniqueBarcodes.length} found`,
+            found:   locatedSoFar,
+            page:    Math.ceil((i + PARALLEL) / PARALLEL),
+            scanned: Math.min(i + PARALLEL, uniqueBarcodes.length),
           }))
         }
       }

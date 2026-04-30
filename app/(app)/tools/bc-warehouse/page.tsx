@@ -474,7 +474,7 @@ function SaleChecklistTab() {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState<string | null>(null)
   const [stageLabel, setStageLabel] = useState("")
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number; label: string; found?: number; page?: number; scanned?: number } | null>(null)
   const [openAuctions, setOpenAuctions] = useState<Set<string>>(new Set())
   const [filter, setFilter]     = useState<"all" | "located" | "missing">("all")
 
@@ -492,7 +492,7 @@ function SaleChecklistTab() {
       await readStream(
         "/api/bc/sale-checklist",
         label => { setStageLabel(label); setProgress(null) },
-        (done, total, label) => { setStageLabel(label); setProgress({ done, total }) },
+        (done, total, label, raw) => setProgress({ done, total, label, found: raw?.found, page: raw?.page, scanned: raw?.scanned }),
         d => {
           const auctions: ChecklistAuction[] = d.auctions ?? d
           setData(auctions)
@@ -520,7 +520,7 @@ function SaleChecklistTab() {
       <h2 className="text-lg font-semibold text-white mb-1">Sale Checklist</h2>
       <p className="text-gray-500 text-sm mb-5">Lots grouped by auction — shows BC warehouse location for each lot barcode.</p>
 
-      {loading && <ProgressBar done={progress?.done ?? 0} total={progress?.total ?? 0} label={stageLabel} />}
+      {loading && <HeatmapLoadingCard stage={stageLabel} progress={progress} />}
       {error && <ErrorCard message={error} onRetry={load} />}
       {!loading && data && <LoadBtn loading={loading} onClick={() => load(true)} />}
 
