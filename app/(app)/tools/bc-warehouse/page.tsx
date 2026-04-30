@@ -47,7 +47,19 @@ async function readStream(
   onError:    (msg: string) => void,
 ) {
   const res = await fetch(url)
-  if (!res.body) throw new Error("No response body")
+
+  // Handle non-streaming error responses (e.g. 401, 503 JSON from the route guard)
+  if (!res.ok || !res.body) {
+    let errMsg = `HTTP ${res.status}`
+    try {
+      const text = await res.text()
+      const j = JSON.parse(text)
+      errMsg = j.error ?? j.message ?? errMsg
+    } catch { /* use status code */ }
+    onError(errMsg)
+    return
+  }
+
   const reader = res.body.getReader()
   const dec = new TextDecoder()
   let buf = ""
@@ -64,6 +76,8 @@ async function readStream(
         if (msg.type === "progress") onProgress(msg.done, msg.total, msg.label ?? "")
         if (msg.type === "result")   onResult(msg.data)
         if (msg.type === "error")    onError(msg.message)
+        // Handle plain BC JSON errors that lack a `type` field
+        if (!msg.type && msg.error)  onError(msg.error)
       } catch { /* ignore malformed lines */ }
     }
   }
