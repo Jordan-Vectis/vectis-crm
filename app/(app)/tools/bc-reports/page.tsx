@@ -1651,18 +1651,14 @@ export default function BCReportsPage() {
 
 // ─── Warehouse Heatmap Tab ────────────────────────────────────────────────────
 
+type HeatTote = { id: string; description: string; category: string; catalogued: boolean; location: string }
 type HeatLocation = {
-  code: string
-  total: number
-  totes: number
-  barcodes: number
-  items: { id: string; type: string; description: string; receiptId: string }[]
+  code: string; total: number; catalogued: number; uncatalogued: number; items: HeatTote[]
 }
-
 type HeatData = {
   locations: HeatLocation[]
-  unlocated: HeatLocation & { code: "UNLOCATED" }
-  meta: { totalContainers: number; totalLocations: number; occupiedLocations: number }
+  unlocated: HeatLocation
+  meta: { totalTotes: number; totalLocations: number; occupiedLocations: number; directField: string | null }
 }
 
 function heatColour(count: number, max: number): string {
@@ -1693,14 +1689,14 @@ function WarehouseHeatmapTab() {
   const [selected, setSelected] = useState<HeatLocation | null>(null)
 
   useEffect(() => {
-    fetch("/api/warehouse/heatmap")
-      .then(r => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error)))
+    fetch("/api/bc/warehouse-heatmap")
+      .then(r => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error ?? e.message ?? "Failed")))
       .then(setData)
       .catch((e: any) => setError(String(e)))
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <p className="text-gray-500 text-sm py-10 text-center">Loading warehouse data…</p>
+  if (loading) return <p className="text-gray-500 text-sm py-10 text-center">Loading BC warehouse data… this may take a moment</p>
   if (error)   return <p className="text-red-400 text-sm py-10 text-center">{error}</p>
   if (!data)   return null
 
@@ -1722,15 +1718,15 @@ function WarehouseHeatmapTab() {
     <div>
       <h2 className="text-lg font-semibold text-white mb-1">Warehouse Map</h2>
       <p className="text-gray-500 text-sm mb-5">
-        Current occupancy per location — each container's position is based on its most recent movement.
+        Tote occupancy per BC location — current position based on BC location change log.
       </p>
 
       {/* Headline stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <BigNum label="Total containers" value={data.meta.totalContainers} />
+        <BigNum label="Total totes" value={data.meta.totalTotes} />
         <BigNum label="Locations" value={`${data.meta.occupiedLocations} / ${data.meta.totalLocations}`} sub="occupied / total" />
-        <BigNum label="Busiest location" value={busiest.code} sub={`${max} items`} />
-        <BigNum label="Unlocated" value={data.unlocated.total} sub="no movement recorded" />
+        <BigNum label="Busiest location" value={busiest.code} sub={`${max} totes`} />
+        <BigNum label="No location" value={data.unlocated.total} sub="not yet placed in BC" />
       </div>
 
       {/* Legend */}
@@ -1777,7 +1773,7 @@ function WarehouseHeatmapTab() {
                       <td key={col}>
                         <button
                           onClick={() => setSelected(selected?.code === loc.code ? null : loc)}
-                          title={`${loc.code}: ${loc.total} items`}
+                          title={`${loc.code}: ${loc.total} totes`}
                           className={`w-14 h-12 rounded border transition-all hover:scale-105 flex flex-col items-center justify-center gap-0.5 ${heatColour(loc.total, max)} ${selected?.code === loc.code ? "ring-2 ring-white/50" : ""}`}
                         >
                           <span className="text-[10px] font-bold leading-none">{loc.code}</span>
@@ -1801,7 +1797,7 @@ function WarehouseHeatmapTab() {
             >
               <p className="text-[10px] font-bold truncate">{loc.code}</p>
               <p className="text-base font-bold">{loc.total}</p>
-              {loc.totes > 0 && <p className="text-[9px] opacity-60">{loc.totes}T {loc.barcodes}B</p>}
+              {loc.uncatalogued > 0 && <p className="text-[9px] opacity-60">{loc.uncatalogued} open</p>}
             </button>
           ))}
         </div>
@@ -1818,7 +1814,7 @@ function WarehouseHeatmapTab() {
           }`}
         >
           <span className="w-2 h-2 rounded-full bg-gray-500 inline-block" />
-          {data.unlocated.total} containers not yet located
+          {data.unlocated.total} totes with no BC location
         </button>
       )}
 
@@ -1828,10 +1824,10 @@ function WarehouseHeatmapTab() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <h3 className="text-white font-semibold text-base">
-                {selected.code === "UNLOCATED" ? "Unlocated Containers" : `Location ${selected.code}`}
+                {selected.code === "UNLOCATED" ? "No Location" : `Location ${selected.code}`}
               </h3>
               <p className="text-gray-500 text-xs mt-0.5">
-                {selected.total} containers — {selected.totes} totes, {selected.barcodes} other
+                {selected.total} totes — {selected.catalogued} catalogued, {selected.uncatalogued} open
               </p>
             </div>
             <button onClick={() => setSelected(null)} className="text-gray-600 hover:text-white text-lg leading-none">✕</button>
@@ -1840,9 +1836,9 @@ function WarehouseHeatmapTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 text-xs border-b border-gray-800">
-                  <th className="text-left pb-2 pr-4">Container ID</th>
-                  <th className="text-left pb-2 pr-4">Type</th>
-                  <th className="text-left pb-2 pr-4">Receipt</th>
+                  <th className="text-left pb-2 pr-4">Tote / Barcode</th>
+                  <th className="text-left pb-2 pr-4">Category</th>
+                  <th className="text-left pb-2 pr-4">Catalogued</th>
                   <th className="text-left pb-2">Description</th>
                 </tr>
               </thead>
@@ -1850,9 +1846,13 @@ function WarehouseHeatmapTab() {
                 {selected.items.map(item => (
                   <tr key={item.id} className="text-gray-300 hover:bg-white/5">
                     <td className="py-1.5 pr-4 font-mono text-xs text-gray-400">{item.id}</td>
-                    <td className="py-1.5 pr-4">{item.type || "—"}</td>
-                    <td className="py-1.5 pr-4 text-blue-400">{item.receiptId || "—"}</td>
-                    <td className="py-1.5 text-gray-400 truncate max-w-xs">{item.description || "—"}</td>
+                    <td className="py-1.5 pr-4 text-xs">{item.category || "—"}</td>
+                    <td className="py-1.5 pr-4">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${item.catalogued ? "bg-emerald-900 text-emerald-300" : "bg-gray-800 text-gray-400"}`}>
+                        {item.catalogued ? "Yes" : "No"}
+                      </span>
+                    </td>
+                    <td className="py-1.5 text-gray-400 text-xs truncate max-w-xs">{item.description || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1871,7 +1871,7 @@ function WarehouseHeatmapTab() {
               .sort((a, b) => b.total - a.total)
               .map(loc => (
                 <div key={loc.code} className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500 w-14 text-right shrink-0">{loc.code}</span>
+                  <span className="text-xs text-gray-500 w-16 text-right shrink-0">{loc.code}</span>
                   <div className="flex-1 bg-gray-800 rounded-full h-2 overflow-hidden">
                     <div
                       className={`h-2 rounded-full transition-all ${
@@ -1883,7 +1883,7 @@ function WarehouseHeatmapTab() {
                       style={{ width: `${(loc.total / max) * 100}%` }}
                     />
                   </div>
-                  <span className="text-xs text-gray-400 w-6 text-right shrink-0">{loc.total}</span>
+                  <span className="text-xs text-gray-400 w-8 text-right shrink-0">{loc.total}</span>
                 </div>
               ))}
           </div>
