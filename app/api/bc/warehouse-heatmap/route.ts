@@ -146,7 +146,7 @@ export async function GET() {
             occupiedLocations: locations.filter(l => l.total > 0).length,
           },
         },
-      }))
+      })
     } catch (err: any) {
       await safeWrite({ type: "error", message: err.message ?? "Unknown error" })
     } finally {

@@ -112,7 +112,7 @@ export async function GET() {
             found:   locatedSoFar,
             page:    Math.ceil((i + PARALLEL) / PARALLEL),
             scanned: Math.min(i + PARALLEL, uniqueBarcodes.length),
-          }))
+          })
         }
       }
 
