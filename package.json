@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "node server.js",
     "build": "prisma generate && NODE_OPTIONS='--max-old-space-size=2048' next build",
-    "start": "prisma migrate resolve --rolled-back 20260415090800_add_customer_address_fields || true && prisma migrate resolve --rolled-back 20260422120000_add_catalogue_timing_log || true && prisma migrate deploy && node server.js",
+    "start": "prisma migrate deploy && node server.js",
     "lint": "eslint"
   },
   "dependencies": {
