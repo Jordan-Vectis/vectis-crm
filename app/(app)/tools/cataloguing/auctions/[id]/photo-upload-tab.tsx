@@ -70,6 +70,12 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
       })
     }
 
+    // Only accept Vectis-format barcodes: one letter followed by 6 or 7 digits
+    // e.g. F066001, F0660012 — rejects product EANs, ISBNs, etc.
+    function isVectisBarcode(s: string): boolean {
+      return /^[A-Za-z]\d{6,7}$/.test(s.trim())
+    }
+
     async function decodeBarcode(file: File): Promise<string | null> {
       try {
         // Load via <img> so EXIF rotation is applied before scanning
@@ -114,7 +120,7 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
                 const results = await nativeDetector.detect(bmp)
                 if (results.length > 0) {
                   const raw = (results[0].rawValue as string).replace(/[^\x20-\x7E]/g, "").trim()
-                  if (raw) return raw
+                  if (raw && isVectisBarcode(raw)) return raw
                 }
               } catch {}
             }
@@ -128,7 +134,8 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
             try {
               const luminance = new HTMLCanvasElementLuminanceSource(c)
               const bitmap = new BinaryBitmap(new HybridBinarizer(luminance))
-              return zxing.decodeWithState(bitmap).getText().replace(/[^\x20-\x7E]/g, "").trim()
+              const decoded = zxing.decodeWithState(bitmap).getText().replace(/[^\x20-\x7E]/g, "").trim()
+              if (isVectisBarcode(decoded)) return decoded
             } catch {}
           }
         }
