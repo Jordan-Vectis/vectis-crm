@@ -5,7 +5,7 @@ import { uploadLotPhoto } from "@/lib/actions/catalogue"
 
 interface Props {
   auctionId: string
-  lots: { id: string; lotNumber: string; barcode: string | null }[]
+  lots: { id: string; lotNumber: string; barcode: string | null; receiptUniqueId?: string | null }[]
   onUploaded: () => void
 }
 
@@ -16,9 +16,12 @@ interface LotGroup {
 }
 
 type Phase = "idle" | "scanning" | "preview" | "uploading" | "done"
+type Mode  = "barcode" | "filename"
 
 export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
   const inputRef                  = useRef<HTMLInputElement>(null)
+  const filenameRef               = useRef<HTMLInputElement>(null)
+  const [mode, setMode]           = useState<Mode>("barcode")
   const [phase, setPhase]         = useState<Phase>("idle")
   const [groups, setGroups]       = useState<LotGroup[]>([])
   const [scanProgress, setScanProgress] = useState({ done: 0, total: 0 })
@@ -31,6 +34,54 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
     ...lots.map(l => [l.lotNumber.toLowerCase().trim(), l.id] as [string, string]),
     ...lots.filter(l => l.barcode).map(l => [l.barcode!.toLowerCase().trim(), l.id] as [string, string]),
   ])
+
+  // Lookup: receiptUniqueId → lot id (e.g. "R000016-413" → lot.id)
+  const uniqueIdMap = new Map(
+    lots.filter(l => l.receiptUniqueId).map(l => [l.receiptUniqueId!.toLowerCase().trim(), l.id] as [string, string])
+  )
+
+  // ── Filename-based matching ──────────────────────────────────────────────────
+  // e.g. "R000016-413_1.jpg" → uniqueId "R000016-413"
+  // Everything before the first underscore is the unique ID.
+  function handleFilenameFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    setError(null)
+    const files = Array.from(e.target.files ?? []).filter(
+      f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(f.name)
+    )
+    if (files.length === 0) return
+
+    // Sort by filename so order matches capture sequence
+    files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+
+    const map: Record<string, { lotId: string | null; photos: File[] }> = {}
+
+    for (const file of files) {
+      const nameNoExt = file.name.replace(/\.[^.]+$/, "")
+      const uniqueId  = nameNoExt.split("_")[0].trim().toLowerCase()
+      if (!uniqueId) continue
+      if (!map[uniqueId]) {
+        const lotId = uniqueIdMap.get(uniqueId) ?? null
+        map[uniqueId] = { lotId, photos: [] }
+      }
+      map[uniqueId].photos.push(file)
+    }
+
+    e.target.value = ""
+
+    const result: LotGroup[] = Object.entries(map).map(([uid, { lotId, photos }]) => ({
+      lotId,
+      lotNumber: uid,
+      photos,
+    }))
+
+    if (result.length === 0) {
+      setError("No files found. Make sure filenames contain the unique ID before the first underscore, e.g. R000016-413_1.jpg")
+      return
+    }
+
+    setGroups(result)
+    setPhase("preview")
+  }
 
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null)
@@ -216,23 +267,62 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
       <div className="mb-5">
         <h2 className="text-sm font-semibold text-gray-200">Smart Photo Uploader</h2>
         <p className="text-xs text-gray-500 mt-0.5">
-          Select the folder of photos — barcodes are read from each image to group item photos under the right lot.
+          Upload photos and automatically assign them to the right lots.
         </p>
       </div>
 
       {/* ── Idle ── */}
       {phase === "idle" && (
         <>
-          <input ref={inputRef} type="file" multiple
-            // @ts-ignore
-            webkitdirectory=""
-            className="hidden" onChange={handleFiles} />
-          <button onClick={() => inputRef.current?.click()}
-            className="w-full py-10 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex flex-col items-center gap-2">
-            <span className="text-4xl">📁</span>
-            <span className="text-sm font-medium">Select photo folder</span>
-            <span className="text-xs text-gray-600">Barcodes will be automatically detected from the images</span>
-          </button>
+          {/* Mode toggle */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setMode("filename")}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                mode === "filename"
+                  ? "bg-[#2AB4A6] border-[#2AB4A6] text-black"
+                  : "border-gray-700 text-gray-400 hover:border-gray-500"
+              }`}
+            >
+              📄 Match by Filename
+            </button>
+            <button
+              onClick={() => setMode("barcode")}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                mode === "barcode"
+                  ? "bg-[#2AB4A6] border-[#2AB4A6] text-black"
+                  : "border-gray-700 text-gray-400 hover:border-gray-500"
+              }`}
+            >
+              📷 Scan Barcodes
+            </button>
+          </div>
+
+          {mode === "filename" ? (
+            <>
+              <input ref={filenameRef} type="file" multiple accept="image/*"
+                className="hidden" onChange={handleFilenameFiles} />
+              <button onClick={() => filenameRef.current?.click()}
+                className="w-full py-10 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex flex-col items-center gap-2">
+                <span className="text-4xl">📄</span>
+                <span className="text-sm font-medium">Select photos</span>
+                <span className="text-xs text-gray-600">Filename must start with the unique ID — e.g. R000016-413_1.jpg</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <input ref={inputRef} type="file" multiple
+                // @ts-ignore
+                webkitdirectory=""
+                className="hidden" onChange={handleFiles} />
+              <button onClick={() => inputRef.current?.click()}
+                className="w-full py-10 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex flex-col items-center gap-2">
+                <span className="text-4xl">📁</span>
+                <span className="text-sm font-medium">Select photo folder</span>
+                <span className="text-xs text-gray-600">Barcodes will be automatically detected from the images</span>
+              </button>
+            </>
+          )}
           {error && <p className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2 mt-3">{error}</p>}
         </>
       )}
@@ -272,7 +362,9 @@ export default function PhotoUploadTab({ auctionId, lots, onUploaded }: Props) {
 
           {unmatchedGroups.length > 0 && (
             <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg px-3 py-2">
-              <p className="text-xs text-yellow-400 font-medium mb-1">Barcodes detected but not found in this auction:</p>
+              <p className="text-xs text-yellow-400 font-medium mb-1">
+                {mode === "filename" ? "Unique IDs not matched to any lot in this auction:" : "Barcodes detected but not found in this auction:"}
+              </p>
               <p className="text-xs text-yellow-600">{unmatchedGroups.map(g => g.lotNumber).join(", ")}</p>
             </div>
           )}
