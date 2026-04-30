@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getBCToken, bcFetchAllWithProgress } from "@/lib/bc"
+import { getBCToken, bcFetchAllWithProgress, bcPage } from "@/lib/bc"
 
 export const maxDuration = 120
 
@@ -42,36 +42,54 @@ export async function GET() {
       const sampleRow = toteRows[0] ?? {}
       const directLocationField = LOCATION_FIELD_CANDIDATES.find(f => f in sampleRow) ?? null
 
-      // ── Stage 2: Build location map ──────────────────────────────────────────
+      // ── Stage 2: Build tote → current location map ───────────────────────────
       const toteLocation = new Map<string, string>()
-
       for (const r of toteRows) {
         const id = String(r["No_"] ?? r["EVA_TOT_No"] ?? "").trim()
         if (id) toteLocation.set(id, directLocationField ? String(r[directLocationField] ?? "").trim() : "")
       }
 
       if (!directLocationField) {
-        await writer.write(enc({ type: "stage", label: "Fetching location history from BC…", stage: 2, stages: 2 }))
+        await writer.write(enc({ type: "stage", label: "Fetching location history…", stage: 2, stages: 2 }))
 
-        const SELECT = "Primary_Key_Field_1_Value,New_Value,Date_and_Time"
-        const changeRows = await bcFetchAllWithProgress(
-          token,
-          "ChangeLogEntries",
-          `Field_Caption eq 'Location'`,
-          SELECT,
-          500,
-          (done, total) => {
-            writer.write(enc({ type: "progress", done, total, stage: 2, label: "Fetching location history…" }))
-          },
-        )
+        // Fetch ChangeLogEntries ordered newest-first and stop as soon as every
+        // tote has a location recorded — avoids scanning the entire history.
+        const pending = new Set(toteLocation.keys())
+        const SELECT  = "Primary_Key_Field_1_Value,New_Value,Date_and_Time"
+        const BATCH   = 500
+        const MAX_PAGES = 40  // hard safety cap (40 × 500 = 20 000 entries)
+        let skip = 0
 
-        // Sort oldest → newest; later entries overwrite
-        changeRows.sort((a, b) => (a.Date_and_Time ?? "").localeCompare(b.Date_and_Time ?? ""))
+        for (let page = 0; page < MAX_PAGES && pending.size > 0; page++) {
+          let rows: any[]
+          try {
+            rows = await bcPage(token, "ChangeLogEntries", {
+              $filter:  `Field_Caption eq 'Location'`,
+              $select:  SELECT,
+              $orderby: "Date_and_Time desc",
+              $top:     BATCH,
+              $skip:    skip,
+            })
+          } catch (err: any) {
+            // Emit a warning but continue — we may have partial data
+            await writer.write(enc({ type: "stage", label: `Location history: ${err.message ?? "error"} — showing partial data`, stage: 2, stages: 2 }))
+            break
+          }
 
-        for (const r of changeRows) {
-          const id  = String(r.Primary_Key_Field_1_Value ?? "").trim()
-          const loc = String(r.New_Value ?? "").trim()
-          if (id && toteLocation.has(id)) toteLocation.set(id, loc)
+          for (const r of rows) {
+            const id  = String(r.Primary_Key_Field_1_Value ?? "").trim()
+            const loc = String(r.New_Value ?? "").trim()
+            if (pending.has(id)) {
+              toteLocation.set(id, loc)
+              pending.delete(id)
+            }
+          }
+
+          const located = toteRows.length - pending.size
+          await writer.write(enc({ type: "progress", done: located, total: toteRows.length, stage: 2, label: "Matching tote locations…" }))
+
+          if (rows.length < BATCH) break  // no more entries
+          skip += BATCH
         }
       }
 
