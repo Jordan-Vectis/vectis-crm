@@ -10,7 +10,6 @@ function enc(obj: object) {
   return new TextEncoder().encode(JSON.stringify(obj) + "\n")
 }
 
-// Exactly the same query Location History uses, but $top=1 (we only need the latest)
 async function getLatestLocation(
   token: string,
   keyField: string,
@@ -42,25 +41,24 @@ export async function GET() {
 
   ;(async () => {
     try {
-      // ── Stage 1: Fetch totes from BC + barcodes from DB ──────────────────────
-      await writer.write(enc({ type: "stage", label: "Fetching totes and barcodes…", stage: 1, stages: 3 }))
+      // ── Stage 1: Fetch totes from BC ─────────────────────────────────────────
+      await writer.write(enc({ type: "stage", label: "Fetching totes from BC…", stage: 1, stages: 3 }))
 
-      const [toteRows, lotRows] = await Promise.all([
-        bcFetchAllWithProgress(token, "Receipt_Totes_Excel", undefined, undefined, 500, (done, total) => {
-          writer.write(enc({ type: "progress", done, total, stage: 1, label: "Fetching totes…" }))
-        }),
-        prisma.catalogueLot.findMany({
-          where:  { barcode: { not: null } },
-          select: { barcode: true, title: true, lotNumber: true, status: true },
-        }),
-      ])
+      const toteRows = await bcFetchAllWithProgress(
+        token, "Receipt_Totes_Excel", undefined, undefined, 500,
+        (done, total) => writer.write(enc({ type: "progress", done, total, label: "Fetching totes…" })),
+      )
+
+      // Detect ID field from first row
+      const sampleTote = toteRows[0] ?? {}
+      const toteIdField = ["No_", "EVA_TOT_No", "No", "ToteNo", "Tote_No", "Code"].find(f => f in sampleTote) ?? null
+      const rawToteFields = Object.keys(sampleTote)
 
       type Item = { id: string; description: string; category: string; catalogued: boolean; type: "tote" | "barcode" }
 
-      // Tote list
       const totes: Item[] = []
       for (const r of toteRows) {
-        const id = String(r["No_"] ?? r["EVA_TOT_No"] ?? "").trim()
+        const id = toteIdField ? String(r[toteIdField] ?? "").trim() : ""
         if (id) totes.push({
           id,
           description: String(r["Description"] ?? r["EVA_TOT_Description"] ?? "").trim(),
@@ -70,7 +68,14 @@ export async function GET() {
         })
       }
 
-      // Barcode list
+      // ── Stage 2: Fetch barcodes from DB ──────────────────────────────────────
+      await writer.write(enc({ type: "stage", label: "Fetching barcodes…", stage: 2, stages: 3 }))
+
+      const lotRows = await prisma.catalogueLot.findMany({
+        where:  { barcode: { not: null } },
+        select: { barcode: true, title: true, lotNumber: true, status: true },
+      })
+
       const barcodes: Item[] = []
       for (const l of lotRows) {
         if (l.barcode) barcodes.push({
@@ -82,48 +87,37 @@ export async function GET() {
         })
       }
 
-      // ── Stage 2: Look up current location for each tote ──────────────────────
-      // Same query as Location History tab: Primary_Key_Field_1_Value eq '{id}' and Field_Caption eq 'Location'
-      await writer.write(enc({ type: "stage", label: "Locating totes in BC…", stage: 2, stages: 3 }))
+      await writer.write(enc({ type: "progress", done: barcodes.length, total: barcodes.length, label: `${barcodes.length} barcodes loaded` }))
 
-      const toteLocation = new Map<string, string>()
-      const PARALLEL = 20
+      // ── Stage 3: Look up current location for each item ───────────────────────
+      // Totes:    Primary_Key_Field_1_Value eq '{id}'   and Field_Caption eq 'Location'
+      // Barcodes: Primary_Key_Field_2_Value eq '{id}'   and Field_Caption eq 'Article Location Code'
+      // (Same queries as Location History tab)
+      await writer.write(enc({ type: "stage", label: "Looking up locations in BC…", stage: 3, stages: 3 }))
 
-      for (let i = 0; i < totes.length; i += PARALLEL) {
-        const batch = totes.slice(i, i + PARALLEL)
-        await Promise.all(batch.map(async t => {
-          const loc = await getLatestLocation(token, "Primary_Key_Field_1_Value", t.id, "Location")
-          if (loc) toteLocation.set(t.id, loc)
+      const PARALLEL    = 20
+      const locationMap = new Map<string, string>() // item id → location
+
+      const allItems = [...totes, ...barcodes]
+      for (let i = 0; i < allItems.length; i += PARALLEL) {
+        const batch = allItems.slice(i, i + PARALLEL)
+        await Promise.all(batch.map(async item => {
+          const loc = item.type === "tote"
+            ? await getLatestLocation(token, "Primary_Key_Field_1_Value", item.id, "Location")
+            : await getLatestLocation(token, "Primary_Key_Field_2_Value", item.id, "Article Location Code")
+          if (loc) locationMap.set(item.id, loc)
         }))
-        await writer.write(enc({ type: "progress", done: Math.min(i + PARALLEL, totes.length), total: totes.length, label: "Locating totes…" }))
-      }
-
-      // ── Stage 3: Look up current location for each barcode ───────────────────
-      // Same query as Location History tab: Primary_Key_Field_2_Value eq '{barcode}' and Field_Caption eq 'Article Location Code'
-      await writer.write(enc({ type: "stage", label: "Locating barcoded items in BC…", stage: 3, stages: 3 }))
-
-      const barcodeLocation = new Map<string, string>()
-
-      for (let i = 0; i < barcodes.length; i += PARALLEL) {
-        const batch = barcodes.slice(i, i + PARALLEL)
-        await Promise.all(batch.map(async b => {
-          const loc = await getLatestLocation(token, "Primary_Key_Field_2_Value", b.id, "Article Location Code")
-          if (loc) barcodeLocation.set(b.id, loc)
-        }))
-        await writer.write(enc({ type: "progress", done: Math.min(i + PARALLEL, barcodes.length), total: barcodes.length, label: "Locating barcodes…" }))
+        await writer.write(enc({ type: "progress", done: Math.min(i + PARALLEL, allItems.length), total: allItems.length, label: "Looking up locations…" }))
       }
 
       // ── Build result ─────────────────────────────────────────────────────────
       const locationItems = new Map<string, Item[]>()
-
-      function place(item: Item, loc: string) {
+      for (const item of allItems) {
+        const loc = locationMap.get(item.id) ?? ""
         const key = loc || "__UNLOCATED__"
         if (!locationItems.has(key)) locationItems.set(key, [])
         locationItems.get(key)!.push(item)
       }
-
-      for (const t of totes)    place(t, toteLocation.get(t.id) ?? "")
-      for (const b of barcodes) place(b, barcodeLocation.get(b.id) ?? "")
 
       const unlocatedItems = locationItems.get("__UNLOCATED__") ?? []
       locationItems.delete("__UNLOCATED__")
@@ -135,9 +129,9 @@ export async function GET() {
           usedCodes.add(loc.code)
           return { code: loc.code, name: loc.name, total: items.length, catalogued: items.filter(i => i.catalogued).length, uncatalogued: items.filter(i => !i.catalogued).length, items }
         }),
-        ...[...locationItems.entries()]
-          .filter(([code]) => !usedCodes.has(code))
-          .map(([code, items]) => ({ code, name: code, total: items.length, catalogued: items.filter(i => i.catalogued).length, uncatalogued: items.filter(i => !i.catalogued).length, items })),
+        ...[...locationItems.entries()].filter(([code]) => !usedCodes.has(code)).map(([code, items]) => ({
+          code, name: code, total: items.length, catalogued: items.filter(i => i.catalogued).length, uncatalogued: items.filter(i => !i.catalogued).length, items,
+        })),
       ].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: "base" }))
 
       await writer.write(enc({
@@ -156,8 +150,10 @@ export async function GET() {
             totalBarcodes:     barcodes.length,
             totalLocations:    LOCATIONS.length,
             occupiedLocations: locations.filter(l => l.total > 0).length,
-            matchedTotes:      toteLocation.size,
-            matchedBarcodes:   barcodeLocation.size,
+            matchedItems:      locationMap.size,
+            // Debug: raw field names from BC tote record
+            toteIdField,
+            rawToteFields,
           },
         },
       }))

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getBCToken, bcPage } from "@/lib/bc"
-import { prisma } from "@/lib/prisma"
+import { getBCToken, bcFetchAllWithProgress, bcPage } from "@/lib/bc"
 
 export const maxDuration = 120
 
@@ -21,87 +20,116 @@ export async function GET() {
 
   ;(async () => {
     try {
-      // ── Stage 1: Fetch lots from our DB grouped by auction ───────────────────
-      await writer.write(enc({ type: "stage", label: "Loading catalogue lots…" }))
+      // ── Stage 1: Fetch all auction receipt lines from BC ─────────────────────
+      await writer.write(enc({ type: "stage", label: "Fetching auction lines from BC…" }))
 
-      const auctions = await prisma.catalogueAuction.findMany({
-        where: { complete: false },
-        orderBy: { auctionDate: "desc" },
-        select: {
-          id: true, code: true, name: true, auctionDate: true, auctionType: true,
-          lots: {
-            select: { id: true, lotNumber: true, barcode: true, title: true, status: true },
-            orderBy: { lotNumber: "asc" },
-          },
+      const lines = await bcFetchAllWithProgress(
+        token,
+        "Auction_Receipt_Lines_Excel",
+        undefined,
+        undefined,
+        500,
+        (done, total) => {
+          writer.write(enc({ type: "progress", done, total, label: "Fetching auction lines…" }))
         },
-      })
+      )
 
-      // Collect all barcodes from lots
-      const allBarcodes = new Set<string>()
-      for (const a of auctions) {
-        for (const l of a.lots) {
-          if (l.barcode) allBarcodes.add(l.barcode)
+      if (lines.length === 0) {
+        await writer.write(enc({ type: "result", data: [] }))
+        return
+      }
+
+      // Log available field names from first row to aid debugging
+      const fields = Object.keys(lines[0])
+
+      // Detect key fields — inspect first row to find auction, lot, barcode, location
+      const sample = lines[0]
+
+      // Try to find field names by pattern matching
+      function findField(row: Record<string, any>, candidates: string[]): string | null {
+        return candidates.find(c => c in row) ?? null
+      }
+
+      const auctionField   = findField(sample, ["EVA_ARL_AuctionCode", "Auction_Code", "AuctionCode", "Sale_Code", "SaleCode", "EVA_ARL_SaleCode"])
+      const auctionName    = findField(sample, ["EVA_ARL_AuctionName", "Auction_Name", "AuctionName", "Sale_Name"])
+      const auctionDate    = findField(sample, ["EVA_ARL_AuctionDate", "Auction_Date", "AuctionDate", "Sale_Date"])
+      const lotNoField     = findField(sample, ["EVA_ARL_LotNo", "Lot_No", "LotNo", "Lot_Number", "LotNumber"])
+      const barcodeField   = findField(sample, ["EVA_ARL_InternalBarcode", "Internal_Barcode", "Barcode", "EVA_ARL_Barcode", "InternalBarcode"])
+      const titleField     = findField(sample, ["EVA_ARL_Description", "Description", "Title", "EVA_ARL_Title", "Lot_Description"])
+      const locationField  = findField(sample, ["EVA_ARL_ArticleLocationCode", "Article_Location_Code", "Location_Code", "LocationCode", "Location"])
+
+      // ── Stage 2: Check location for each lot via ChangeLogEntries ────────────
+      // Only needed if there's no direct location field on the line.
+      // Uses same approach as Location History: Primary_Key_Field_2_Value eq '{barcode}' and Field_Caption eq 'Article Location Code'
+
+      const barcodes = lines
+        .map(l => barcodeField ? String(l[barcodeField] ?? "").trim() : "")
+        .filter(Boolean)
+
+      const locationMap = new Map<string, string>() // barcode → current location
+
+      if (locationField) {
+        // Location is directly on the line record — no BC query needed
+        for (const l of lines) {
+          const barcode = barcodeField ? String(l[barcodeField] ?? "").trim() : ""
+          const loc     = String(l[locationField] ?? "").trim()
+          if (barcode && loc) locationMap.set(barcode, loc)
+        }
+      } else {
+        // Look up location via ChangeLogEntries — same query as Location History tab
+        await writer.write(enc({ type: "stage", label: "Fetching BC item locations…" }))
+
+        const uniqueBarcodes = [...new Set(barcodes)]
+        const PARALLEL = 20
+
+        for (let i = 0; i < uniqueBarcodes.length; i += PARALLEL) {
+          const batch = uniqueBarcodes.slice(i, i + PARALLEL)
+          await Promise.all(batch.map(async barcode => {
+            try {
+              const rows = await bcPage(token, "ChangeLogEntries", {
+                $filter:  `Primary_Key_Field_2_Value eq '${barcode}' and Field_Caption eq 'Article Location Code'`,
+                $select:  "New_Value,Date_and_Time",
+                $orderby: "Date_and_Time desc",
+                $top:     1,
+              })
+              const loc = String(rows[0]?.New_Value ?? "").trim()
+              if (loc) locationMap.set(barcode, loc)
+            } catch { /* skip */ }
+          }))
+          await writer.write(enc({
+            type: "progress",
+            done:  Math.min(i + PARALLEL, uniqueBarcodes.length),
+            total: uniqueBarcodes.length,
+            label: "Fetching BC item locations…",
+          }))
         }
       }
 
-      await writer.write(enc({ type: "progress", done: auctions.length, total: auctions.length, label: `${auctions.length} auctions loaded` }))
+      // ── Stage 3: Group lines by auction and attach locations ─────────────────
+      const auctionMap = new Map<string, {
+        code: string; name: string; date: string | null
+        lots: { lotNumber: string; barcode: string; title: string; location: string | null }[]
+      }>()
 
-      // ── Stage 2: Fetch BC item locations via change log ──────────────────────
-      await writer.write(enc({ type: "stage", label: "Fetching BC item locations…" }))
+      for (const l of lines) {
+        const code    = auctionField  ? String(l[auctionField]  ?? "").trim() : "UNKNOWN"
+        const name    = auctionName   ? String(l[auctionName]   ?? "").trim() : code
+        const date    = auctionDate   ? String(l[auctionDate]   ?? "").trim() : null
+        const lotNo   = lotNoField    ? String(l[lotNoField]    ?? "").trim() : ""
+        const barcode = barcodeField  ? String(l[barcodeField]  ?? "").trim() : ""
+        const title   = titleField    ? String(l[titleField]    ?? "").trim() : ""
+        const location = barcode ? (locationMap.get(barcode) ?? null) : null
 
-      const barcodeLocation = new Map<string, string>() // barcode → current location
-      const pending  = new Set(allBarcodes)
-      const BATCH    = 500
-      const MAX_PAGES = 40
-      let skip = 0
-
-      for (let page = 0; page < MAX_PAGES && pending.size > 0; page++) {
-        let rows: any[]
-        try {
-          rows = await bcPage(token, "ChangeLogEntries", {
-            $filter:  `Field_Caption eq 'Article Location Code'`,
-            $select:  "Primary_Key_Field_1_Value,Primary_Key_Field_2_Value,New_Value,Date_and_Time",
-            $orderby: "Date_and_Time desc",
-            $top:     BATCH,
-            $skip:    skip,
-          })
-        } catch { break }
-
-        for (const r of rows) {
-          // Primary_Key_Field_2_Value is the barcode for items
-          const barcode = String(r.Primary_Key_Field_2_Value ?? r.Primary_Key_Field_1_Value ?? "").trim()
-          const loc     = String(r.New_Value ?? "").trim()
-          if (pending.has(barcode)) {
-            barcodeLocation.set(barcode, loc)
-            pending.delete(barcode)
-          }
+        if (!auctionMap.has(code)) {
+          auctionMap.set(code, { code, name, date, lots: [] })
         }
-
-        const located = allBarcodes.size - pending.size
-        await writer.write(enc({ type: "progress", done: located, total: allBarcodes.size, label: "Matching lot locations…" }))
-
-        if (rows.length < BATCH) break
-        skip += BATCH
+        auctionMap.get(code)!.lots.push({ lotNumber: lotNo, barcode, title, location })
       }
 
-      // ── Stage 3: Build result ────────────────────────────────────────────────
-      const result = auctions.map(a => ({
-        id:          a.id,
-        code:        a.code,
-        name:        a.name,
-        auctionDate: a.auctionDate,
-        auctionType: a.auctionType,
-        lots: a.lots.map(l => ({
-          id:        l.id,
-          lotNumber: l.lotNumber,
-          barcode:   l.barcode,
-          title:     l.title,
-          status:    l.status,
-          location:  l.barcode ? (barcodeLocation.get(l.barcode) ?? null) : null,
-        })),
-      }))
+      const result = [...auctionMap.values()]
+        .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
 
-      await writer.write(enc({ type: "result", data: result }))
+      await writer.write(enc({ type: "result", data: { auctions: result, fields } }))
     } catch (err: any) {
       await writer.write(enc({ type: "error", message: err.message ?? "Unknown error" }))
     } finally {

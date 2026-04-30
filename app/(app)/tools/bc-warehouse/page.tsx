@@ -25,8 +25,8 @@ type HeatData = {
   meta: { totalTotes: number; totalLocations: number; occupiedLocations: number; directField: string | null }
 }
 
-type ChecklistLot = { id: string; lotNumber: string; barcode: string | null; title: string; status: string; location: string | null }
-type ChecklistAuction = { id: string; code: string; name: string; auctionDate: string | null; auctionType: string; lots: ChecklistLot[] }
+type ChecklistLot = { lotNumber: string; barcode: string; title: string; location: string | null }
+type ChecklistAuction = { code: string; name: string; date: string | null; lots: ChecklistLot[] }
 
 type Report = "warehouse" | "location" | "heatmap" | "sale-checklist" | "search"
 
@@ -451,9 +451,9 @@ function SaleChecklistTab() {
         label => { setStageLabel(label); setProgress(null) },
         (done, total, label) => { setStageLabel(label); setProgress({ done, total }) },
         d => {
-          setData(d)
-          // Auto-open all auctions
-          setOpenAuctions(new Set((d as ChecklistAuction[]).map((a: ChecklistAuction) => a.id)))
+          const auctions: ChecklistAuction[] = d.auctions ?? d
+          setData(auctions)
+          setOpenAuctions(new Set(auctions.map(a => a.code)))
         },
         msg => setError(msg),
       )
@@ -463,10 +463,10 @@ function SaleChecklistTab() {
 
   useEffect(() => { load() }, [])
 
-  function toggleAuction(id: string) {
+  function toggleAuction(code: string) {
     setOpenAuctions(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      next.has(code) ? next.delete(code) : next.add(code)
       return next
     })
   }
@@ -484,8 +484,8 @@ function SaleChecklistTab() {
         <>
           {/* Summary */}
           {(() => {
-            const totalLots    = data.reduce((s, a) => s + a.lots.length, 0)
-            const locatedLots  = data.reduce((s, a) => s + a.lots.filter(l => l.location).length, 0)
+            const totalLots   = data.reduce((s, a) => s + a.lots.length, 0)
+            const locatedLots = data.reduce((s, a) => s + a.lots.filter(l => l.location).length, 0)
             return (
               <div className="grid grid-cols-3 gap-3 mb-5">
                 <div className="bg-[#0d0f1a] border border-gray-800 rounded-lg p-3">
@@ -526,16 +526,16 @@ function SaleChecklistTab() {
               const located  = auction.lots.filter(l => l.location).length
               const total    = auction.lots.length
               const pct      = total > 0 ? Math.round((located / total) * 100) : 0
-              const isOpen   = openAuctions.has(auction.id)
-              const auctionDate = auction.auctionDate ? new Date(auction.auctionDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "No date"
+              const isOpen   = openAuctions.has(auction.code)
+              const auctionDate = auction.date ? new Date(auction.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "No date"
 
               return (
-                <div key={auction.id} className="bg-[#0d0f1a] border border-gray-800 rounded-xl overflow-hidden">
+                <div key={auction.code} className="bg-[#0d0f1a] border border-gray-800 rounded-xl overflow-hidden">
                   {/* Header */}
-                  <button onClick={() => toggleAuction(auction.id)} className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors text-left">
+                  <button onClick={() => toggleAuction(auction.code)} className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors text-left">
                     <div className="flex items-center gap-4">
                       <div>
-                        <p className="text-white font-semibold text-sm">{auction.name}</p>
+                        <p className="text-white font-semibold text-sm">{auction.name || auction.code}</p>
                         <p className="text-gray-500 text-xs mt-0.5">{auction.code} · {auctionDate} · {total} lots</p>
                       </div>
                       {/* Progress pill */}
@@ -564,23 +564,19 @@ function SaleChecklistTab() {
                             <th className="px-4 py-2 text-left w-32">Barcode</th>
                             <th className="px-4 py-2 text-left">Title</th>
                             <th className="px-4 py-2 text-left w-32">BC Location</th>
-                            <th className="px-4 py-2 text-left w-20">Status</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-900">
-                          {filteredLots.map(lot => (
-                            <tr key={lot.id} className="hover:bg-white/3">
-                              <td className="px-4 py-2 text-gray-400 font-mono">{lot.lotNumber}</td>
-                              <td className="px-4 py-2 text-gray-500 font-mono">{lot.barcode ?? "—"}</td>
+                          {filteredLots.map((lot, i) => (
+                            <tr key={i} className="hover:bg-white/3">
+                              <td className="px-4 py-2 text-gray-400 font-mono">{lot.lotNumber || "—"}</td>
+                              <td className="px-4 py-2 text-gray-500 font-mono">{lot.barcode || "—"}</td>
                               <td className="px-4 py-2 text-gray-300 truncate max-w-xs">{lot.title}</td>
                               <td className="px-4 py-2">
                                 {lot.location
                                   ? <span className="text-emerald-400 font-mono font-semibold">{lot.location}</span>
                                   : <span className="text-red-400 opacity-70">No location</span>
                                 }
-                              </td>
-                              <td className="px-4 py-2">
-                                <span className="text-gray-600 capitalize text-[10px]">{lot.status.toLowerCase()}</span>
                               </td>
                             </tr>
                           ))}
