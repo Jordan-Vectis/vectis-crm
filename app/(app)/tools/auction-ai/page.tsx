@@ -447,6 +447,16 @@ function BatchTab({ model }: { model: string }) {
       .catch(() => {})
   }, [auctionCode, runList])
 
+  // When savedLots loads (existing run selected), auto-deselect any already-saved
+  // lots from the current photo selection — works even if photos were loaded first
+  useEffect(() => {
+    if (savedLots.size === 0) return
+    setSelected(s => {
+      const next = new Set([...s].filter(n => !savedLots.has(n)))
+      return next.size === s.size ? s : next // avoid re-render if nothing changed
+    })
+  }, [savedLots])
+
   const systemInstruction = preset === "Custom (paste my own)" ? custom : (overrides[preset] ?? PRESETS[preset])
 
   async function savePreset(text: string) {
@@ -735,20 +745,22 @@ function BatchTab({ model }: { model: string }) {
           <p className="text-xs text-gray-600 mt-1">New run — lots will be saved under this code</p>
         )}
         {savedLots.size > 0 && (
-          <div className="flex items-center gap-3 mt-1.5">
-            <span className="text-xs text-amber-400">{savedLots.size} lot{savedLots.size !== 1 ? "s" : ""} already saved in this run</span>
+          <div className="mt-2 px-3 py-2 bg-amber-950/40 border border-amber-700/50 rounded-lg flex items-center gap-3">
+            <span className="text-sm">⟳</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-amber-300">Resuming run — {savedLots.size} lot{savedLots.size !== 1 ? "s" : ""} already saved</p>
+              <p className="text-xs text-amber-600 mt-0.5">Already-saved lots are deselected automatically. Upload your photos and only the missing ones will be processed.</p>
+            </div>
             <button
               onClick={() => {
                 const inBoth = [...savedLots].filter(l => selected.has(l))
                 if (inBoth.length > 0) {
-                  // deselect all saved lots
                   setSelected(s => new Set([...s].filter(l => !savedLots.has(l))))
                 } else {
-                  // all already deselected — re-add them back
                   setSelected(s => new Set([...s, ...savedLots].filter(l => lotNames.includes(l))))
                 }
               }}
-              className="text-xs px-2.5 py-0.5 bg-[#2C2C2E] border border-amber-600 text-amber-400 rounded hover:bg-amber-900/30 transition-colors">
+              className="text-xs px-2.5 py-1 bg-[#2C2C2E] border border-amber-600 text-amber-400 rounded hover:bg-amber-900/30 transition-colors whitespace-nowrap flex-shrink-0">
               ⏭ Skip Saved
             </button>
           </div>
