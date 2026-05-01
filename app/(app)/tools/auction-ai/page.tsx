@@ -1012,13 +1012,39 @@ function BarcodeTab() {
 
 // ─── Description Copier Tab ───────────────────────────────────────────────────
 
+type SortBy = "uniqueId" | "barcode" | "lotNumber"
+
+function sortRows(rows: { folder: string; description: string; estimate: string }[], sortBy: SortBy) {
+  return [...rows].sort((a, b) => {
+    const fa = a.folder.trim(), fb = b.folder.trim()
+    if (sortBy === "lotNumber") {
+      const na = parseInt(fa, 10), nb = parseInt(fb, 10)
+      if (!isNaN(na) && !isNaN(nb)) return na - nb
+      return fa.localeCompare(fb, undefined, { numeric: true })
+    }
+    if (sortBy === "uniqueId") {
+      // R000016-413 → sort by receipt number (16) then line number (413)
+      const m = (s: string) => s.match(/^[A-Za-z](\d+)-(\d+)$/)
+      const ma = m(fa), mb = m(fb)
+      if (ma && mb) {
+        const diff = parseInt(ma[1], 10) - parseInt(mb[1], 10)
+        return diff !== 0 ? diff : parseInt(ma[2], 10) - parseInt(mb[2], 10)
+      }
+    }
+    return fa.localeCompare(fb, undefined, { numeric: true, sensitivity: "base" })
+  })
+}
+
 function CopierTab() {
   const [rows, setRows]         = useState<{ folder: string; description: string; estimate: string }[]>([])
+  const [sortBy, setSortBy]     = useState<SortBy>("uniqueId")
   const [idx, setIdx]           = useState(0)
   const [copiedType, setCopied] = useState<"desc" | "both" | null>(null)
   const [error, setError]       = useState<string | null>(null)
   const [jumpQuery, setJumpQuery] = useState("")
   const [jumpOpen, setJumpOpen]   = useState(false)
+
+  const sortedRows = sortRows(rows, sortBy)
 
   useEffect(() => {
     const preload = localStorage.getItem("copier_preload")
@@ -1056,7 +1082,7 @@ function CopierTab() {
     reader.readAsBinaryString(file)
   }
 
-  const row = rows[idx]
+  const row = sortedRows[idx]
 
   function copyDesc() {
     if (!row) return
@@ -1076,7 +1102,7 @@ function CopierTab() {
     setJumpOpen(false)
   }
 
-  const filteredJump = rows
+  const filteredJump = sortedRows
     .map((r, i) => ({ ...r, i }))
     .filter(r => r.folder.toLowerCase().includes(jumpQuery.toLowerCase()))
     .slice(0, 50)
@@ -1094,12 +1120,27 @@ function CopierTab() {
 
       {rows.length > 0 && (
         <>
+          {/* Sort selector */}
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs text-gray-500 uppercase tracking-wider">Sort by:</span>
+            {(["uniqueId", "barcode", "lotNumber"] as SortBy[]).map(s => (
+              <button key={s} onClick={() => { setSortBy(s); setIdx(0) }}
+                className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+                  sortBy === s
+                    ? "bg-[#C8A96E] border-[#C8A96E] text-black"
+                    : "bg-[#2C2C2E] border-gray-700 text-gray-400 hover:border-gray-500"
+                }`}>
+                {s === "uniqueId" ? "Unique ID" : s === "barcode" ? "Barcode" : "Lot Number"}
+              </button>
+            ))}
+          </div>
+
           {/* Navigation row */}
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
               className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">← Prev</button>
-            <span className="text-sm text-gray-400 tabular-nums">{idx + 1} / {rows.length}</span>
-            <button onClick={() => setIdx(i => Math.min(rows.length - 1, i + 1))} disabled={idx === rows.length - 1}
+            <span className="text-sm text-gray-400 tabular-nums">{idx + 1} / {sortedRows.length}</span>
+            <button onClick={() => setIdx(i => Math.min(sortedRows.length - 1, i + 1))} disabled={idx === sortedRows.length - 1}
               className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">Next →</button>
 
             {/* Jump to lot */}
