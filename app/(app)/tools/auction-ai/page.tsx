@@ -567,22 +567,28 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
       }
       addLog(`Processing ${i + 1} / ${selectedNames.length}  ·  ${lot}  (${files.length} image${files.length !== 1 ? "s" : ""})`)
 
-      // Retry up to 2 times on network/timeout failures
-      // Don't retry content blocks — they won't succeed on retry
-      const MAX_RETRIES = 2
+      // Retry indefinitely until the lot succeeds or the user cancels.
+      // Only abort early on content blocks — those won't succeed no matter how
+      // many times you try. Everything else (rate limits, network errors, etc.)
+      // keeps retrying with appropriate backoff.
       let lastError = ""
       let succeeded = false
+      let attempt   = 0
 
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      while (!cancelRef.current) {
         if (attempt > 0) {
           const isRateLimit = lastError.startsWith("RATE_LIMITED:")
-          const wait = isRateLimit ? 60000 : attempt * 12000
-          addLog(`↺ ${lot} — ${isRateLimit ? "rate limited, waiting" : "retrying in"} ${wait / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES + 1})…`)
+          // Rate limits: 60s, then 90s, then 120s (capped). Other errors: 12s, 24s, 30s (capped).
+          const wait = isRateLimit
+            ? Math.min(60000 + (attempt - 1) * 30000, 120000)
+            : Math.min(attempt * 12000, 30000)
+          addLog(`↺ ${lot} — ${isRateLimit ? "rate limited, waiting" : "retrying in"} ${wait / 1000}s (attempt ${attempt + 1})…`)
           await new Promise(r => setTimeout(r, wait))
           if (cancelRef.current) break
         }
+        attempt++
         try {
-          const isRateLimitRetry = attempt > 0 && lastError.startsWith("RATE_LIMITED:")
+          const isRateLimitRetry = attempt > 1 && lastError.startsWith("RATE_LIMITED:")
           const modelToUse = (isRateLimitRetry && fallbackModel) ? fallbackModel : model
           if (isRateLimitRetry && fallbackModel) addLog(`  ↳ switching to fallback model: ${fallbackModel}`)
           const fd = new FormData()
@@ -626,7 +632,11 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
           break
         } catch (e: any) {
           lastError = e.message ?? String(e)
-          if (lastError.toLowerCase().includes("block") && !lastError.startsWith("RATE_LIMITED:")) break // don't retry content blocks, but do retry rate limits
+          // Content blocks will never succeed — skip immediately
+          if (lastError.toLowerCase().includes("block") && !lastError.startsWith("RATE_LIMITED:")) {
+            addLog(`✗ ${lot} — blocked by Gemini, skipping: ${lastError}`)
+            break
+          }
         }
       }
 
