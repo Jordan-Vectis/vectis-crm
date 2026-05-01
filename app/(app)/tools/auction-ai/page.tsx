@@ -1014,7 +1014,9 @@ function BarcodeTab() {
 
 type SortBy = "uniqueId" | "barcode" | "lotNumber"
 
-function sortRows(rows: { folder: string; description: string; estimate: string }[], sortBy: SortBy) {
+type CopierRow = { folder: string; description: string; estimate: string; uniqueId?: string; barcode?: string; lotNumber?: string }
+
+function sortRows(rows: CopierRow[], sortBy: SortBy) {
   return [...rows].sort((a, b) => {
     const fa = a.folder.trim(), fb = b.folder.trim()
     if (sortBy === "lotNumber") {
@@ -1036,7 +1038,7 @@ function sortRows(rows: { folder: string; description: string; estimate: string 
 }
 
 function CopierTab() {
-  const [rows, setRows]         = useState<{ folder: string; description: string; estimate: string; uniqueId?: string; barcode?: string; lotNumber?: string }[]>([])
+  const [rows, setRows]         = useState<CopierRow[]>([])
   const [sortBy, setSortBy]     = useState<SortBy>("uniqueId")
   const [idx, setIdx]           = useState(0)
   const [copiedType, setCopied] = useState<"desc" | "both" | null>(null)
