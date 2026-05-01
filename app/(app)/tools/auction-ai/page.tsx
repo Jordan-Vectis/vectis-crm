@@ -589,9 +589,10 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
         }
         attempt++
         try {
-          const isRateLimitRetry = attempt > 1 && lastError.startsWith("RATE_LIMITED:")
-          const modelToUse = (isRateLimitRetry && fallbackModel) ? fallbackModel : model
-          if (isRateLimitRetry && fallbackModel) addLog(`  ↳ switching to fallback model: ${fallbackModel}`)
+          // Alternate between primary and fallback on each retry so if one is
+          // rate-limited the other gets a chance to pick it up
+          const modelToUse = (attempt % 2 === 0 && fallbackModel) ? fallbackModel : model
+          if (attempt > 1) addLog(`  ↳ trying ${modelToUse}`)
           const fd = new FormData()
           fd.append("systemInstruction", systemInstruction)
           fd.append("model", modelToUse)
