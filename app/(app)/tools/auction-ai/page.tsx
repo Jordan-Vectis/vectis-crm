@@ -557,42 +557,64 @@ function BatchTab({ model }: { model: string }) {
       }
       addLog(`Processing ${i + 1} / ${selectedNames.length}  ·  ${lot}  (${files.length} image${files.length !== 1 ? "s" : ""})`)
 
-      try {
-        const fd = new FormData()
-        fd.append("systemInstruction", systemInstruction)
-        fd.append("model", model)
-        files.forEach((f, j) => fd.append(`lot_${lot}_image_${j}`, f, f.name))
+      // Retry up to 2 times on network/timeout failures
+      // Don't retry content blocks — they won't succeed on retry
+      const MAX_RETRIES = 2
+      let lastError = ""
+      let succeeded = false
 
-        const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.error ?? res.statusText)
-        all.push(...json.results)
-        // Save to DB if auction code provided
-        if (auctionCode.trim()) {
-          const r = json.results[0]
-          if (r?.status === "OK") {
-            const saveRes = await fetch("/api/auction-ai/runs", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
-            })
-            if (!saveRes.ok) {
-              const txt = await saveRes.text().catch(() => "")
-              let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
-              showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
-              addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const wait = attempt * 12000
+          addLog(`↺ ${lot} — retrying in ${wait / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES + 1})…`)
+          await new Promise(r => setTimeout(r, wait))
+          if (cancelRef.current) break
+        }
+        try {
+          const fd = new FormData()
+          fd.append("systemInstruction", systemInstruction)
+          fd.append("model", model)
+          files.forEach((f, j) => fd.append(`lot_${lot}_image_${j}`, f, f.name))
+
+          const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
+          const json = await res.json()
+          if (!res.ok) throw new Error(json.error ?? res.statusText)
+          all.push(...json.results)
+
+          // Save to DB if auction code provided
+          if (auctionCode.trim()) {
+            const r = json.results[0]
+            if (r?.status === "OK") {
+              const saveRes = await fetch("/api/auction-ai/runs", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
+              })
+              if (!saveRes.ok) {
+                const txt = await saveRes.text().catch(() => "")
+                let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
+                showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
+                addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
+              } else {
+                addLog(`✓ ${lot} — OK  ·  saved`)
+              }
             } else {
-              addLog(`✓ ${lot} — OK  ·  saved`)
+              addLog(`✓ ${lot} — OK`)
             }
           } else {
             addLog(`✓ ${lot} — OK`)
           }
-        } else {
-          addLog(`✓ ${lot} — OK`)
+          succeeded = true
+          break
+        } catch (e: any) {
+          lastError = e.message ?? String(e)
+          if (lastError.toLowerCase().includes("block")) break // don't retry blocks
         }
-      } catch (e: any) {
-        all.push({ lot, description: "", estimate: "", status: "FAILED", error: e.message })
-        addLog(`✗ ${lot} — FAILED: ${e.message}`)
+      }
+
+      if (!succeeded) {
+        all.push({ lot, description: "", estimate: "", status: "FAILED", error: lastError })
+        addLog(`✗ ${lot} — FAILED after ${MAX_RETRIES + 1} attempts: ${lastError}`)
       }
       setResults([...all])
 
@@ -990,13 +1012,48 @@ function BarcodeTab() {
 
 // ─── Description Copier Tab ───────────────────────────────────────────────────
 
+type SortBy = "uniqueId" | "barcode" | "lotNumber"
+
+type CopierRow = { folder: string; description: string; estimate: string; uniqueId?: string; barcode?: string; lotNumber?: string }
+
+function sortRows(rows: CopierRow[], sortBy: SortBy) {
+  return [...rows].sort((a, b) => {
+    if (sortBy === "lotNumber") {
+      const fa = (a.lotNumber || a.folder).trim()
+      const fb = (b.lotNumber || b.folder).trim()
+      const na = parseInt(fa, 10), nb = parseInt(fb, 10)
+      if (!isNaN(na) && !isNaN(nb)) return na - nb
+      return fa.localeCompare(fb, undefined, { numeric: true })
+    }
+    if (sortBy === "uniqueId") {
+      const fa = (a.uniqueId || a.folder).trim()
+      const fb = (b.uniqueId || b.folder).trim()
+      // R000016-413 → sort by receipt number (16) then line number (413)
+      const m = (s: string) => s.match(/^[A-Za-z](\d+)-(\d+)$/)
+      const ma = m(fa), mb = m(fb)
+      if (ma && mb) {
+        const diff = parseInt(ma[1], 10) - parseInt(mb[1], 10)
+        return diff !== 0 ? diff : parseInt(ma[2], 10) - parseInt(mb[2], 10)
+      }
+      return fa.localeCompare(fb, undefined, { numeric: true, sensitivity: "base" })
+    }
+    // barcode
+    const fa = (a.barcode || a.folder).trim()
+    const fb = (b.barcode || b.folder).trim()
+    return fa.localeCompare(fb, undefined, { numeric: true, sensitivity: "base" })
+  })
+}
+
 function CopierTab() {
-  const [rows, setRows]         = useState<{ folder: string; description: string; estimate: string }[]>([])
+  const [rows, setRows]         = useState<CopierRow[]>([])
+  const [sortBy, setSortBy]     = useState<SortBy>("uniqueId")
   const [idx, setIdx]           = useState(0)
   const [copiedType, setCopied] = useState<"desc" | "both" | null>(null)
   const [error, setError]       = useState<string | null>(null)
   const [jumpQuery, setJumpQuery] = useState("")
   const [jumpOpen, setJumpOpen]   = useState(false)
+
+  const sortedRows = sortRows(rows, sortBy)
 
   useEffect(() => {
     const preload = localStorage.getItem("copier_preload")
@@ -1007,6 +1064,9 @@ function CopierTab() {
           folder:      String(r.Folder ?? ""),
           description: String(r.Description ?? ""),
           estimate:    String(r.Estimate ?? ""),
+          uniqueId:    String(r["Receipt Unique ID"] ?? r.UniqueID ?? r["Unique ID"] ?? r.uniqueId ?? ""),
+          barcode:     String(r.Barcode ?? r.barcode ?? ""),
+          lotNumber:   String(r["Lot Number"] ?? r.LotNumber ?? r.lotNumber ?? ""),
         })).filter((r: any) => r.description))
         setIdx(0)
         localStorage.removeItem("copier_preload")
@@ -1027,6 +1087,9 @@ function CopierTab() {
           folder:      String(r.Folder ?? r.folder ?? r.Lot ?? ""),
           description: String(r.Description ?? r.description ?? ""),
           estimate:    String(r.Estimate ?? r.estimate ?? ""),
+          uniqueId:    String(r["Receipt Unique ID"] ?? r.UniqueID ?? r["Unique ID"] ?? r.uniqueId ?? ""),
+          barcode:     String(r.Barcode ?? r.barcode ?? ""),
+          lotNumber:   String(r["Lot Number"] ?? r.LotNumber ?? r.lotNumber ?? ""),
         })).filter(r => r.description))
         setIdx(0); setError(null); setJumpQuery("")
       } catch (e: any) { setError("Failed to read Excel: " + e.message) }
@@ -1034,7 +1097,7 @@ function CopierTab() {
     reader.readAsBinaryString(file)
   }
 
-  const row = rows[idx]
+  const row = sortedRows[idx]
 
   function copyDesc() {
     if (!row) return
@@ -1054,9 +1117,15 @@ function CopierTab() {
     setJumpOpen(false)
   }
 
-  const filteredJump = rows
+  function rowLabel(r: CopierRow) {
+    if (sortBy === "uniqueId") return r.uniqueId || r.folder
+    if (sortBy === "barcode")  return r.barcode  || r.folder
+    return r.lotNumber || r.folder
+  }
+
+  const filteredJump = sortedRows
     .map((r, i) => ({ ...r, i }))
-    .filter(r => r.folder.toLowerCase().includes(jumpQuery.toLowerCase()))
+    .filter(r => rowLabel(r).toLowerCase().includes(jumpQuery.toLowerCase()))
     .slice(0, 50)
 
   return (
@@ -1072,12 +1141,27 @@ function CopierTab() {
 
       {rows.length > 0 && (
         <>
+          {/* Sort selector */}
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs text-gray-500 uppercase tracking-wider">Sort by:</span>
+            {(["uniqueId", "barcode", "lotNumber"] as SortBy[]).map(s => (
+              <button key={s} onClick={() => { setSortBy(s); setIdx(0) }}
+                className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+                  sortBy === s
+                    ? "bg-[#C8A96E] border-[#C8A96E] text-black"
+                    : "bg-[#2C2C2E] border-gray-700 text-gray-400 hover:border-gray-500"
+                }`}>
+                {s === "uniqueId" ? "Unique ID" : s === "barcode" ? "Barcode" : "Lot Number"}
+              </button>
+            ))}
+          </div>
+
           {/* Navigation row */}
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
               className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">← Prev</button>
-            <span className="text-sm text-gray-400 tabular-nums">{idx + 1} / {rows.length}</span>
-            <button onClick={() => setIdx(i => Math.min(rows.length - 1, i + 1))} disabled={idx === rows.length - 1}
+            <span className="text-sm text-gray-400 tabular-nums">{idx + 1} / {sortedRows.length}</span>
+            <button onClick={() => setIdx(i => Math.min(sortedRows.length - 1, i + 1))} disabled={idx === sortedRows.length - 1}
               className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">Next →</button>
 
             {/* Jump to lot */}
@@ -1098,7 +1182,7 @@ function CopierTab() {
                   {filteredJump.map(r => (
                     <button key={r.i} onMouseDown={() => jumpTo(r.i)}
                       className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#3A3A3C] ${r.i === idx ? "text-[#C8A96E] font-semibold" : "text-gray-200"}`}>
-                      {r.folder || `Row ${r.i + 1}`}
+                      {rowLabel(r) || `Row ${r.i + 1}`}
                     </button>
                   ))}
                 </div>
@@ -1109,7 +1193,17 @@ function CopierTab() {
           {/* Card */}
           {row && (
             <div className="bg-[#141416] border border-gray-800 rounded-lg p-5 mb-4">
-              {row.folder && <p className="text-xs text-gray-600 uppercase tracking-wider mb-2">{row.folder}</p>}
+              {(() => {
+                const label = sortBy === "uniqueId" ? "Unique ID"
+                            : sortBy === "barcode"   ? "Barcode"
+                            : "Lot"
+                const value = rowLabel(row)
+                return value ? (
+                  <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">
+                    <span className="text-gray-500 font-sans font-normal">{label}: </span>{value}
+                  </p>
+                ) : null
+              })()}
               <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
               {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
             </div>
