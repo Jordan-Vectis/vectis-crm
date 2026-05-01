@@ -644,7 +644,7 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
 
       if (!succeeded) {
         all.push({ lot, description: "", estimate: "", status: "FAILED", error: lastError })
-        addLog(`✗ ${lot} — FAILED after ${MAX_RETRIES + 1} attempts: ${lastError}`)
+        addLog(`✗ ${lot} — FAILED after ${attempt} attempt${attempt !== 1 ? "s" : ""}: ${lastError}`)
       }
       setResults([...all])
 
