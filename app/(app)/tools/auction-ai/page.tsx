@@ -1036,7 +1036,7 @@ function sortRows(rows: { folder: string; description: string; estimate: string 
 }
 
 function CopierTab() {
-  const [rows, setRows]         = useState<{ folder: string; description: string; estimate: string }[]>([])
+  const [rows, setRows]         = useState<{ folder: string; description: string; estimate: string; uniqueId?: string; barcode?: string; lotNumber?: string }[]>([])
   const [sortBy, setSortBy]     = useState<SortBy>("uniqueId")
   const [idx, setIdx]           = useState(0)
   const [copiedType, setCopied] = useState<"desc" | "both" | null>(null)
@@ -1055,6 +1055,9 @@ function CopierTab() {
           folder:      String(r.Folder ?? ""),
           description: String(r.Description ?? ""),
           estimate:    String(r.Estimate ?? ""),
+          uniqueId:    String(r["Receipt Unique ID"] ?? r.UniqueID ?? r["Unique ID"] ?? r.uniqueId ?? ""),
+          barcode:     String(r.Barcode ?? r.barcode ?? ""),
+          lotNumber:   String(r["Lot Number"] ?? r.LotNumber ?? r.lotNumber ?? ""),
         })).filter((r: any) => r.description))
         setIdx(0)
         localStorage.removeItem("copier_preload")
@@ -1075,6 +1078,9 @@ function CopierTab() {
           folder:      String(r.Folder ?? r.folder ?? r.Lot ?? ""),
           description: String(r.Description ?? r.description ?? ""),
           estimate:    String(r.Estimate ?? r.estimate ?? ""),
+          uniqueId:    String(r["Receipt Unique ID"] ?? r.UniqueID ?? r["Unique ID"] ?? r.uniqueId ?? ""),
+          barcode:     String(r.Barcode ?? r.barcode ?? ""),
+          lotNumber:   String(r["Lot Number"] ?? r.LotNumber ?? r.lotNumber ?? ""),
         })).filter(r => r.description))
         setIdx(0); setError(null); setJumpQuery("")
       } catch (e: any) { setError("Failed to read Excel: " + e.message) }
@@ -1172,7 +1178,19 @@ function CopierTab() {
           {/* Card */}
           {row && (
             <div className="bg-[#141416] border border-gray-800 rounded-lg p-5 mb-4">
-              {row.folder && <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">{row.folder}</p>}
+              {(() => {
+                const label = sortBy === "uniqueId" ? "Unique ID"
+                            : sortBy === "barcode"   ? "Barcode"
+                            : "Lot"
+                const value = sortBy === "uniqueId" ? (row.uniqueId || row.folder)
+                            : sortBy === "barcode"   ? (row.barcode || row.folder)
+                            : (row.lotNumber || row.folder)
+                return value ? (
+                  <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">
+                    <span className="text-gray-500 font-sans font-normal">{label}: </span>{value}
+                  </p>
+                ) : null
+              })()}
               <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
               {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
             </div>
