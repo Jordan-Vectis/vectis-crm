@@ -38,25 +38,16 @@ export async function POST(req: NextRequest) {
 
   const genai = new GoogleGenerativeAI(apiKey)
 
-  // Append a grounding-specific instruction so the model knows to actively
-  // search for catalogue numbers rather than omitting them when unsure.
-  const groundingAddendum = `
-
-IMPORTANT — You have access to Google Search. Use it proactively:
-- When you can identify a manufacturer and rough product description from the photos but cannot read the catalogue/reference number clearly, search for it (e.g. "Hornby Thomas Tank Engine Annie Clarabel OO gauge" or "Oxford Rail 18-inch Rail Gun OO").
-- Always try to confirm and include the correct manufacturer catalogue reference number in your description. Do not omit it just because you cannot read it directly from the image — search for it.
-- If search results give conflicting codes, include the most commonly cited one and note any uncertainty.`
-
-  const finalInstruction = (systemInstruction || "") + groundingAddendum
-
   // Google Search grounding — lets Gemini look up product codes in real time
   // rather than recalling from training data (which is often wrong for specific
   // catalogue numbers like Hornby R351 vs R350).
+  // The tool is enabled here; each preset controls how it is used via its own
+  // system instruction — no extra text is appended so strict presets are unaffected.
   // Note: not all models support grounding. If the selected model doesn't, this
   // route returns a clear error so the user can switch to a supported model.
   const model = genai.getGenerativeModel({
     model: modelId,
-    systemInstruction: finalInstruction,
+    systemInstruction: systemInstruction || undefined,
     tools: [{ googleSearch: {} } as any],
   })
 
