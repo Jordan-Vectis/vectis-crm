@@ -1018,13 +1018,16 @@ type CopierRow = { folder: string; description: string; estimate: string; unique
 
 function sortRows(rows: CopierRow[], sortBy: SortBy) {
   return [...rows].sort((a, b) => {
-    const fa = a.folder.trim(), fb = b.folder.trim()
     if (sortBy === "lotNumber") {
+      const fa = (a.lotNumber || a.folder).trim()
+      const fb = (b.lotNumber || b.folder).trim()
       const na = parseInt(fa, 10), nb = parseInt(fb, 10)
       if (!isNaN(na) && !isNaN(nb)) return na - nb
       return fa.localeCompare(fb, undefined, { numeric: true })
     }
     if (sortBy === "uniqueId") {
+      const fa = (a.uniqueId || a.folder).trim()
+      const fb = (b.uniqueId || b.folder).trim()
       // R000016-413 → sort by receipt number (16) then line number (413)
       const m = (s: string) => s.match(/^[A-Za-z](\d+)-(\d+)$/)
       const ma = m(fa), mb = m(fb)
@@ -1032,7 +1035,11 @@ function sortRows(rows: CopierRow[], sortBy: SortBy) {
         const diff = parseInt(ma[1], 10) - parseInt(mb[1], 10)
         return diff !== 0 ? diff : parseInt(ma[2], 10) - parseInt(mb[2], 10)
       }
+      return fa.localeCompare(fb, undefined, { numeric: true, sensitivity: "base" })
     }
+    // barcode
+    const fa = (a.barcode || a.folder).trim()
+    const fb = (b.barcode || b.folder).trim()
     return fa.localeCompare(fb, undefined, { numeric: true, sensitivity: "base" })
   })
 }
@@ -1110,9 +1117,15 @@ function CopierTab() {
     setJumpOpen(false)
   }
 
+  function rowLabel(r: CopierRow) {
+    if (sortBy === "uniqueId") return r.uniqueId || r.folder
+    if (sortBy === "barcode")  return r.barcode  || r.folder
+    return r.lotNumber || r.folder
+  }
+
   const filteredJump = sortedRows
     .map((r, i) => ({ ...r, i }))
-    .filter(r => r.folder.toLowerCase().includes(jumpQuery.toLowerCase()))
+    .filter(r => rowLabel(r).toLowerCase().includes(jumpQuery.toLowerCase()))
     .slice(0, 50)
 
   return (
@@ -1169,7 +1182,7 @@ function CopierTab() {
                   {filteredJump.map(r => (
                     <button key={r.i} onMouseDown={() => jumpTo(r.i)}
                       className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#3A3A3C] ${r.i === idx ? "text-[#C8A96E] font-semibold" : "text-gray-200"}`}>
-                      {r.folder || `Row ${r.i + 1}`}
+                      {rowLabel(r) || `Row ${r.i + 1}`}
                     </button>
                   ))}
                 </div>
@@ -1184,9 +1197,7 @@ function CopierTab() {
                 const label = sortBy === "uniqueId" ? "Unique ID"
                             : sortBy === "barcode"   ? "Barcode"
                             : "Lot"
-                const value = sortBy === "uniqueId" ? (row.uniqueId || row.folder)
-                            : sortBy === "barcode"   ? (row.barcode || row.folder)
-                            : (row.lotNumber || row.folder)
+                const value = rowLabel(row)
                 return value ? (
                   <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">
                     <span className="text-gray-500 font-sans font-normal">{label}: </span>{value}

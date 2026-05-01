@@ -301,9 +301,12 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
           </button>
           <button onClick={() => {
             const data = lots.filter(l => l.description).map(l => ({
-              Folder:      l.lotNumber,
-              Description: l.description,
-              Estimate:    l.estimateLow && l.estimateHigh ? `Estimate: £${l.estimateLow}–£${l.estimateHigh}` : "",
+              Folder:               l.receiptUniqueId || l.lotNumber || "",
+              "Receipt Unique ID":  l.receiptUniqueId || "",
+              Barcode:              l.barcode || "",
+              "Lot Number":         l.lotNumber || "",
+              Description:          l.description,
+              Estimate:             l.estimateLow && l.estimateHigh ? `Estimate: £${l.estimateLow}–£${l.estimateHigh}` : "",
             }))
             localStorage.setItem("copier_preload", JSON.stringify(data))
             window.open("/tools/auction-ai?tab=copier", "_blank")
