@@ -52,12 +52,27 @@ function parseEstimate(est: string): { low: number | null; high: number | null }
 }
 
 const DEFAULT_MODEL = "gemini-3-flash-preview"
-const PRESET_KEYS   = Object.keys(PRESETS).filter(k => k !== "Custom (paste my own)")
 
 export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: Props) {
-  const [phase,        setPhase]        = useState<Phase>("idle")
-  const [preset,       setPreset]       = useState(PRESET_KEYS[0] ?? "")
-  const [model,        setModel]        = useState(DEFAULT_MODEL)
+  // DB overrides — fetched on mount so edited instructions actually take effect
+  const [overrides, setOverrides] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    fetch("/api/auction-ai/presets")
+      .then(r => r.json())
+      .then(setOverrides)
+      .catch(() => {})
+  }, [])
+
+  // All preset keys: static built-ins + any DB-only custom keys, excluding "Custom (paste my own)"
+  const presetKeys = [
+    ...Object.keys(PRESETS).filter(k => k !== "Custom (paste my own)"),
+    ...Object.keys(overrides).filter(k => !PRESETS[k]),
+  ]
+
+  const [phase,  setPhase]  = useState<Phase>("idle")
+  const [preset, setPreset] = useState(() => Object.keys(PRESETS).filter(k => k !== "Custom (paste my own)")[0] ?? "")
+  const [model,  setModel]  = useState(DEFAULT_MODEL)
   const [modelList,    setModelList]    = useState<string[]>([DEFAULT_MODEL])
   const [modelStatus,  setModelStatus]  = useState<Record<string, { ok: boolean; ms: number; error?: string } | "testing">>({})
   const [testingAll,   setTestingAll]   = useState(false)
@@ -214,7 +229,8 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
     const runTotal = eligibleLots.length
     setRunProgress({ done: 0, total: runTotal })
 
-    const systemInstruction = PRESETS[preset] ?? ""
+    // DB override takes precedence over the static preset
+    const systemInstruction = overrides[preset] ?? PRESETS[preset] ?? ""
     const collected: LotResult[] = []
 
     for (let i = 0; i < eligibleLots.length; i++) {
@@ -429,7 +445,11 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
             <label className="block text-xs text-gray-500 mb-1.5 uppercase tracking-wider">AI Instruction Preset</label>
             <select value={preset} onChange={e => setPreset(e.target.value)}
               className="w-full bg-[#2C2C2E] border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500">
-              {PRESET_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+              {presetKeys.map(k => (
+                <option key={k} value={k}>
+                  {k}{overrides[k] !== undefined ? " ✎" : ""}
+                </option>
+              ))}
             </select>
           </div>
 
