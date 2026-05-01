@@ -575,8 +575,9 @@ function BatchTab({ model }: { model: string }) {
 
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attempt > 0) {
-          const wait = attempt * 12000
-          addLog(`↺ ${lot} — retrying in ${wait / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES + 1})…`)
+          const isRateLimit = lastError.startsWith("RATE_LIMITED:")
+          const wait = isRateLimit ? 60000 : attempt * 12000
+          addLog(`↺ ${lot} — ${isRateLimit ? "rate limited, waiting" : "retrying in"} ${wait / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES + 1})…`)
           await new Promise(r => setTimeout(r, wait))
           if (cancelRef.current) break
         }
@@ -622,7 +623,7 @@ function BatchTab({ model }: { model: string }) {
           break
         } catch (e: any) {
           lastError = e.message ?? String(e)
-          if (lastError.toLowerCase().includes("block")) break // don't retry blocks
+          if (lastError.toLowerCase().includes("block") && !lastError.startsWith("RATE_LIMITED:")) break // don't retry content blocks, but do retry rate limits
         }
       }
 
