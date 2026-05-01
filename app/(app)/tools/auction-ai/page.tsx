@@ -395,7 +395,7 @@ function ChatTab({ model }: { model: string }) {
 
 // ─── Batch Run Tab ────────────────────────────────────────────────────────────
 
-function BatchTab({ model }: { model: string }) {
+function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: string }) {
   const [preset,     setPreset]   = useState(Object.keys(PRESETS)[1])
   const [custom,     setCustom]   = useState("")
   const [lots,       setLots]     = useState<Record<string, File[]>>({})
@@ -582,9 +582,12 @@ function BatchTab({ model }: { model: string }) {
           if (cancelRef.current) break
         }
         try {
+          const isRateLimitRetry = attempt > 0 && lastError.startsWith("RATE_LIMITED:")
+          const modelToUse = (isRateLimitRetry && fallbackModel) ? fallbackModel : model
+          if (isRateLimitRetry && fallbackModel) addLog(`  ↳ switching to fallback model: ${fallbackModel}`)
           const fd = new FormData()
           fd.append("systemInstruction", systemInstruction)
-          fd.append("model", model)
+          fd.append("model", modelToUse)
           files.forEach((f, j) => fd.append(`lot_${lot}_image_${j}`, f, f.name))
 
           const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
@@ -2010,7 +2013,8 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
     const initial: Record<string, "testing"> = {}
     modelList.forEach(m => { initial[m] = "testing" })
     setModelStatus(initial)
-    await Promise.all(modelList.map(async (m) => {
+    // Sequential with a 1s gap to avoid hammering the rate limit
+    for (const m of modelList) {
       try {
         const res  = await fetch("/api/auction-ai/model-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
         const data = await res.json()
@@ -2018,7 +2022,8 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
       } catch (e: any) {
         setModelStatus(prev => ({ ...prev, [m]: { ok: false, ms: 0, error: e.message } }))
       }
-    }))
+      await new Promise(r => setTimeout(r, 1000))
+    }
     setTestingAll(false)
   }
 
@@ -2638,9 +2643,10 @@ const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
 const DEFAULT_MODEL = "gemini-3-flash-preview"
 
 export default function AuctionAIPage() {
-  const [tab,       setTab]       = useState<Tab>("chat")
-  const [model,     setModel]     = useState(DEFAULT_MODEL)
-  const [modelList, setModelList] = useState<string[]>([DEFAULT_MODEL])
+  const [tab,           setTab]           = useState<Tab>("chat")
+  const [model,         setModel]         = useState(DEFAULT_MODEL)
+  const [fallbackModel, setFallbackModel] = useState("")
+  const [modelList,     setModelList]     = useState<string[]>([DEFAULT_MODEL])
   const [allowedSections, setAllowedSections] = useState<string[] | null>(null)
   const [sectionsLoaded,  setSectionsLoaded]  = useState(false)
 
@@ -2698,18 +2704,28 @@ export default function AuctionAIPage() {
             )
           })}
         </div>
-        <div className="px-4 py-3 border-t border-gray-800 space-y-1.5">
-          <p className="text-gray-600 text-xs uppercase tracking-wider">Model</p>
-          <select value={model} onChange={e => setModel(e.target.value)}
-            className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-[#C8A96E]">
-            {modelList.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
+        <div className="px-4 py-3 border-t border-gray-800 space-y-2.5">
+          <div className="space-y-1">
+            <p className="text-gray-600 text-xs uppercase tracking-wider">Model</p>
+            <select value={model} onChange={e => setModel(e.target.value)}
+              className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-[#C8A96E]">
+              {modelList.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <p className="text-gray-600 text-xs uppercase tracking-wider">Fallback Model <span className="normal-case text-gray-700">(rate limit)</span></p>
+            <select value={fallbackModel} onChange={e => setFallbackModel(e.target.value)}
+              className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-[#C8A96E]">
+              <option value="">— none —</option>
+              {modelList.filter(m => m !== model).map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
         </div>
       </aside>
 
       <main className="flex-1 overflow-auto p-6">
         <div className={tab === "chat"         ? "" : "hidden"}><ChatTab model={model} /></div>
-        <div className={tab === "batch"        ? "" : "hidden"}><BatchTab model={model} /></div>
+        <div className={tab === "batch"        ? "" : "hidden"}><BatchTab model={model} fallbackModel={fallbackModel} /></div>
         <div className={tab === "runs"         ? "" : "hidden"}>{tab === "runs"   && <SavedRunsTab />}</div>
         <div className={tab === "kpruns"       ? "" : "hidden"}>{tab === "kpruns" && <KPRunsTab />}</div>
         <div className={tab === "barcode"      ? "" : "hidden"}><BarcodeTab /></div>
