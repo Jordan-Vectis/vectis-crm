@@ -96,16 +96,16 @@ Included items:
 (blank line)
 
 A list of every individual item, each on its own line in this exact format:
-Manufacturer – Catalogue Number – Description – Livery/Colour – Packaging – Condition
+Manufacturer – Catalogue Number – Description – Packaging
 
 Rules for the item list:
 - List every item visible in the photos, one per line.
 - Manufacturer: e.g. Hornby, Bachmann, Oxford Rail, Wrenn, Tri-ang, Lima.
 - Catalogue Number: include if visible on the box or identifiable from the item. If not visible, use Google Search to find the correct number — do not guess or omit.
-- Description: wheel arrangement or model type, class or name, running number where visible.
-- Livery/Colour: e.g. BR green, GWR lined, blue, Network SouthEast.
+- Description: wheel arrangement or model type, class or name, running number where visible. No colours.
 - Packaging: Boxed / Unboxed. Add "with inner packaging" if tray/sleeve present.
-- Condition: one of Mint / Near Mint / Excellent / Good / Fair / Poor. Blended grading (e.g. Excellent to Near Mint) allowed but never span more than two adjacent grades.
+- Do NOT include condition per item — overall condition is covered in the opening paragraph only.
+- Do NOT include livery or colour.
 - Do not use bullet points. Plain lines only.
 
 (blank line)
@@ -121,10 +121,10 @@ Hornby and Wrenn OO Gauge group of locomotives and rolling stock, all boxed, con
 
 Included items:
 
-Hornby – R351 – Thomas the Tank Engine No. 1 locomotive – Blue – Boxed – Excellent
-Hornby – R110 – Annie coach – Blue/cream – Boxed – Near Mint
-Hornby – R112 – Clarabel coach – Blue/cream – Boxed – Near Mint
-Wrenn – W6002 – Pullman Car Belinda – Brown/cream – Boxed – Excellent
+Hornby – R351 – Thomas the Tank Engine No. 1 locomotive – Boxed
+Hornby – R110 – Annie coach – Boxed
+Hornby – R112 – Clarabel coach – Boxed
+Wrenn – W6002B – Pullman 1st Class Kitchen Car 'Belinda' – Boxed
 
 Estimate: £120–£160`,
 
