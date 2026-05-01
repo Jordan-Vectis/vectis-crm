@@ -395,7 +395,7 @@ function ChatTab({ model }: { model: string }) {
 
 // ─── Batch Run Tab ────────────────────────────────────────────────────────────
 
-function BatchTab({ model }: { model: string }) {
+function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: string }) {
   const [preset,     setPreset]   = useState(Object.keys(PRESETS)[1])
   const [custom,     setCustom]   = useState("")
   const [lots,       setLots]     = useState<Record<string, File[]>>({})
@@ -446,6 +446,16 @@ function BatchTab({ model }: { model: string }) {
       })
       .catch(() => {})
   }, [auctionCode, runList])
+
+  // When savedLots loads (existing run selected), auto-deselect any already-saved
+  // lots from the current photo selection — works even if photos were loaded first
+  useEffect(() => {
+    if (savedLots.size === 0) return
+    setSelected(s => {
+      const next = new Set([...s].filter(n => !savedLots.has(n)))
+      return next.size === s.size ? s : next // avoid re-render if nothing changed
+    })
+  }, [savedLots])
 
   const systemInstruction = preset === "Custom (paste my own)" ? custom : (overrides[preset] ?? PRESETS[preset])
 
@@ -557,49 +567,65 @@ function BatchTab({ model }: { model: string }) {
       }
       addLog(`Processing ${i + 1} / ${selectedNames.length}  ·  ${lot}  (${files.length} image${files.length !== 1 ? "s" : ""})`)
 
-      // Retry up to 2 times on network/timeout failures
-      // Don't retry content blocks — they won't succeed on retry
-      const MAX_RETRIES = 2
+      // Retry indefinitely until the lot succeeds or the user cancels.
+      // Only abort early on content blocks — those won't succeed no matter how
+      // many times you try. Everything else (rate limits, network errors, etc.)
+      // keeps retrying with appropriate backoff.
       let lastError = ""
       let succeeded = false
+      let attempt   = 0
 
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      while (!cancelRef.current) {
         if (attempt > 0) {
-          const wait = attempt * 12000
-          addLog(`↺ ${lot} — retrying in ${wait / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES + 1})…`)
+          const isRateLimit = lastError.startsWith("RATE_LIMITED:")
+          // Rate limits: 60s → 120s → 240s → 480s → … capped at 30 min (exponential backoff).
+          // Other errors: 12s → 24s → 30s (capped — these are usually transient).
+          const wait = isRateLimit
+            ? Math.min(60000 * Math.pow(2, attempt - 1), 1800000)
+            : Math.min(attempt * 12000, 30000)
+          addLog(`↺ ${lot} — ${isRateLimit ? "rate limited, waiting" : "retrying in"} ${wait / 1000}s (attempt ${attempt + 1})…`)
           await new Promise(r => setTimeout(r, wait))
           if (cancelRef.current) break
         }
+        attempt++
         try {
+          // Alternate between primary and fallback on each retry so if one is
+          // rate-limited the other gets a chance to pick it up
+          const modelToUse = (attempt % 2 === 0 && fallbackModel) ? fallbackModel : model
+          if (attempt > 1) addLog(`  ↳ trying ${modelToUse}`)
           const fd = new FormData()
           fd.append("systemInstruction", systemInstruction)
-          fd.append("model", model)
+          fd.append("model", modelToUse)
           files.forEach((f, j) => fd.append(`lot_${lot}_image_${j}`, f, f.name))
 
           const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
           const json = await res.json()
           if (!res.ok) throw new Error(json.error ?? res.statusText)
+
+          // Check the individual lot result — the HTTP response is always 200
+          // even when Gemini fails a lot, so we must inspect the result status
+          const r = json.results[0]
+          if (!r || r.status !== "OK") {
+            throw new Error(r?.error ?? "Gemini returned no result for this lot")
+          }
+
           all.push(...json.results)
 
           // Save to DB if auction code provided
           if (auctionCode.trim()) {
-            const r = json.results[0]
-            if (r?.status === "OK") {
-              const saveRes = await fetch("/api/auction-ai/runs", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
-              })
-              if (!saveRes.ok) {
-                const txt = await saveRes.text().catch(() => "")
-                let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
-                showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
-                addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
-              } else {
-                addLog(`✓ ${lot} — OK  ·  saved`)
-              }
+            const saveRes = await fetch("/api/auction-ai/runs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
+            })
+            if (!saveRes.ok) {
+              const txt = await saveRes.text().catch(() => "")
+              let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
+              showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
+              addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
             } else {
-              addLog(`✓ ${lot} — OK`)
+              setSavedLots(s => new Set([...s, r.lot]))
+              addLog(`✓ ${lot} — OK  ·  saved`)
             }
           } else {
             addLog(`✓ ${lot} — OK`)
@@ -608,13 +634,17 @@ function BatchTab({ model }: { model: string }) {
           break
         } catch (e: any) {
           lastError = e.message ?? String(e)
-          if (lastError.toLowerCase().includes("block")) break // don't retry blocks
+          // Content blocks will never succeed — skip immediately
+          if (lastError.toLowerCase().includes("block") && !lastError.startsWith("RATE_LIMITED:")) {
+            addLog(`✗ ${lot} — blocked by Gemini, skipping: ${lastError}`)
+            break
+          }
         }
       }
 
       if (!succeeded) {
         all.push({ lot, description: "", estimate: "", status: "FAILED", error: lastError })
-        addLog(`✗ ${lot} — FAILED after ${MAX_RETRIES + 1} attempts: ${lastError}`)
+        addLog(`✗ ${lot} — FAILED after ${attempt} attempt${attempt !== 1 ? "s" : ""}: ${lastError}`)
       }
       setResults([...all])
 
@@ -731,20 +761,22 @@ function BatchTab({ model }: { model: string }) {
           <p className="text-xs text-gray-600 mt-1">New run — lots will be saved under this code</p>
         )}
         {savedLots.size > 0 && (
-          <div className="flex items-center gap-3 mt-1.5">
-            <span className="text-xs text-amber-400">{savedLots.size} lot{savedLots.size !== 1 ? "s" : ""} already saved in this run</span>
+          <div className="mt-2 px-3 py-2 bg-amber-950/40 border border-amber-700/50 rounded-lg flex items-center gap-3">
+            <span className="text-sm">⟳</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-amber-300">Resuming run — {savedLots.size} lot{savedLots.size !== 1 ? "s" : ""} already saved</p>
+              <p className="text-xs text-amber-600 mt-0.5">Already-saved lots are deselected automatically. Upload your photos and only the missing ones will be processed.</p>
+            </div>
             <button
               onClick={() => {
                 const inBoth = [...savedLots].filter(l => selected.has(l))
                 if (inBoth.length > 0) {
-                  // deselect all saved lots
                   setSelected(s => new Set([...s].filter(l => !savedLots.has(l))))
                 } else {
-                  // all already deselected — re-add them back
                   setSelected(s => new Set([...s, ...savedLots].filter(l => lotNames.includes(l))))
                 }
               }}
-              className="text-xs px-2.5 py-0.5 bg-[#2C2C2E] border border-amber-600 text-amber-400 rounded hover:bg-amber-900/30 transition-colors">
+              className="text-xs px-2.5 py-1 bg-[#2C2C2E] border border-amber-600 text-amber-400 rounded hover:bg-amber-900/30 transition-colors whitespace-nowrap flex-shrink-0">
               ⏭ Skip Saved
             </button>
           </div>
@@ -1159,10 +1191,10 @@ function CopierTab() {
           {/* Navigation row */}
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
-              className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">← Prev</button>
+              className="px-6 py-3 bg-[#2C2C2E] border border-gray-700 text-gray-200 rounded-lg text-base font-semibold disabled:opacity-40 hover:border-gray-400 hover:text-white transition-colors">← Prev</button>
             <span className="text-sm text-gray-400 tabular-nums">{idx + 1} / {sortedRows.length}</span>
             <button onClick={() => setIdx(i => Math.min(sortedRows.length - 1, i + 1))} disabled={idx === sortedRows.length - 1}
-              className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">Next →</button>
+              className="px-6 py-3 bg-[#2C2C2E] border border-gray-700 text-gray-200 rounded-lg text-base font-semibold disabled:opacity-40 hover:border-gray-400 hover:text-white transition-colors">Next →</button>
 
             {/* Jump to lot */}
             <div className="relative ml-auto">
@@ -1210,13 +1242,13 @@ function CopierTab() {
           )}
 
           {/* Copy buttons */}
-          <div className="flex gap-3">
+          <div className="flex gap-4">
             <button onClick={copyDesc}
-              className="px-5 py-2 bg-[#2C2C2E] border border-[#C8A96E] hover:bg-[#C8A96E] hover:text-black text-[#C8A96E] text-sm font-bold rounded transition-colors">
+              className="flex-1 px-6 py-5 bg-[#2C2C2E] border-2 border-[#C8A96E] hover:bg-[#C8A96E] hover:text-black text-[#C8A96E] text-lg font-bold rounded-xl transition-colors">
               {copiedType === "desc" ? "✓ Copied!" : "Copy Description"}
             </button>
             <button onClick={copyBoth}
-              className="px-5 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors">
+              className="flex-1 px-6 py-5 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-lg font-bold rounded-xl transition-colors">
               {copiedType === "both" ? "✓ Copied!" : "Description + Estimate"}
             </button>
           </div>
@@ -1993,7 +2025,8 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
     const initial: Record<string, "testing"> = {}
     modelList.forEach(m => { initial[m] = "testing" })
     setModelStatus(initial)
-    await Promise.all(modelList.map(async (m) => {
+    // Sequential with a 1s gap to avoid hammering the rate limit
+    for (const m of modelList) {
       try {
         const res  = await fetch("/api/auction-ai/model-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
         const data = await res.json()
@@ -2001,7 +2034,8 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
       } catch (e: any) {
         setModelStatus(prev => ({ ...prev, [m]: { ok: false, ms: 0, error: e.message } }))
       }
-    }))
+      await new Promise(r => setTimeout(r, 1000))
+    }
     setTestingAll(false)
   }
 
@@ -2621,9 +2655,10 @@ const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
 const DEFAULT_MODEL = "gemini-3-flash-preview"
 
 export default function AuctionAIPage() {
-  const [tab,       setTab]       = useState<Tab>("chat")
-  const [model,     setModel]     = useState(DEFAULT_MODEL)
-  const [modelList, setModelList] = useState<string[]>([DEFAULT_MODEL])
+  const [tab,           setTab]           = useState<Tab>("chat")
+  const [model,         setModel]         = useState(DEFAULT_MODEL)
+  const [fallbackModel, setFallbackModel] = useState("")
+  const [modelList,     setModelList]     = useState<string[]>([DEFAULT_MODEL])
   const [allowedSections, setAllowedSections] = useState<string[] | null>(null)
   const [sectionsLoaded,  setSectionsLoaded]  = useState(false)
 
@@ -2681,18 +2716,28 @@ export default function AuctionAIPage() {
             )
           })}
         </div>
-        <div className="px-4 py-3 border-t border-gray-800 space-y-1.5">
-          <p className="text-gray-600 text-xs uppercase tracking-wider">Model</p>
-          <select value={model} onChange={e => setModel(e.target.value)}
-            className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-[#C8A96E]">
-            {modelList.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
+        <div className="px-4 py-3 border-t border-gray-800 space-y-2.5">
+          <div className="space-y-1">
+            <p className="text-gray-600 text-xs uppercase tracking-wider">Model</p>
+            <select value={model} onChange={e => setModel(e.target.value)}
+              className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-[#C8A96E]">
+              {modelList.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <p className="text-gray-600 text-xs uppercase tracking-wider">Fallback Model <span className="normal-case text-gray-700">(rate limit)</span></p>
+            <select value={fallbackModel} onChange={e => setFallbackModel(e.target.value)}
+              className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-[#C8A96E]">
+              <option value="">— none —</option>
+              {modelList.filter(m => m !== model).map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
         </div>
       </aside>
 
       <main className="flex-1 overflow-auto p-6">
         <div className={tab === "chat"         ? "" : "hidden"}><ChatTab model={model} /></div>
-        <div className={tab === "batch"        ? "" : "hidden"}><BatchTab model={model} /></div>
+        <div className={tab === "batch"        ? "" : "hidden"}><BatchTab model={model} fallbackModel={fallbackModel} /></div>
         <div className={tab === "runs"         ? "" : "hidden"}>{tab === "runs"   && <SavedRunsTab />}</div>
         <div className={tab === "kpruns"       ? "" : "hidden"}>{tab === "kpruns" && <KPRunsTab />}</div>
         <div className={tab === "barcode"      ? "" : "hidden"}><BarcodeTab /></div>

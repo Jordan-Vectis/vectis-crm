@@ -35,8 +35,20 @@ export async function POST(req: NextRequest) {
 
   // No retries here — throw immediately so the real Gemini error surfaces in the
   // client log and the client's own backoff loop handles retrying.
+  // Rate-limit errors are prefixed with RATE_LIMITED: so the client can apply
+  // a longer backoff before retrying.
   async function generateWithRetry(contents: any[]): Promise<string> {
-    const result   = await model.generateContent(contents)
+    let result: any
+    try {
+      result = await model.generateContent(contents)
+    } catch (e: any) {
+      const msg = e?.message ?? String(e)
+      if (/429|resource.?exhausted|quota|rate.?limit/i.test(msg)) {
+        throw new Error(`RATE_LIMITED: ${msg}`)
+      }
+      throw e
+    }
+
     const response = result.response
 
     const promptBlock = response.promptFeedback?.blockReason
@@ -82,9 +94,9 @@ export async function POST(req: NextRequest) {
 
       results.push({ lot, description, estimate: estimateLine.replace(/^Estimate:\s*/i, "").trim(), status: "OK" })
 
-      // 8-second delay between lots (matches Python app)
+      // 12-second delay between lots to stay well under Gemini rate limits
       if (idx < lotEntries.length - 1) {
-        await new Promise((r) => setTimeout(r, 8000))
+        await new Promise((r) => setTimeout(r, 12000))
       }
     } catch (e: any) {
       results.push({ lot, description: "", estimate: "", status: "FAILED", error: e.message })
