@@ -79,10 +79,26 @@ function DupeCheckerModal({ lots, auctionId, onClose, onDeleted }: {
   onClose: () => void
   onDeleted: () => void
 }) {
-  const [deleting, setDeleting] = useState<Set<string>>(new Set())
-  const [deleted,  setDeletedIds] = useState<Set<string>>(new Set())
+  const [deleting,    setDeleting]    = useState<Set<string>>(new Set())
+  const [deleted,     setDeletedIds]  = useState<Set<string>>(new Set())
+  const [deleteAllBusy, setDeleteAllBusy] = useState(false)
 
-  // Group by receiptUniqueId — only keep groups with 2+ lots
+  // Score a lot by how much data it has — higher = more complete
+  function lotScore(l: Lot): number {
+    let s = 0
+    if (l.description)   s += 4
+    if (l.title)         s += 2
+    if (l.keyPoints)     s += 1
+    if (l.estimateLow)   s += 1
+    if (l.estimateHigh)  s += 1
+    if (l.lotNumber)     s += 1
+    if (l.barcode)       s += 1
+    if (l.vendor)        s += 1
+    s += l.imageUrls.length * 2
+    return s
+  }
+
+  // Group by receiptUniqueId — only keep groups with 2+ lots, sorted best-first
   const dupeGroups = useMemo(() => {
     const map = new Map<string, Lot[]>()
     for (const l of lots) {
@@ -93,12 +109,14 @@ function DupeCheckerModal({ lots, auctionId, onClose, onDeleted }: {
     }
     return [...map.entries()]
       .filter(([, g]) => g.length > 1)
-      .map(([, g]) => g)
+      .map(([, g]) => [...g].sort((a, b) => lotScore(b) - lotScore(a)))
   }, [lots])
 
-  const visibleGroups = dupeGroups.map(g => g.filter(l => !deleted.has(l.id))).filter(g => g.length > 1)
+  const visibleGroups = dupeGroups
+    .map(g => g.filter(l => !deleted.has(l.id)))
+    .filter(g => g.length > 1)
 
-  async function handleDelete(lotId: string, auctionId: string) {
+  async function handleDelete(lotId: string) {
     setDeleting(d => new Set(d).add(lotId))
     try {
       await deleteLot(lotId, auctionId)
@@ -109,6 +127,21 @@ function DupeCheckerModal({ lots, auctionId, onClose, onDeleted }: {
     }
   }
 
+  async function handleDeleteAll() {
+    setDeleteAllBusy(true)
+    // For each group, keep the first (highest score), delete the rest
+    const toDelete = visibleGroups.flatMap(g => g.slice(1).map(l => l.id))
+    for (const id of toDelete) {
+      if (deleted.has(id)) continue
+      await deleteLot(id, auctionId)
+      setDeletedIds(d => new Set(d).add(id))
+    }
+    onDeleted()
+    setDeleteAllBusy(false)
+  }
+
+  const totalToDelete = visibleGroups.reduce((sum, g) => sum + g.length - 1, 0)
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
       <div className="bg-[#1C1C1E] border border-gray-700 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl"
@@ -116,7 +149,7 @@ function DupeCheckerModal({ lots, auctionId, onClose, onDeleted }: {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
           <div>
             <h2 className="text-base font-semibold text-white">Duplicate Checker</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Lots sharing the same Receipt Unique ID</p>
+            <p className="text-xs text-gray-500 mt-0.5">Lots sharing the same Receipt Unique ID — best filled kept automatically</p>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl leading-none">✕</button>
         </div>
@@ -130,37 +163,58 @@ function DupeCheckerModal({ lots, auctionId, onClose, onDeleted }: {
                 <div key={gi} className="bg-[#141416] border border-gray-800 rounded-lg overflow-hidden">
                   <div className="px-4 py-2 bg-yellow-900/20 border-b border-yellow-700/30">
                     <span className="text-xs font-mono text-yellow-400 font-semibold">{group[0].receiptUniqueId}</span>
-                    <span className="text-xs text-yellow-600 ml-2">— {group.length} lots with this ID</span>
+                    <span className="text-xs text-yellow-600 ml-2">— {group.length} lots</span>
                   </div>
-                  {group.map(lot => (
-                    <div key={lot.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 last:border-0">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="font-mono text-gray-400">Lot {lot.lotNumber || "—"}</span>
-                          {lot.imageUrls.length > 0 && <span className="text-blue-400">{lot.imageUrls.length} photos</span>}
-                          {lot.description && <span className="text-green-400">Has description</span>}
+                  {group.map((lot, li) => {
+                    const isKeep = li === 0
+                    return (
+                      <div key={lot.id} className={`flex items-center gap-3 px-4 py-3 border-b border-gray-800 last:border-0 ${isKeep ? "bg-green-950/20" : ""}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 text-xs">
+                            {isKeep
+                              ? <span className="text-green-400 font-semibold">✓ Keep</span>
+                              : <span className="text-red-400">Remove</span>}
+                            <span className="font-mono text-gray-400">Lot {lot.lotNumber || "—"}</span>
+                            {lot.imageUrls.length > 0 && <span className="text-blue-400">{lot.imageUrls.length} photos</span>}
+                            {lot.description && <span className="text-green-400">Description</span>}
+                            {lot.title && <span className="text-gray-400">Title</span>}
+                            <span className="text-gray-600">score {lotScore(lot)}</span>
+                          </div>
+                          <p className="text-xs text-gray-300 truncate mt-0.5">{lot.title || "No title"}</p>
                         </div>
-                        <p className="text-xs text-gray-300 truncate mt-0.5">{lot.title || "No title"}</p>
+                        {!isKeep && (
+                          <button
+                            onClick={() => handleDelete(lot.id)}
+                            disabled={deleting.has(lot.id)}
+                            className="shrink-0 px-3 py-1.5 rounded bg-red-900/40 border border-red-700/50 text-red-300 text-xs hover:bg-red-900/70 disabled:opacity-40 transition-colors"
+                          >
+                            {deleting.has(lot.id) ? "…" : "Delete"}
+                          </button>
+                        )}
                       </div>
-                      <button
-                        onClick={() => handleDelete(lot.id, auctionId)}
-                        disabled={deleting.has(lot.id)}
-                        className="shrink-0 px-3 py-1.5 rounded bg-red-900/40 border border-red-700/50 text-red-300 text-xs hover:bg-red-900/70 disabled:opacity-40 transition-colors"
-                      >
-                        {deleting.has(lot.id) ? "…" : "Delete"}
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-gray-700 text-xs text-gray-500">
-          {visibleGroups.length > 0
-            ? `${visibleGroups.length} duplicate group${visibleGroups.length !== 1 ? "s" : ""} — delete all but one in each group`
-            : "All clear"}
+        <div className="px-5 py-3 border-t border-gray-700 flex items-center justify-between">
+          <span className="text-xs text-gray-500">
+            {visibleGroups.length > 0
+              ? `${visibleGroups.length} group${visibleGroups.length !== 1 ? "s" : ""} · ${totalToDelete} lot${totalToDelete !== 1 ? "s" : ""} to remove`
+              : "All clear"}
+          </span>
+          {visibleGroups.length > 0 && (
+            <button
+              onClick={handleDeleteAll}
+              disabled={deleteAllBusy}
+              className="px-4 py-1.5 rounded bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+            >
+              {deleteAllBusy ? "Deleting…" : `Delete All ${totalToDelete} Duplicates`}
+            </button>
+          )}
         </div>
       </div>
     </div>
