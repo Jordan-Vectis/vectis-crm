@@ -188,7 +188,7 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
     const total = eligibleLots.reduce((s, l) => s + l.imageUrls.length, 0)
     setFetchProgress({ done: 0, total })
     addLog(`── Starting run: ${eligibleLots.length} lots, ${total} images, model: ${model}`)
-    addLog(`── Preset: "${preset}"`)
+    addLog(`── Preset: "${preset}" ${overrides[preset] !== undefined ? "✎ using your edited instructions" : "(built-in default)"}`)
     addLog(`── Fetching ${total} photos from storage…`)
 
     let fetched = 0
