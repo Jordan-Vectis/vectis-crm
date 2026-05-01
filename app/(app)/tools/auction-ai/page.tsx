@@ -1188,69 +1188,76 @@ function CopierTab() {
             ))}
           </div>
 
-          {/* Navigation row */}
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
-              className="px-6 py-3 bg-[#2C2C2E] border border-gray-700 text-gray-200 rounded-lg text-base font-semibold disabled:opacity-40 hover:border-gray-400 hover:text-white transition-colors">← Prev</button>
-            <span className="text-sm text-gray-400 tabular-nums">{idx + 1} / {sortedRows.length}</span>
-            <button onClick={() => setIdx(i => Math.min(sortedRows.length - 1, i + 1))} disabled={idx === sortedRows.length - 1}
-              className="px-6 py-3 bg-[#2C2C2E] border border-gray-700 text-gray-200 rounded-lg text-base font-semibold disabled:opacity-40 hover:border-gray-400 hover:text-white transition-colors">Next →</button>
+          {/* Fixed-height panel so buttons never move */}
+          <div className="flex flex-col gap-4" style={{ height: 540 }}>
 
-            {/* Jump to lot */}
-            <div className="relative ml-auto">
-              <div className="flex items-center">
-                <span className="text-xs text-gray-500 mr-2 whitespace-nowrap">Jump to lot:</span>
-                <input
-                  value={jumpQuery}
-                  onChange={e => { setJumpQuery(e.target.value); setJumpOpen(true) }}
-                  onFocus={() => setJumpOpen(true)}
-                  onBlur={() => setTimeout(() => setJumpOpen(false), 150)}
-                  placeholder="Search lot…"
-                  className="w-36 bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E]"
-                />
-              </div>
-              {jumpOpen && filteredJump.length > 0 && (
-                <div className="absolute right-0 z-50 w-56 bg-[#2C2C2E] border border-gray-700 rounded mt-0.5 max-h-56 overflow-y-auto shadow-xl">
-                  {filteredJump.map(r => (
-                    <button key={r.i} onMouseDown={() => jumpTo(r.i)}
-                      className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#3A3A3C] ${r.i === idx ? "text-[#C8A96E] font-semibold" : "text-gray-200"}`}>
-                      {rowLabel(r) || `Row ${r.i + 1}`}
-                    </button>
-                  ))}
+            {/* Navigation row — pinned top */}
+            <div className="flex items-center gap-3 flex-wrap shrink-0">
+              <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
+                className="px-6 py-3 bg-[#2C2C2E] border border-gray-700 text-gray-200 rounded-lg text-base font-semibold disabled:opacity-40 hover:border-gray-400 hover:text-white transition-colors">← Prev</button>
+              <span className="text-sm text-gray-400 tabular-nums">{idx + 1} / {sortedRows.length}</span>
+              <button onClick={() => setIdx(i => Math.min(sortedRows.length - 1, i + 1))} disabled={idx === sortedRows.length - 1}
+                className="px-6 py-3 bg-[#2C2C2E] border border-gray-700 text-gray-200 rounded-lg text-base font-semibold disabled:opacity-40 hover:border-gray-400 hover:text-white transition-colors">Next →</button>
+
+              {/* Jump to lot */}
+              <div className="relative ml-auto">
+                <div className="flex items-center">
+                  <span className="text-xs text-gray-500 mr-2 whitespace-nowrap">Jump to lot:</span>
+                  <input
+                    value={jumpQuery}
+                    onChange={e => { setJumpQuery(e.target.value); setJumpOpen(true) }}
+                    onFocus={() => setJumpOpen(true)}
+                    onBlur={() => setTimeout(() => setJumpOpen(false), 150)}
+                    placeholder="Search lot…"
+                    className="w-36 bg-[#2C2C2E] border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E]"
+                  />
                 </div>
-              )}
+                {jumpOpen && filteredJump.length > 0 && (
+                  <div className="absolute right-0 z-50 w-56 bg-[#2C2C2E] border border-gray-700 rounded mt-0.5 max-h-56 overflow-y-auto shadow-xl">
+                    {filteredJump.map(r => (
+                      <button key={r.i} onMouseDown={() => jumpTo(r.i)}
+                        className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#3A3A3C] ${r.i === idx ? "text-[#C8A96E] font-semibold" : "text-gray-200"}`}>
+                        {rowLabel(r) || `Row ${r.i + 1}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* Card */}
-          {row && (
-            <div className="bg-[#141416] border border-gray-800 rounded-lg p-5 mb-4">
-              {(() => {
+            {/* Card — scrolls internally, never changes the outer height */}
+            <div className="flex-1 overflow-y-auto bg-[#141416] border border-gray-800 rounded-lg p-5">
+              {row && (() => {
                 const label = sortBy === "uniqueId" ? "Unique ID"
                             : sortBy === "barcode"   ? "Barcode"
                             : "Lot"
                 const value = rowLabel(row)
-                return value ? (
-                  <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">
-                    <span className="text-gray-500 font-sans font-normal">{label}: </span>{value}
-                  </p>
-                ) : null
+                return (
+                  <>
+                    {value && (
+                      <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">
+                        <span className="text-gray-500 font-sans font-normal">{label}: </span>{value}
+                      </p>
+                    )}
+                    <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
+                    {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
+                  </>
+                )
               })()}
-              <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
-              {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
             </div>
-          )}
 
-          {/* Copy buttons */}
-          <div className="flex gap-4">
-            <button onClick={copyDesc}
-              className="flex-1 px-6 py-5 bg-[#2C2C2E] border-2 border-[#C8A96E] hover:bg-[#C8A96E] hover:text-black text-[#C8A96E] text-lg font-bold rounded-xl transition-colors">
-              {copiedType === "desc" ? "✓ Copied!" : "Copy Description"}
-            </button>
-            <button onClick={copyBoth}
-              className="flex-1 px-6 py-5 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-lg font-bold rounded-xl transition-colors">
-              {copiedType === "both" ? "✓ Copied!" : "Description + Estimate"}
-            </button>
+            {/* Copy buttons — pinned bottom */}
+            <div className="flex gap-4 shrink-0">
+              <button onClick={copyDesc}
+                className="flex-1 px-6 py-5 bg-[#2C2C2E] border-2 border-[#C8A96E] hover:bg-[#C8A96E] hover:text-black text-[#C8A96E] text-lg font-bold rounded-xl transition-colors">
+                {copiedType === "desc" ? "✓ Copied!" : "Copy Description"}
+              </button>
+              <button onClick={copyBoth}
+                className="flex-1 px-6 py-5 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-lg font-bold rounded-xl transition-colors">
+                {copiedType === "both" ? "✓ Copied!" : "Description + Estimate"}
+              </button>
+            </div>
+
           </div>
         </>
       )}
