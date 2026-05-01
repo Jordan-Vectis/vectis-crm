@@ -578,9 +578,10 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
       while (!cancelRef.current) {
         if (attempt > 0) {
           const isRateLimit = lastError.startsWith("RATE_LIMITED:")
-          // Rate limits: 60s, then 90s, then 120s (capped). Other errors: 12s, 24s, 30s (capped).
+          // Rate limits: 60s → 120s → 240s → 480s → … capped at 30 min (exponential backoff).
+          // Other errors: 12s → 24s → 30s (capped — these are usually transient).
           const wait = isRateLimit
-            ? Math.min(60000 + (attempt - 1) * 30000, 120000)
+            ? Math.min(60000 * Math.pow(2, attempt - 1), 1800000)
             : Math.min(attempt * 12000, 30000)
           addLog(`↺ ${lot} — ${isRateLimit ? "rate limited, waiting" : "retrying in"} ${wait / 1000}s (attempt ${attempt + 1})…`)
           await new Promise(r => setTimeout(r, wait))
