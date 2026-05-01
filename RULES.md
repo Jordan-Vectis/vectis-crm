@@ -245,6 +245,24 @@ Deduplication checks both `existingLotNumbers` and `existingUniqueIds` sets befo
 
 ---
 
+## BC Warehouse — Location History Tab
+
+**Do not change the design or behaviour of the Location History tab in `/tools/bc-warehouse`.**
+It was accidentally replaced during an earlier rewrite and had to be manually restored.
+
+The correct implementation:
+- **Two modes**: Tote number and Barcode (toggle buttons, default: Tote)
+- **API route**: `/api/bc/location-history` — not `/api/warehouse/location-history`
+- **Barcode mode** does two BC queries: barcode → item key, then item key → location changes
+- **Results** show: BC Item Key · field2 (if present), movements count, and a table of From / To / Changed by / Date
+- **Staff names** are resolved via the `SALESPERSON_NAMES` lookup table in the component
+- **"No results" state**: styled card explaining the item may not have been moved or the change log wasn't active
+- The most recent movement row is highlighted with `bg-blue-950/30`
+
+If this tab genuinely needs to change, discuss it first and update this rule.
+
+---
+
 ## BC (Business Central) Sync
 
 - Token refresh buffer: **60 seconds** before expiry.

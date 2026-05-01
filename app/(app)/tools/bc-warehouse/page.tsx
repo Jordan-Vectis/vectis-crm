@@ -524,68 +524,127 @@ function SearchByLocationTab() {
   )
 }
 
-// ─── LocationHistoryTab (unchanged — still uses BC directly) ──────────────────
+// ─── LocationHistoryTab ───────────────────────────────────────────────────────
+
+type LocationEntry = { from: string; to: string; changedBy: string; changedAt: string }
+
+const SALESPERSON_NAMES: Record<string, string> = {
+  AM: "Ashley McIntyre", AR: "Andrea Rowntree", AR2: "Andrew Reed", AROB: "Amelia Robson",
+  AW: "Andrew Wilson", BC: "Bob Coulson", BG: "Bryan Goodall", BJ: "Becky Jones",
+  BK: "Ben Kennington", CH: "Chris Hemingway", CW: "Chris Whan", DB: "Daniel Brakenbury",
+  DC: "Debbie Cockerill", DL: "Daniel Lorraine", DP: "Dispatch", ED: "Edward Duffy",
+  EG: "Ewan Gray", EW: "Eve Walker", GH: "Gill Harley", HW: "Harry Wheatley",
+  ID: "Ian Dilley", IM: "Ian Main", JC: "Jack Collings", JG: "Jonathon Gouder",
+  JK: "Jake Kenyon", JM: "Jo McDonald", JO: "Jordan Orange", JR: "Julian Royse",
+  JS: "Jake Smithson", JW: "Julie Walker", KR: "Kay Rankin", KS: "Keiran Southgate",
+  KT: "Kathy Taylor", LH: "Lesley Hill", LS: "Lisa Sutherland", MB: "Matt Bailey",
+  MC: "Matthew Cotton", MD: "Mike Delaney", MF: "Mike Fishwick", MT: "Michelle Trotter",
+  MV: "Melanie Vasey", ND: "Nick Dykes", NO: "Naomi O'Conner", OB: "Olivia Burley",
+  PB: "Paul Beverley", PC: "Phil Cochrane", PD: "Peter Davis", PM: "Peter Morris",
+  SC: "Simon Clarke", SCANNER: "Scanner", SF: "Steven Furlong", SM: "Sanaz Moghaddam",
+  SR: "Stuart Redding", SS: "Simon Smith", TR: "Tim Routh", VA: "Vectis Accounts",
+  VS: "Vanessa Stanton", WA: "Admin Warehouse", WR: "Wendy Robins",
+}
+
+function formatDateTime(iso: string) {
+  if (!iso) return "—"
+  try {
+    return new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+  } catch { return iso }
+}
 
 function LocationHistoryTab() {
-  const [uniqueId, setUniqueId] = useState("")
-  const [rows, setRows]         = useState<any[]>([])
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState<string | null>(null)
+  const [input, setInput]   = useState("")
+  const [mode, setMode]     = useState<"tote" | "barcode">("tote")
+  const [loading, setLoading] = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+  const [result, setResult] = useState<{ field1: string; field2: string | null; entries: LocationEntry[] } | null>(null)
 
-  async function lookup(e: React.FormEvent) {
-    e.preventDefault()
-    if (!uniqueId.trim()) return
-    setLoading(true); setError(null); setRows([])
+  async function lookup() {
+    const q = input.trim()
+    if (!q) return
+    setLoading(true); setError(null); setResult(null)
     try {
-      const r = await fetch(`/api/warehouse/location-history?uniqueId=${encodeURIComponent(uniqueId.trim())}`)
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? "Failed")
-      setRows(d.rows ?? [])
-    } catch (e: any) { setError(e.message) }
-    setLoading(false)
+      const res  = await fetch(`/api/bc/location-history?q=${encodeURIComponent(q)}&mode=${mode}`)
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? "Lookup failed"); return }
+      setResult(data)
+    } catch { setError("Network error") }
+    finally { setLoading(false) }
   }
 
   return (
-    <div className="h-full flex flex-col p-4 gap-4">
-      <form onSubmit={lookup} className="flex gap-2">
-        <input
-          value={uniqueId}
-          onChange={e => setUniqueId(e.target.value)}
-          placeholder="Unique ID e.g. R000006-1…"
-          className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded text-sm"
-        >
-          Look up
-        </button>
-      </form>
-      {error && <p className="text-red-400 text-sm">{error}</p>}
-      {loading && <p className="text-gray-400 text-sm">Loading…</p>}
-      {rows.length > 0 && (
-        <div className="flex-1 overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-900 text-gray-400 sticky top-0">
-              <tr>
-                <th className="px-3 py-2 text-left">Date/Time</th>
-                <th className="px-3 py-2 text-left">Old Value</th>
-                <th className="px-3 py-2 text-left">New Value</th>
-                <th className="px-3 py-2 text-left">User</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {rows.map((r, i) => (
-                <tr key={i} className="text-gray-300">
-                  <td className="px-3 py-2">{r.Date_and_Time ? new Date(r.Date_and_Time).toLocaleString() : "—"}</td>
-                  <td className="px-3 py-2 font-mono">{r.Old_Value ?? "—"}</td>
-                  <td className="px-3 py-2 font-mono">{r.New_Value ?? "—"}</td>
-                  <td className="px-3 py-2">{r.User_ID ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div>
+      <h2 className="text-lg font-semibold text-white mb-1">Location History</h2>
+      <p className="text-gray-500 text-sm mb-5">Look up every location a tote or lot has ever been moved to via BC change logs.</p>
+
+      <div className="bg-[#0d0f1a] border border-gray-700 rounded-xl p-5 max-w-lg space-y-4">
+        <div className="flex gap-2">
+          {(["tote", "barcode"] as const).map(m => (
+            <button key={m} onClick={() => { setMode(m); setResult(null); setError(null) }}
+              className={`px-4 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                mode === m ? "border-blue-500 bg-blue-500/20 text-blue-300" : "border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300"
+              }`}>
+              {m === "tote" ? "🗂 Tote number" : "🔖 Barcode"}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && lookup()}
+            placeholder={mode === "tote" ? "e.g. T000123" : "e.g. F037458"} autoFocus
+            className="flex-1 bg-[#07070f] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono" />
+          <button onClick={lookup} disabled={loading || !input.trim()}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
+            {loading ? "Searching…" : "Look up"}
+          </button>
+        </div>
+        {mode === "barcode" && <p className="text-xs text-gray-600">Barcode lookup does two BC queries: first finds the item key from the barcode, then fetches all location changes for that item.</p>}
+      </div>
+
+      {error && <div className="mt-4 max-w-lg"><p className="text-red-400 text-sm">{error}</p></div>}
+
+      {result && (
+        <div className="mt-5 max-w-2xl space-y-4">
+          <div className="flex items-center gap-8">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">BC Item Key</p>
+              <p className="text-white font-mono text-sm">{result.field1}{result.field2 ? ` · ${result.field2}` : ""}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Movements found</p>
+              <p className="text-white font-semibold">{result.entries.length}</p>
+            </div>
+          </div>
+
+          {result.entries.length === 0 ? (
+            <div className="bg-[#0d0f1a] border border-gray-700 rounded-xl p-6 text-center">
+              <p className="text-gray-400 text-sm">No location changes found in the BC change log.</p>
+              <p className="text-gray-600 text-xs mt-1">The item may not have been moved, or the change log wasn't active when it was.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-700">
+              <table className="w-full text-sm">
+                <thead className="bg-[#0d0f1a] text-gray-500 text-xs uppercase">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left">From</th>
+                    <th className="px-4 py-2.5 text-left">To</th>
+                    <th className="px-4 py-2.5 text-left">Changed by</th>
+                    <th className="px-4 py-2.5 text-left">Date / Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {result.entries.map((e, i) => (
+                    <tr key={i} className={`hover:bg-[#0d0f1a] ${i === 0 ? "bg-blue-950/30" : ""}`}>
+                      <td className="px-4 py-2 text-gray-400 font-mono text-xs">{e.from || <span className="text-gray-600 italic">empty</span>}</td>
+                      <td className="px-4 py-2 text-white font-mono text-xs font-semibold">{e.to || <span className="text-gray-600 italic">empty</span>}</td>
+                      <td className="px-4 py-2 text-gray-300">{SALESPERSON_NAMES[e.changedBy] ?? e.changedBy}</td>
+                      <td className="px-4 py-2 text-gray-400 text-xs">{formatDateTime(e.changedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -40,18 +40,37 @@ export async function POST(req: NextRequest) {
       create: { code, preset: preset ?? "" },
     })
 
-    await prisma.auctionLot.create({
-      data: {
-        runId:               run.id,
-        lot,
-        description:         description         ?? "",
-        estimate:            estimate             ?? "",
-        originalDescription: originalDescription  ?? null,
-        keyPoints:           keyPoints            ?? null,
-        missing:             missing              ?? null,
-        added:               added                ?? null,
-      },
+    // Upsert the individual lot so a re-run after a page refresh doesn't
+    // create duplicate AuctionLot records with conflicting descriptions
+    const existingLot = await prisma.auctionLot.findFirst({
+      where: { runId: run.id, lot },
     })
+    if (existingLot) {
+      await prisma.auctionLot.update({
+        where: { id: existingLot.id },
+        data: {
+          description:         description         ?? "",
+          estimate:            estimate             ?? "",
+          originalDescription: originalDescription  ?? null,
+          keyPoints:           keyPoints            ?? null,
+          missing:             missing              ?? null,
+          added:               added                ?? null,
+        },
+      })
+    } else {
+      await prisma.auctionLot.create({
+        data: {
+          runId:               run.id,
+          lot,
+          description:         description         ?? "",
+          estimate:            estimate             ?? "",
+          originalDescription: originalDescription  ?? null,
+          keyPoints:           keyPoints            ?? null,
+          missing:             missing              ?? null,
+          added:               added                ?? null,
+        },
+      })
+    }
 
     return NextResponse.json({ ok: true, runId: run.id })
   } catch (e: any) {

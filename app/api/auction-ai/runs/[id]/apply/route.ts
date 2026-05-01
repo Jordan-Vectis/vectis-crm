@@ -30,7 +30,7 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
   try {
     const run = await prisma.auctionRun.findUnique({
       where: { id },
-      include: { lots: true },
+      include: { lots: { orderBy: { createdAt: "asc" } } },
     })
     if (!run) return NextResponse.json({ error: "Run not found" }, { status: 404 })
 
@@ -50,11 +50,20 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
     const existingLotNumbers  = new Set(auction.lots.map(l => l.lotNumber))
     const existingUniqueIds   = new Set(auction.lots.filter(l => l.receiptUniqueId).map(l => l.receiptUniqueId!))
 
+    // Deduplicate within the run itself: if the batch was re-run after a page refresh,
+    // the same lot may have been saved multiple times with different descriptions.
+    // Use the most recently saved record for each lot identifier.
+    const deduped = new Map<string, typeof run.lots[0]>()
+    for (const l of run.lots) {
+      deduped.set(l.lot.trim(), l) // later entries overwrite earlier ones
+    }
+    const uniqueLots = Array.from(deduped.values())
+
     const skipped: string[] = []
     let created = 0
 
     await Promise.all(
-      run.lots.map(async l => {
+      uniqueLots.map(async l => {
         const isUniqueIdFormat = /^[A-Za-z]\d{4,7}-\d{1,6}$/.test(l.lot.trim())
         const alreadyExists = isUniqueIdFormat
           ? existingUniqueIds.has(l.lot)

@@ -281,6 +281,8 @@ function ChatTab({ model }: { model: string }) {
   const [copied, setCopied]      = useState(false)
   const [overrides, setOverrides] = useState<Record<string, string>>({})
   const [editOpen, setEditOpen]   = useState(false)
+  const [grounded, setGrounded]   = useState(false)
+  const [lastSearchQueries, setLastSearchQueries] = useState<string[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -314,10 +316,12 @@ function ChatTab({ model }: { model: string }) {
       fd.append("model", model)
       images.forEach(img => fd.append("images", img, img.name))
 
-      const res  = await fetch("/api/auction-ai/chat", { method: "POST", body: fd })
+      const endpoint = grounded ? "/api/auction-ai/chat-grounded" : "/api/auction-ai/chat"
+      const res  = await fetch(endpoint, { method: "POST", body: fd })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? res.statusText)
 
+      setLastSearchQueries(json.searchQueries ?? [])
       setHistory(h => [...h, { role: "model", text: json.reply }])
       setApiHist(h => [
         ...h,
@@ -335,7 +339,22 @@ function ChatTab({ model }: { model: string }) {
 
   return (
     <div className="flex flex-col h-full">
-      <h2 className="text-lg font-semibold text-white mb-3">Chat Window</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold text-white">Chat Window</h2>
+        <label className={`flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg border transition-colors ${grounded ? "bg-blue-950/50 border-blue-600/60 text-blue-300" : "bg-[#2C2C2E] border-gray-700 text-gray-400 hover:border-gray-500"}`}>
+          <input type="checkbox" checked={grounded} onChange={e => { setGrounded(e.target.checked); setLastSearchQueries([]) }}
+            className="w-3.5 h-3.5 accent-blue-500" />
+          <span className="text-xs font-medium">🔍 Google Search</span>
+        </label>
+      </div>
+      {grounded && (
+        <div className="mb-3 px-3 py-2 bg-blue-950/30 border border-blue-700/40 rounded-lg">
+          <p className="text-xs text-blue-400">Google Search grounding is enabled — Gemini will search the web in real time to verify product codes and catalogue numbers instead of guessing from memory.</p>
+          {lastSearchQueries.length > 0 && (
+            <p className="text-xs text-blue-600 mt-1">Last searched: {lastSearchQueries.join(" · ")}</p>
+          )}
+        </div>
+      )}
       <PresetSelector value={preset} onChange={setPreset} overrides={overrides} onEdit={() => setEditOpen(true)} />
       {editOpen && <PresetEditorModal presetKey={preset} initialText={overrides[preset] ?? PRESETS[preset]} onSave={savePreset} onClose={() => setEditOpen(false)} />}
       {preset === "Custom (paste my own)" && (
