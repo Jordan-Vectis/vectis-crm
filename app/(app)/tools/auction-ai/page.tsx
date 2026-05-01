@@ -579,27 +579,31 @@ function BatchTab({ model }: { model: string }) {
           const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
           const json = await res.json()
           if (!res.ok) throw new Error(json.error ?? res.statusText)
+
+          // Check the individual lot result — the HTTP response is always 200
+          // even when Gemini fails a lot, so we must inspect the result status
+          const r = json.results[0]
+          if (!r || r.status !== "OK") {
+            throw new Error(r?.error ?? "Gemini returned no result for this lot")
+          }
+
           all.push(...json.results)
 
           // Save to DB if auction code provided
           if (auctionCode.trim()) {
-            const r = json.results[0]
-            if (r?.status === "OK") {
-              const saveRes = await fetch("/api/auction-ai/runs", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
-              })
-              if (!saveRes.ok) {
-                const txt = await saveRes.text().catch(() => "")
-                let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
-                showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
-                addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
-              } else {
-                addLog(`✓ ${lot} — OK  ·  saved`)
-              }
+            const saveRes = await fetch("/api/auction-ai/runs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: auctionCode.trim().toUpperCase(), preset, lot: r.lot, description: r.description, estimate: r.estimate }),
+            })
+            if (!saveRes.ok) {
+              const txt = await saveRes.text().catch(() => "")
+              let errMsg = ""; try { errMsg = JSON.parse(txt).error ?? "" } catch { errMsg = txt }
+              showError(`Save failed — Lot ${lot}`, `HTTP ${saveRes.status}`, errMsg || "No detail returned from server")
+              addLog(`⚠ ${lot} — OK but save failed: ${errMsg || saveRes.status}`)
             } else {
-              addLog(`✓ ${lot} — OK`)
+              setSavedLots(s => new Set([...s, r.lot]))
+              addLog(`✓ ${lot} — OK  ·  saved`)
             }
           } else {
             addLog(`✓ ${lot} — OK`)
