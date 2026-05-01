@@ -1191,10 +1191,10 @@ function CopierTab() {
           {/* Navigation row */}
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
-              className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">← Prev</button>
+              className="px-6 py-3 bg-[#2C2C2E] border border-gray-700 text-gray-200 rounded-lg text-base font-semibold disabled:opacity-40 hover:border-gray-400 hover:text-white transition-colors">← Prev</button>
             <span className="text-sm text-gray-400 tabular-nums">{idx + 1} / {sortedRows.length}</span>
             <button onClick={() => setIdx(i => Math.min(sortedRows.length - 1, i + 1))} disabled={idx === sortedRows.length - 1}
-              className="px-3 py-1.5 bg-[#2C2C2E] border border-gray-700 text-gray-300 rounded text-sm disabled:opacity-40 hover:border-gray-500">Next →</button>
+              className="px-6 py-3 bg-[#2C2C2E] border border-gray-700 text-gray-200 rounded-lg text-base font-semibold disabled:opacity-40 hover:border-gray-400 hover:text-white transition-colors">Next →</button>
 
             {/* Jump to lot */}
             <div className="relative ml-auto">
@@ -1242,13 +1242,13 @@ function CopierTab() {
           )}
 
           {/* Copy buttons */}
-          <div className="flex gap-3">
+          <div className="flex gap-4">
             <button onClick={copyDesc}
-              className="px-5 py-2 bg-[#2C2C2E] border border-[#C8A96E] hover:bg-[#C8A96E] hover:text-black text-[#C8A96E] text-sm font-bold rounded transition-colors">
+              className="flex-1 px-6 py-5 bg-[#2C2C2E] border-2 border-[#C8A96E] hover:bg-[#C8A96E] hover:text-black text-[#C8A96E] text-lg font-bold rounded-xl transition-colors">
               {copiedType === "desc" ? "✓ Copied!" : "Copy Description"}
             </button>
             <button onClick={copyBoth}
-              className="px-5 py-2 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-sm font-bold rounded transition-colors">
+              className="flex-1 px-6 py-5 bg-[#C8A96E] hover:bg-[#d4b87a] text-black text-lg font-bold rounded-xl transition-colors">
               {copiedType === "both" ? "✓ Copied!" : "Description + Estimate"}
             </button>
           </div>
