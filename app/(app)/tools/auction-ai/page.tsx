@@ -1149,8 +1149,6 @@ function CopierTab() {
     return () => { cancelled = true }
   }, [sortedRows[idx]?.imageUrls?.[0]])
 
-  const row = sortedRows[idx]
-
   function loadFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
