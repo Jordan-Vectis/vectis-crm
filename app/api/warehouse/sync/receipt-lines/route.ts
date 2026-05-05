@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getBCToken, bcPage } from "@/lib/bc"
+import { getBCToken, bcPageWithNext } from "@/lib/bc"
 import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 300
@@ -26,10 +26,20 @@ function parseFloat_(v: any): number | null {
 }
 
 // POST /api/warehouse/sync/receipt-lines
-// Incrementally syncs Receipt_Lines_Excel into WarehouseItem.
-// Accepts optional body: { maxPages?: number } to cap pages per call (default 50).
-// Returns { more: true } when there are additional pages to fetch — caller should
-// keep calling until more === false to handle very large initial syncs.
+// Uses BC's @odata.nextLink (skiptoken) for pagination — bypasses the $skip
+// limit (~38k) that breaks plain skip-based paging on large tables.
+//
+// Request body:
+//   { full?: boolean, nextLink?: string, maxItems?: number }
+//
+// First call: no nextLink — route builds the initial query (filtered by
+// last sync timestamp unless full=true). Subsequent calls: pass back the
+// nextLink from the previous response.
+//
+// Response:
+//   { ok, itemsProcessed, more, nextLink, full, totalProcessed }
+//
+// Loop until more === false on the client.
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
@@ -37,60 +47,74 @@ export async function POST(req: NextRequest) {
   const token = await getBCToken()
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
 
-  let maxPages = 5   // 5 pages × 500 = 2,500 items per call — well under Railway's 60s timeout
   let full = false
-  let startPage = 0
+  let nextLink: string | null = null
+  let maxItems = 5000          // ~10 pages of 500, safely under the 60s edge
   try {
     const body = await req.json()
-    if (body?.maxPages)  maxPages  = body.maxPages
     if (body?.full)      full      = !!body.full
-    if (body?.startPage) startPage = body.startPage
+    if (body?.nextLink)  nextLink  = String(body.nextLink)
+    if (body?.maxItems)  maxItems  = body.maxItems
   } catch {}
 
-  // Find last successful sync to determine start point (skipped when full=true)
-  const lastSync = full ? null : await prisma.warehouseSyncLog.findFirst({
+  // Determine starting URL — only matters when nextLink is null
+  const lastSync = (full || nextLink) ? null : await prisma.warehouseSyncLog.findFirst({
     where: { source: "receipt_lines", status: "complete" },
     orderBy: { completedAt: "desc" },
   })
+  const lastTimestamp = lastSync?.lastTimestamp ?? null
 
   const syncLog = await prisma.warehouseSyncLog.create({
     data: { source: "receipt_lines", status: "running" },
   })
 
   let itemsProcessed = 0
-  let lastTimestamp  = lastSync?.lastTimestamp ?? null
+  let newestTimestamp = lastTimestamp
+  const startMs = Date.now()
 
   try {
-    const BATCH = 500
-    let page  = startPage
-    const startedAt = page
-    let done  = false
-    let more  = false
-    let newestTimestamp = lastTimestamp
+    // Build initial URL if no nextLink was supplied
+    let urlOrEndpoint: string
+    let initialParams: Record<string, string | number> | undefined
 
-    while (!done) {
-      if (page - startedAt >= maxPages) { more = true; break }
-      const params: Record<string, any> = {
-        $top:     BATCH,
-        $skip:    page * BATCH,
+    if (nextLink) {
+      urlOrEndpoint = nextLink
+      initialParams = undefined
+    } else {
+      urlOrEndpoint = "Receipt_Lines_Excel"
+      initialParams = {
+        $top:     500,
         $orderby: "EVA_SystemModifiedAt asc",
       }
-
-      // Incremental — fetch records modified at or after the boundary timestamp.
-      // Using gte (not gt) so items sharing a timestamp at the boundary aren't
-      // skipped between calls. The upsert handles duplicates.
       if (lastTimestamp) {
-        params.$filter = `EVA_SystemModifiedAt ge datetime'${lastTimestamp}'`
+        // ge (not gt) so items sharing a timestamp at the boundary aren't skipped
+        initialParams.$filter = `EVA_SystemModifiedAt ge datetime'${lastTimestamp}'`
+      }
+    }
+
+    let currentLink: string | null = null
+    let pageCount = 0
+
+    while (true) {
+      // Stop budget — leave ~10s headroom before the 60s edge timeout
+      if (Date.now() - startMs > 50_000) break
+      if (itemsProcessed >= maxItems) break
+
+      const { rows, nextLink: nl } = await bcPageWithNext(
+        token,
+        currentLink ?? urlOrEndpoint,
+        currentLink ? undefined : initialParams,
+      )
+
+      pageCount++
+      currentLink = nl
+
+      if (rows.length === 0) {
+        // End of data
+        break
       }
 
-      let rows: any[]
-      try {
-        rows = await bcPage(token, "Receipt_Lines_Excel", params)
-      } catch { break }
-
-      if (rows.length === 0) break
-
-      // Upsert each row into WarehouseItem
+      // Upsert each row
       for (const r of rows) {
         const uniqueId = String(r.EVA_UniqueID ?? "").trim()
         if (!uniqueId) continue
@@ -164,8 +188,11 @@ export async function POST(req: NextRequest) {
         if (r.EVA_SystemModifiedAt) newestTimestamp = r.EVA_SystemModifiedAt
       }
 
-      if (rows.length < BATCH) { done = true } else { page++ }
+      // No next link → end of data
+      if (!nl) break
     }
+
+    const more = !!currentLink
 
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },
@@ -177,12 +204,20 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    return NextResponse.json({ ok: true, itemsProcessed, incremental: !!lastTimestamp, more, nextPage: more ? page : null, full })
+    return NextResponse.json({
+      ok:             true,
+      itemsProcessed,
+      incremental:    !full && !!lastTimestamp,
+      more,
+      nextLink:       currentLink,
+      full,
+      pages:          pageCount,
+    })
   } catch (e: any) {
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },
       data: { status: "failed", completedAt: new Date(), error: e.message, itemsProcessed },
     })
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json({ error: e.message, itemsProcessed }, { status: 500 })
   }
 }

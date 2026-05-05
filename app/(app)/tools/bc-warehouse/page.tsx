@@ -965,22 +965,25 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
 
     try {
       // ── Stage 1: Receipt Lines ──────────────────────────────────────────────
+      // Uses BC's @odata.nextLink (skiptoken) pagination so we can walk past
+      // BC's $skip cap (~38k). The server returns nextLink in each response;
+      // we pass it back on the next call until it becomes null.
       setPhase("Receipt Lines")
       addLog("info", `Stage 1/3 · Receipt Lines (the main item list)${full ? " — FULL re-sync" : " — incremental"}`)
       let more = true
       let batch = 0
       let stageItems = 0
-      let nextPage = 0  // only used when full=true; route advances pagination cursor
+      let nextLink: string | null = null
       while (more) {
         if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
         batch++
         const t0 = Date.now()
-        addLog("info", `  Batch ${batch} · fetching up to 2,500 items${full ? ` (skip ${(nextPage * 500).toLocaleString()})` : ""}…`)
+        addLog("info", `  Batch ${batch} · fetching up to 5,000 items…`)
         try {
           const res = await fetch("/api/warehouse/sync/receipt-lines", {
-            method: "POST",
+            method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ maxPages: 5, full, startPage: nextPage }),
+            body:    JSON.stringify({ full: batch === 1 ? full : false, nextLink, maxItems: 5000 }),
           })
           const data = await res.json().catch(() => ({}))
           if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
@@ -988,10 +991,10 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
           stageItems += data.itemsProcessed ?? 0
           setItemTotal(t => t + (data.itemsProcessed ?? 0))
           setBatchTotal(b => b + 1)
-          addLog("ok", `  Batch ${batch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s${data.more ? " · more pages remaining…" : ""}`)
+          addLog("ok", `  Batch ${batch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
           more = data.more === true
-          if (full && data.nextPage != null) nextPage = data.nextPage + 1
-          if (batch >= 400) { addLog("warn", "  Safety cap (400 batches) reached — stopping"); break }
+          nextLink = data.nextLink ?? null
+          if (batch >= 500) { addLog("warn", "  Safety cap (500 batches) reached — stopping"); break }
         } catch (e: any) {
           addLog("error", `  Batch ${batch} failed: ${e.message ?? e}`)
           throw e
