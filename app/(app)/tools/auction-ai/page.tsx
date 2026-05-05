@@ -1118,7 +1118,7 @@ function CopierTab() {
           uniqueId:    String(r["Receipt Unique ID"] ?? r.UniqueID ?? r["Unique ID"] ?? r.uniqueId ?? ""),
           barcode:     String(r.Barcode ?? r.barcode ?? ""),
           lotNumber:   String(r["Lot Number"] ?? r.LotNumber ?? r.lotNumber ?? ""),
-        })).filter((r: any) => r.description))
+        })))
         setIdx(0)
         localStorage.removeItem("copier_preload")
       } catch {}
@@ -1141,7 +1141,7 @@ function CopierTab() {
           uniqueId:    String(r["Receipt Unique ID"] ?? r.UniqueID ?? r["Unique ID"] ?? r.uniqueId ?? ""),
           barcode:     String(r.Barcode ?? r.barcode ?? ""),
           lotNumber:   String(r["Lot Number"] ?? r.LotNumber ?? r.lotNumber ?? ""),
-        })).filter(r => r.description))
+        })))
         setIdx(0); setError(null); setJumpQuery("")
       } catch (e: any) { setError("Failed to read Excel: " + e.message) }
     }
