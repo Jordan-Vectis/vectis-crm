@@ -4,28 +4,29 @@ import { GoogleGenerativeAI } from "@google/generative-ai"
 
 export const maxDuration = 300
 
-const SYSTEM_INSTRUCTION = `You are a strict fact-checker for auction house lot descriptions.
+const SYSTEM_INSTRUCTION = `You are a quality checker for auction house lot descriptions. You will be given a written description and, where available, one or more photos of the lot.
 
-You will be given two descriptions of the same lot:
-1. Reference description — written by a human cataloguer (treat this as ground truth)
-2. New description — AI-generated (this is what you are checking)
+WHAT TO FLAG as contradictions:
+- Internal inconsistencies (e.g. description says two conflicting things about the same item)
+- Obviously incorrect facts (e.g. a well-known artist attributed to the wrong label, a model number that clearly does not match the described item)
+- Statements that contradict each other within the same description
+- Where photos are provided: details in the description that visibly contradict what can be seen in the photos (e.g. wrong colour, wrong label, wrong format)
 
-Your task is to identify factual problems in the new description when compared to the reference.
-
-WHAT TO FLAG:
-- Contradictions: facts in the new description that directly conflict with the reference (e.g. different model number, wrong colour, incorrect condition, different manufacturer, wrong era or date)
-- Unsupported claims: specific factual statements in the new description that cannot be verified from the reference and could easily be wrong (e.g. specific catalogue numbers, edition details, dates not mentioned in the reference)
+WHAT TO FLAG as unsupported:
+- Highly specific claims that are easy to get wrong and cannot be verified from the description alone (e.g. a precise catalogue number, a specific pressing year, a claimed "first pressing" with no evidence given)
+- Claims that seem invented or hallucinated rather than observed (e.g. describing features not typically visible or not readable in the provided photos)
+- Where photos are provided: specific details that cannot be confirmed from the photos — for example a catalogue number that is not clearly readable, a pressing year not visible, condition claims that the photo is too blurry or cropped to confirm
 
 WHAT NOT TO FLAG:
-- Rephrasing or different wording of the same fact
-- General contextual information that is clearly accurate (e.g. brief manufacturer history that does not contradict the reference)
-- Style differences, additional positive language, or descriptive embellishment that does not introduce specific facts
-- Omissions — only flag what is wrong or unverifiable, not what is missing
+- General descriptive language or style choices
+- Reasonable estimates or condition grades
+- Facts that are plausible and commonly known (e.g. well-known band names, standard formats)
+- Absence of information — only flag what is present and wrong, not what is missing
 
-If contradictions and unsupported are both empty, set verdict to "ok", otherwise "issues".
+If the description appears factually sound, set verdict to "ok" and leave both fields empty.
 
 Respond with ONLY valid JSON — no markdown, no code fences:
-{"contradictions":"<description of contradicting facts, or empty string if none>","unsupported":"<comma-separated list of specific unverifiable claims, or empty string if none>","verdict":"ok or issues"}`
+{"contradictions":"<description of internal inconsistencies or obvious errors, or empty string>","unsupported":"<comma-separated list of specific unverifiable claims, or empty string>","verdict":"ok or issues"}`
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
   if (!apiKey) return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 })
 
   const { lots, model } = await req.json() as {
-    lots: { label: string; reference: string; description: string }[]
+    lots: { label: string; description: string; images?: { data: string; mimeType: string }[] }[]
     model?: string
   }
   if (!lots?.length) return NextResponse.json({ error: "No lots provided" }, { status: 400 })
@@ -64,12 +65,17 @@ export async function POST(req: NextRequest) {
 
         while (attempt < 3 && !success) {
           try {
-            const prompt =
-              `Lot: ${lot.label}\n\n` +
-              `Reference description (ground truth):\n${lot.reference}\n\n` +
-              `New description (to check):\n${lot.description}`
+            const imageParts = (lot.images ?? []).map(img => ({
+              inlineData: { data: img.data, mimeType: img.mimeType },
+            }))
 
-            const result = await ai.generateContent(prompt)
+            const textPart = { text: `Lot: ${lot.label}\n\nDescription:\n${lot.description}` }
+
+            const contents = imageParts.length > 0
+              ? [...imageParts, textPart]
+              : [textPart]
+
+            const result = await ai.generateContent(contents)
             const raw = result.response.text().trim().replace(/^```json\s*/i, "").replace(/```$/, "")
 
             let contradictions = ""
@@ -82,7 +88,6 @@ export async function POST(req: NextRequest) {
               unsupported    = parsed.unsupported?.trim()    || ""
               verdict        = contradictions || unsupported ? "issues" : "ok"
             } catch {
-              // Gemini didn't return valid JSON — treat it as an issue to be safe
               contradictions = raw.slice(0, 200)
               verdict        = "issues"
             }

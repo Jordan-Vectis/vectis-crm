@@ -2677,8 +2677,8 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
 type DCLot = {
   id:              string
   label:           string
-  reference:       string
   description:     string
+  imageUrls?:      string[]
   verdict?:        "ok" | "issues"
   contradictions?: string
   unsupported?:    string
@@ -2687,24 +2687,27 @@ type DCLot = {
 
 function DoubleCheckTab({ model: globalModel }: { model: string }) {
   const [code,        setCode]        = useState("")
+  const [auctionId,   setAuctionId]   = useState<string | null>(null)
   const [loading,     setLoading]     = useState(false)
   const [error,       setError]       = useState<string | null>(null)
   const [lots,        setLots]        = useState<DCLot[]>([])
   const [checking,    setChecking]    = useState(false)
-  const [progress,    setProgress]    = useState<{ done: number; total: number; current?: string } | null>(null)
+  const [progress,    setProgress]    = useState<{ done: number; total: number } | null>(null)
   const [expandedLot, setExpandedLot] = useState<string | null>(null)
   const [localModel,  setLocalModel]  = useState(globalModel)
   const [modelList,   setModelList]   = useState<string[]>([globalModel])
+  const [modelStatus, setModelStatus] = useState<Record<string, { ok: boolean; ms: number; error?: string } | "testing">>({})
+  const [testingAll,  setTestingAll]  = useState(false)
   const [log,         setLog]         = useState<string[]>([])
   const [showResults, setShowResults] = useState(false)
-  const [runList,     setRunList]     = useState<{ id: string; code: string; _count: { lots: number } }[]>([])
+  const [auctionList, setAuctionList] = useState<{ code: string; name: string }[]>([])
   const logRef    = useRef<HTMLDivElement>(null)
   const cancelRef = useRef(false)
   const abortRef  = useRef<AbortController | null>(null)
 
   useEffect(() => {
     fetch("/api/auction-ai/models").then(r => r.json()).then(j => { if (j.models?.length) setModelList(j.models) }).catch(() => {})
-    fetch("/api/auction-ai/runs").then(r => r.json()).then(setRunList).catch(() => {})
+    fetch("/api/auction-ai/auctions").then(r => r.json()).then(d => { if (Array.isArray(d)) setAuctionList(d) }).catch(() => {})
   }, [])
 
   function addLog(msg: string) {
@@ -2713,40 +2716,49 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
     setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 50)
   }
 
+  async function testAllModels() {
+    setTestingAll(true)
+    const initial: Record<string, "testing"> = {}
+    modelList.forEach(m => { initial[m] = "testing" })
+    setModelStatus(initial)
+    for (const m of modelList) {
+      try {
+        const res  = await fetch("/api/auction-ai/model-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
+        const data = await res.json()
+        setModelStatus(prev => ({ ...prev, [m]: data }))
+      } catch (e: any) {
+        setModelStatus(prev => ({ ...prev, [m]: { ok: false, ms: 0, error: e.message } }))
+      }
+      await new Promise(r => setTimeout(r, 1000))
+    }
+    setTestingAll(false)
+  }
+
   async function handleLoad() {
     const upper = code.trim().toUpperCase()
     if (!upper) return
-    setLoading(true); setError(null); setLots([]); setShowResults(false); setLog([])
+    setLoading(true); setError(null); setLots([]); setAuctionId(null); setShowResults(false); setLog([])
     try {
-      // Find the run for this code
-      const match = runList.find(r => r.code === upper)
-      if (!match) throw new Error(`No saved run found for "${upper}". Run the Batch Run tab with an auction code first.`)
-
-      const res = await fetch(`/api/auction-ai/runs/${match.id}`)
-      if (!res.ok) throw new Error((await res.json()).error ?? "Failed to load run")
+      const res = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(upper)}`)
+      if (!res.ok) throw new Error((await res.json()).error ?? "Catalogue not found")
       const data = await res.json()
+      setAuctionId(data.auctionId ?? null)
 
-      // Only lots that have both a description AND an originalDescription can be double-checked
-      const checkable: DCLot[] = (data.lots ?? [])
-        .filter((l: any) => l.description?.trim() && l.originalDescription?.trim())
+      // Load all lots that have a description
+      const loaded: DCLot[] = data.lots
+        .filter((l: any) => l.description?.trim())
         .map((l: any) => ({
           id:          l.id,
-          label:       l.lot,
-          reference:   l.originalDescription,
+          label:       l.lotNumber || l.receiptUniqueId || l.id,
           description: l.description,
+          imageUrls:   l.imageUrls ?? [],
           status:      "idle" as const,
         }))
 
-      if (checkable.length === 0) {
-        const total = (data.lots ?? []).length
-        throw new Error(
-          total === 0
-            ? `No lots found for "${upper}".`
-            : `None of the ${total} lots in this run have an original description to compare against. Original descriptions are saved when the AI Upgrade tab sends existing descriptions to the AI.`
-        )
+      if (loaded.length === 0) {
+        throw new Error(`No lots with descriptions found for "${upper}". Add descriptions via the Batch Run tab or cataloguing page first.`)
       }
-
-      setLots(checkable)
+      setLots(loaded)
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -2761,7 +2773,7 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
   }
 
   async function runCheck() {
-    const toCheck = lots.filter(l => l.reference && l.description)
+    const toCheck = lots.filter(l => l.description)
     if (!toCheck.length || checking) return
     cancelRef.current = false
     setShowResults(false)
@@ -2769,16 +2781,43 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
     setLog([])
     setProgress({ done: 0, total: toCheck.length })
     setLots(prev => prev.map(l => ({ ...l, status: "checking", verdict: undefined, contradictions: undefined, unsupported: undefined })))
-    addLog(`── Starting double check: ${toCheck.length} lots · model: ${localModel}`)
+    const withPhotos = toCheck.filter(l => (l.imageUrls?.length ?? 0) > 0).length
+    addLog(`── Starting double check: ${toCheck.length} lots · ${withPhotos} with photos · model: ${localModel}`)
 
     const controller = new AbortController()
     abortRef.current = controller
 
     try {
+      // Fetch and base64-encode images for each lot (up to 6 per lot)
+      addLog("  · Preparing images…")
+      const lotsWithImages = await Promise.all(
+        toCheck.map(async (l) => {
+          const urls = (l.imageUrls ?? []).slice(0, 6)
+          const images = await Promise.all(
+            urls.map(async (url) => {
+              try {
+                const r = await fetch(url)
+                const buf = await r.arrayBuffer()
+                const data = btoa(String.fromCharCode(...new Uint8Array(buf)))
+                const mimeType = r.headers.get("content-type") || "image/jpeg"
+                return { data, mimeType }
+              } catch {
+                return null
+              }
+            })
+          )
+          return {
+            label:       l.label,
+            description: l.description,
+            images:      images.filter(Boolean) as { data: string; mimeType: string }[],
+          }
+        })
+      )
+
       const res = await fetch("/api/auction-ai/double-check", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ lots: toCheck.map(l => ({ label: l.label, reference: l.reference, description: l.description })), model: localModel }),
+        body:    JSON.stringify({ lots: lotsWithImages, model: localModel }),
         signal:  controller.signal,
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText)
@@ -2786,7 +2825,6 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
       const reader  = res.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ""
-
       const lotStartTimes: Record<string, number> = {}
 
       while (true) {
@@ -2800,12 +2838,11 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
           const msg = JSON.parse(line)
           if (msg.type === "progress") {
             lotStartTimes[msg.label] = Date.now()
-            setProgress({ done: msg.index, total: toCheck.length, current: msg.label })
+            setProgress({ done: msg.index, total: toCheck.length })
             addLog(`  · ${msg.index + 1}/${toCheck.length} ${msg.label} — checking…`)
           } else if (msg.type === "result") {
             const ms = lotStartTimes[msg.label] ? Date.now() - lotStartTimes[msg.label] : 0
-            const flag = msg.verdict === "ok" ? "✓ clean" : "⚑ issues found"
-            addLog(`  ${flag} — ${msg.label} (${(ms / 1000).toFixed(1)}s)${msg.contradictions ? ` · contradiction: ${msg.contradictions.slice(0, 60)}…` : ""}`)
+            addLog(`  ${msg.verdict === "ok" ? "✓ clean" : "⚑ issues"} — ${msg.label} (${(ms / 1000).toFixed(1)}s)`)
             setLots(prev => prev.map(l =>
               l.label === msg.label
                 ? { ...l, verdict: msg.verdict, contradictions: msg.contradictions, unsupported: msg.unsupported, status: msg.verdict }
@@ -2839,36 +2876,49 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
       <div>
         <h2 className="text-xl font-semibold text-white mb-1">Double Check</h2>
         <p className="text-sm text-gray-400">
-          Compares the original description against the AI-generated version to flag contradictions or
-          unverifiable claims. Loads from a saved run where the AI Upgrade tab sent the original description as context.
+          Loads descriptions and photos from the catalogue and runs a second AI pass to spot factual errors,
+          inconsistencies, or claims that look guessed — especially where photos are blurry or details aren't clearly visible.
         </p>
       </div>
 
       {/* Model selector */}
       <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-2">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">Model</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Model</p>
+          <button onClick={testAllModels} disabled={testingAll}
+            className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors">
+            {testingAll ? "Testing…" : "⚡ Test all models"}
+          </button>
+        </div>
         <div className="border border-gray-700 rounded-lg overflow-hidden">
           {modelList.map(m => {
+            const status     = modelStatus[m]
             const isSelected = localModel === m
             return (
               <button key={m} onClick={() => setLocalModel(m)}
                 className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors border-b border-gray-800 last:border-0 ${isSelected ? "bg-indigo-950/40" : "hover:bg-[#1a1a1e]"}`}>
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isSelected ? "bg-indigo-400" : "bg-gray-700"}`} />
                 <span className={`text-sm flex-1 font-mono ${isSelected ? "text-indigo-300" : "text-gray-400"}`}>{m}</span>
+                {status === "testing" && <span className="text-xs text-gray-500 animate-pulse">testing…</span>}
+                {status && status !== "testing" && (
+                  status.ok
+                    ? <span className={`text-xs font-medium ${status.ms < 5000 ? "text-green-400" : status.ms < 12000 ? "text-yellow-400" : "text-orange-400"}`}>✓ {(status.ms / 1000).toFixed(1)}s</span>
+                    : <span className="text-xs text-red-400 truncate max-w-[200px]" title={status.error}>✗ {status.error?.match(/\[(\d{3}[^\]]*)\]/)?.[1] ?? "error"}</span>
+                )}
               </button>
             )
           })}
         </div>
       </div>
 
-      {/* Load */}
+      {/* Load from catalogue */}
       <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-3">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">Auction Code</p>
+        <p className="text-xs text-gray-500 uppercase tracking-wider">Auction</p>
         <div className="flex gap-2">
           <Autocomplete
             value={code}
-            onChange={v => setCode(v.replace(/\s+\(\d+ lots\)$/, "").toUpperCase())}
-            options={runList.map(r => `${r.code}  (${r._count.lots} lots)`)}
+            onChange={v => setCode(v.replace(/\s*—.*$/, "").trim().toUpperCase())}
+            options={auctionList.map(a => `${a.code} — ${a.name}`)}
             placeholder="Enter auction code…"
           />
           <button onClick={handleLoad} disabled={!code.trim() || loading}
@@ -2877,9 +2927,10 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
           </button>
         </div>
         {error && <p className="text-xs text-red-400 bg-red-950/30 rounded-lg px-3 py-2">{error}</p>}
-        {lots.length > 0 && !checking && !showResults && (
+        {lots.length > 0 && !checking && (
           <p className="text-xs text-gray-400">
-            <span className="text-indigo-300 font-semibold">{lots.length}</span> lot{lots.length !== 1 ? "s" : ""} with original descriptions ready to check
+            <span className="text-indigo-300 font-semibold">{lots.length}</span> lot{lots.length !== 1 ? "s" : ""} loaded
+            {(() => { const n = lots.filter(l => (l.imageUrls?.length ?? 0) > 0).length; return n > 0 ? <> · <span className="text-indigo-300 font-semibold">{n}</span> with photos</> : <> · <span className="text-yellow-500">no photos</span></> })()}
           </p>
         )}
       </div>
@@ -2920,14 +2971,12 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
       {/* Results */}
       {showResults && lots.some(l => l.status && l.status !== "idle") && (
         <div className="space-y-3">
-          {/* Summary */}
           <div className="flex items-center gap-4 flex-wrap">
             {okCount > 0    && <span className="text-xs font-semibold text-green-400 bg-green-950/40 border border-green-800/50 rounded-full px-3 py-1">✓ {okCount} clean</span>}
             {issueCount > 0 && <span className="text-xs font-semibold text-red-400   bg-red-950/40   border border-red-800/50   rounded-full px-3 py-1">⚑ {issueCount} with issues</span>}
             {errCount > 0   && <span className="text-xs font-semibold text-gray-400  bg-gray-800/40  border border-gray-700     rounded-full px-3 py-1">✗ {errCount} errors</span>}
           </div>
 
-          {/* Lot list — show issues first */}
           {[...lots]
             .sort((a, b) => {
               const rank = (s?: string) => s === "issues" ? 0 : s === "error" ? 1 : 2
@@ -2939,15 +2988,10 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
               const hasIssues  = lot.status === "issues"
               return (
                 <div key={lot.label}
-                  className={`border rounded-xl overflow-hidden transition-colors ${
-                    hasIssues
-                      ? "border-red-800/60 bg-red-950/20"
-                      : lot.status === "error"
-                        ? "border-gray-700 bg-gray-900/30"
-                        : "border-green-800/40 bg-green-950/10"
+                  className={`border rounded-xl overflow-hidden ${
+                    hasIssues ? "border-red-800/60 bg-red-950/20" : lot.status === "error" ? "border-gray-700 bg-gray-900/30" : "border-green-800/40 bg-green-950/10"
                   }`}>
-                  <button
-                    onClick={() => setExpandedLot(isExpanded ? null : lot.label)}
+                  <button onClick={() => setExpandedLot(isExpanded ? null : lot.label)}
                     className="w-full flex items-center gap-3 px-4 py-3 text-left">
                     <span className={`text-base flex-shrink-0 ${hasIssues ? "text-red-400" : lot.status === "error" ? "text-gray-500" : "text-green-400"}`}>
                       {hasIssues ? "⚑" : lot.status === "error" ? "✗" : "✓"}
@@ -2963,7 +3007,7 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
                     <div className="border-t border-gray-800 px-4 py-4 space-y-4">
                       {lot.contradictions && (
                         <div>
-                          <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-1">Contradictions</p>
+                          <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-1">Issues found</p>
                           <p className="text-sm text-red-200">{lot.contradictions}</p>
                         </div>
                       )}
@@ -2973,18 +3017,10 @@ function DoubleCheckTab({ model: globalModel }: { model: string }) {
                           <p className="text-sm text-yellow-200">{lot.unsupported}</p>
                         </div>
                       )}
-                      {lot.status === "error" && (
-                        <p className="text-xs text-gray-500">Check failed — try running again</p>
-                      )}
-                      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-800">
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Reference (original)</p>
-                          <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{lot.reference}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">New description</p>
-                          <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{lot.description}</p>
-                        </div>
+                      {lot.status === "error" && <p className="text-xs text-gray-500">Check failed — try running again</p>}
+                      <div className="pt-2 border-t border-gray-800">
+                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Description</p>
+                        <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{lot.description}</p>
                       </div>
                     </div>
                   )}
