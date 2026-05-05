@@ -605,11 +605,30 @@ model WarehouseItem {
 
 model WarehouseSyncLog {
   id             String    @id @default(cuid())
-  source         String    // "receipt_lines" | "auction_lines" | "changelog"
+  source         String    // "receipt_lines" | "auction_lines" | "changelog" | "totes"
   startedAt      DateTime  @default(now())
   completedAt    DateTime?
   status         String    @default("running") // "running" | "complete" | "failed"
   itemsProcessed Int       @default(0)
   lastTimestamp  String?   // ISO string — resume point for incremental syncs
   error          String?
+}
+
+// Receipt_Totes_Excel — physical totes tracked in BC.
+// Synced separately from WarehouseItem (which tracks individual items).
+// A tote may be at a location even if items inside don't yet have one.
+model WarehouseTote {
+  id            String    @id @default(cuid())
+  toteNo        String    @unique
+  location      String?
+  binCode       String?
+  receiptNo     String?
+  vendorNo      String?
+  vendorName    String?
+  status        String?
+  bcModifiedAt  DateTime?
+  syncedAt      DateTime  @default(now())
+
+  @@index([location])
+  @@index([toteNo])
 }

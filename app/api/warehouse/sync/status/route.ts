@@ -8,9 +8,9 @@ export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  const sources = ["receipt_lines", "auction_lines", "changelog"] as const
+  const sources = ["receipt_lines", "auction_lines", "changelog", "totes"] as const
 
-  const [logs, itemCount] = await Promise.all([
+  const [logs, itemCount, toteCount] = await Promise.all([
     Promise.all(
       sources.map(source =>
         prisma.warehouseSyncLog.findFirst({
@@ -20,6 +20,7 @@ export async function GET() {
       )
     ),
     prisma.warehouseItem.count(),
+    prisma.warehouseTote.count(),
   ])
 
   const running = await prisma.warehouseSyncLog.findMany({
@@ -29,6 +30,7 @@ export async function GET() {
 
   return NextResponse.json({
     itemCount,
+    toteCount,
     running: running.map(r => r.source),
     sources: Object.fromEntries(
       sources.map((source, i) => [
