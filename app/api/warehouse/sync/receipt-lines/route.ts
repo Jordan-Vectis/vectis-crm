@@ -38,10 +38,17 @@ export async function POST(req: NextRequest) {
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
 
   let maxPages = 5   // 5 pages × 500 = 2,500 items per call — well under Railway's 60s timeout
-  try { const body = await req.json(); if (body?.maxPages) maxPages = body.maxPages } catch {}
+  let full = false
+  let startPage = 0
+  try {
+    const body = await req.json()
+    if (body?.maxPages)  maxPages  = body.maxPages
+    if (body?.full)      full      = !!body.full
+    if (body?.startPage) startPage = body.startPage
+  } catch {}
 
-  // Find last successful sync to determine start point
-  const lastSync = await prisma.warehouseSyncLog.findFirst({
+  // Find last successful sync to determine start point (skipped when full=true)
+  const lastSync = full ? null : await prisma.warehouseSyncLog.findFirst({
     where: { source: "receipt_lines", status: "complete" },
     orderBy: { completedAt: "desc" },
   })
@@ -55,22 +62,25 @@ export async function POST(req: NextRequest) {
 
   try {
     const BATCH = 500
-    let page  = 0
+    let page  = startPage
+    const startedAt = page
     let done  = false
     let more  = false
     let newestTimestamp = lastTimestamp
 
     while (!done) {
-      if (page >= maxPages) { more = true; break }
+      if (page - startedAt >= maxPages) { more = true; break }
       const params: Record<string, any> = {
         $top:     BATCH,
         $skip:    page * BATCH,
         $orderby: "EVA_SystemModifiedAt asc",
       }
 
-      // Incremental — only fetch records modified since last sync
+      // Incremental — fetch records modified at or after the boundary timestamp.
+      // Using gte (not gt) so items sharing a timestamp at the boundary aren't
+      // skipped between calls. The upsert handles duplicates.
       if (lastTimestamp) {
-        params.$filter = `EVA_SystemModifiedAt gt datetime'${lastTimestamp}'`
+        params.$filter = `EVA_SystemModifiedAt ge datetime'${lastTimestamp}'`
       }
 
       let rows: any[]
@@ -167,7 +177,7 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    return NextResponse.json({ ok: true, itemsProcessed, incremental: !!lastTimestamp, more })
+    return NextResponse.json({ ok: true, itemsProcessed, incremental: !!lastTimestamp, more, nextPage: more ? page : null, full })
   } catch (e: any) {
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },

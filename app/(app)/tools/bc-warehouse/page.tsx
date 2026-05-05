@@ -948,8 +948,9 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
     setLog(l => [...l, { time: Date.now(), level, text }])
   }
 
-  async function runSync() {
+  async function runSync(opts: { full?: boolean } = {}) {
     if (running) return
+    const { full = false } = opts
     cancelRef.current = false
     setRunning(true)
     setError(null)
@@ -958,25 +959,28 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
     setItemTotal(0)
     setStartedAt(Date.now())
     setEndedAt(null)
-    addLog("info", "Starting sync — connecting to Business Central…")
+    addLog("info", full
+      ? "Starting FULL re-sync — re-fetching everything from Business Central…"
+      : "Starting sync — connecting to Business Central…")
 
     try {
       // ── Stage 1: Receipt Lines ──────────────────────────────────────────────
       setPhase("Receipt Lines")
-      addLog("info", "Stage 1/3 · Receipt Lines (the main item list)")
+      addLog("info", `Stage 1/3 · Receipt Lines (the main item list)${full ? " — FULL re-sync" : " — incremental"}`)
       let more = true
       let batch = 0
       let stageItems = 0
+      let nextPage = 0  // only used when full=true; route advances pagination cursor
       while (more) {
         if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
         batch++
         const t0 = Date.now()
-        addLog("info", `  Batch ${batch} · fetching up to 2,500 items…`)
+        addLog("info", `  Batch ${batch} · fetching up to 2,500 items${full ? ` (skip ${(nextPage * 500).toLocaleString()})` : ""}…`)
         try {
           const res = await fetch("/api/warehouse/sync/receipt-lines", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ maxPages: 5 }),
+            body: JSON.stringify({ maxPages: 5, full, startPage: nextPage }),
           })
           const data = await res.json().catch(() => ({}))
           if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
@@ -986,7 +990,8 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
           setBatchTotal(b => b + 1)
           addLog("ok", `  Batch ${batch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s${data.more ? " · more pages remaining…" : ""}`)
           more = data.more === true
-          if (batch >= 200) { addLog("warn", "  Safety cap (200 batches) reached — stopping"); break }
+          if (full && data.nextPage != null) nextPage = data.nextPage + 1
+          if (batch >= 400) { addLog("warn", "  Safety cap (400 batches) reached — stopping"); break }
         } catch (e: any) {
           addLog("error", `  Batch ${batch} failed: ${e.message ?? e}`)
           throw e
@@ -1092,15 +1097,27 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
         </div>
       </div>
 
-      {/* Run button */}
-      <div className="flex items-center gap-3 mb-4">
+      {/* Run buttons */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
         {!running ? (
-          <button
-            onClick={runSync}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors"
-          >
-            ⟳ Run sync now
-          </button>
+          <>
+            <button
+              onClick={() => runSync()}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors"
+            >
+              ⟳ Run sync now
+            </button>
+            <button
+              onClick={() => {
+                if (!confirm("Full re-sync ignores the last-synced timestamp and re-fetches every record from Business Central. This can take 15+ minutes. Continue?")) return
+                runSync({ full: true })
+              }}
+              className="px-5 py-2.5 bg-amber-700/80 hover:bg-amber-600 text-white rounded-lg font-medium text-sm transition-colors"
+              title="Re-fetches everything from BC — use if items appear missing"
+            >
+              ⤓ Full re-sync
+            </button>
+          </>
         ) : (
           <button
             onClick={() => { cancelRef.current = true; addLog("warn", "Cancel requested — finishing current batch…") }}
