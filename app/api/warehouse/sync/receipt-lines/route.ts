@@ -82,8 +82,11 @@ export async function POST(req: NextRequest) {
       initialParams = undefined
     } else {
       urlOrEndpoint = "Receipt_Lines_Excel"
+      // No $top — let BC paginate via @odata.nextLink using the
+      // Prefer: odata.maxpagesize=500 header set in bcPageWithNext.
+      // Adding $top here would cap the entire query and BC would NOT
+      // emit a nextLink, ending the sync after one page.
       initialParams = {
-        $top:     500,
         $orderby: "EVA_SystemModifiedAt asc",
       }
       if (lastTimestamp) {
@@ -114,12 +117,14 @@ export async function POST(req: NextRequest) {
         break
       }
 
-      // Upsert each row
-      for (const r of rows) {
-        const uniqueId = String(r.EVA_UniqueID ?? "").trim()
-        if (!uniqueId) continue
-
-        await prisma.warehouseItem.upsert({
+      // Upsert rows — parallelised in chunks of 20 for ~10× speedup over
+      // sequential awaits without overwhelming the connection pool
+      const CHUNK = 20
+      const upserts: Promise<any>[] = []
+      const validRows = rows.filter(r => String(r.EVA_UniqueID ?? "").trim())
+      for (const r of validRows) {
+        const uniqueId = String(r.EVA_UniqueID).trim()
+        upserts.push(prisma.warehouseItem.upsert({
           where:  { uniqueId },
           update: {
             receiptNo:        r.EVA_ReceiptNo        ?? null,
@@ -182,11 +187,15 @@ export async function POST(req: NextRequest) {
             collected:        parseBool(r.EVA_Collected),
             bcModifiedAt:     parseDate(r.EVA_SystemModifiedAt),
           },
-        })
-
-        itemsProcessed++
+        }))
         if (r.EVA_SystemModifiedAt) newestTimestamp = r.EVA_SystemModifiedAt
       }
+
+      // Run upserts in parallel chunks of 20
+      for (let i = 0; i < upserts.length; i += CHUNK) {
+        await Promise.all(upserts.slice(i, i + CHUNK))
+      }
+      itemsProcessed += validRows.length
 
       // No next link → end of data
       if (!nl) break
