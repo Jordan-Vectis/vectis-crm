@@ -242,12 +242,15 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
 
   const editingLotId = searchParams.get("lot")
   const editingLot   = lots.find(l => l.id === editingLotId) ?? null
+  const [navDir, setNavDir] = useState<"next" | "prev" | null>(null)
 
-  function openLot(id: string) {
+  function openLot(id: string, dir?: "next" | "prev") {
+    setNavDir(dir ?? null)
     router.push(`/tools/cataloguing/auctions/${auction.id}?lot=${id}`)
   }
 
   function closeLot() {
+    setNavDir(null)
     router.push(`/tools/cataloguing/auctions/${auction.id}`)
   }
 
@@ -358,7 +361,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
         {tab === "manage-lots" && (
           editingLotId
             ? <LotEditView key={editingLotId} lot={editingLot} auctionId={auction.id}
-                allLots={lots} onEdit={openLot} onDone={closeLot} />
+                allLots={lots} entryDir={navDir} onEdit={openLot} onDone={closeLot} />
             : <ManageLotsTab lots={lots} auctionId={auction.id} auction={auction}
                 onEdit={openLot}
                 onDelete={() => router.push(`/tools/cataloguing/auctions/${auction.id}`)} />
@@ -1448,7 +1451,7 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
 
 const PARCEL_OPTIONS = ["Small", "Medium", "Large", "Contact", "Collection Only"]
 
-function LotEditView({ lot, auctionId, allLots, onDone, onEdit }: { lot: Lot | null; auctionId: string; allLots?: Lot[]; onDone: () => void; onEdit?: (id: string) => void }) {
+function LotEditView({ lot, auctionId, allLots, entryDir, onDone, onEdit }: { lot: Lot | null; auctionId: string; allLots?: Lot[]; entryDir?: "next" | "prev" | null; onDone: () => void; onEdit?: (id: string, dir: "next" | "prev") => void }) {
   const sortedLots = useMemo(() => {
     if (!allLots) return []
     return [...allLots].sort((a, b) => {
@@ -1460,6 +1463,33 @@ function LotEditView({ lot, auctionId, allLots, onDone, onEdit }: { lot: Lot | n
   const currentIdx = sortedLots.findIndex(l => l.id === lot?.id)
   const prevLot    = currentIdx > 0 ? sortedLots[currentIdx - 1] : null
   const nextLot    = currentIdx < sortedLots.length - 1 ? sortedLots[currentIdx + 1] : null
+
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Slide-in on mount
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const startX = entryDir === "next" ? "60px" : entryDir === "prev" ? "-60px" : "0"
+    el.style.transform = `translateX(${startX})`
+    el.style.opacity = "0"
+    requestAnimationFrame(() => {
+      el.style.transition = "transform 220ms cubic-bezier(0.25,0.46,0.45,0.94), opacity 180ms ease"
+      el.style.transform = "translateX(0)"
+      el.style.opacity = "1"
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function navigate(id: string, dir: "next" | "prev") {
+    const el = contentRef.current
+    if (!el) { onEdit?.(id, dir); return }
+    const endX = dir === "next" ? "-60px" : "60px"
+    el.style.transition = "transform 180ms cubic-bezier(0.55,0,1,0.45), opacity 160ms ease"
+    el.style.transform = `translateX(${endX})`
+    el.style.opacity = "0"
+    setTimeout(() => onEdit?.(id, dir), 185)
+  }
 
   const [pending, start]             = useTransition()
   const [imageKeys, setImageKeys]    = useState<string[]>(lot?.imageUrls ?? [])
@@ -1560,14 +1590,26 @@ function LotEditView({ lot, auctionId, allLots, onDone, onEdit }: { lot: Lot | n
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <button onClick={onDone} className="text-sm text-[#2AB4A6] hover:text-[#24a090] transition-colors">
+      {/* Sticky nav bar */}
+      <div className="sticky top-0 z-10 flex items-center gap-2 py-2 mb-5 bg-[#141416] border-b border-gray-800 -mx-3 px-3">
+        <button onClick={onDone} className="text-sm text-[#2AB4A6] hover:text-[#24a090] transition-colors flex-shrink-0">
           ← Back to lots
         </button>
         {sortedLots.length > 0 && (
-          <span className="text-xs text-gray-500">{currentIdx + 1} / {sortedLots.length}</span>
+          <span className="text-xs text-gray-600 flex-1 text-center">{currentIdx + 1} / {sortedLots.length}</span>
         )}
+        <button type="button" onClick={() => prevLot && navigate(prevLot.id, "prev")} disabled={!prevLot}
+          className="px-3 py-1.5 rounded-lg border border-gray-700 bg-[#2C2C2E] text-xs text-gray-300 hover:bg-[#3C3C3E] disabled:opacity-25 transition-colors flex-shrink-0">
+          ← Prev
+        </button>
+        <button type="button" onClick={() => nextLot && navigate(nextLot.id, "next")} disabled={!nextLot}
+          className="px-3 py-1.5 rounded-lg bg-[#2AB4A6] hover:bg-[#24a090] text-white text-xs font-semibold disabled:opacity-25 transition-colors flex-shrink-0">
+          Next →
+        </button>
       </div>
+
+      {/* Animated content */}
+      <div ref={contentRef}>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-2 gap-6">
@@ -1752,16 +1794,6 @@ function LotEditView({ lot, auctionId, allLots, onDone, onEdit }: { lot: Lot | n
             className="bg-[#2AB4A6] hover:bg-[#24a090] disabled:opacity-50 text-white font-semibold text-sm px-6 py-2 rounded-lg transition-colors">
             {pending ? "Saving…" : saved ? "✓ Saved" : "Save Changes"}
           </button>
-          <div className="ml-auto flex items-center gap-2">
-            <button type="button" onClick={() => prevLot && onEdit?.(prevLot.id)} disabled={!prevLot}
-              className="px-4 py-2 rounded-lg border border-gray-700 bg-[#2C2C2E] text-sm text-gray-300 hover:bg-[#3C3C3E] disabled:opacity-30 transition-colors">
-              ← Prev
-            </button>
-            <button type="button" onClick={() => nextLot && onEdit?.(nextLot.id)} disabled={!nextLot}
-              className="px-4 py-2 rounded-lg bg-[#2AB4A6] hover:bg-[#24a090] text-white font-semibold text-sm disabled:opacity-30 transition-colors">
-              Next →
-            </button>
-          </div>
         </div>
       </form>
 
@@ -1802,6 +1834,7 @@ function LotEditView({ lot, auctionId, allLots, onDone, onEdit }: { lot: Lot | n
           <p className="text-xs text-gray-600">No photos yet.</p>
         )}
       </div>
+      </div>{/* end animated content */}
     </div>
   )
 }
