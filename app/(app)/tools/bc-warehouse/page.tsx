@@ -59,7 +59,7 @@ type SearchItem = {
   category: string | null
 }
 
-type Tab = "heatmap" | "sale-checklist" | "search" | "location-history" | "tote-data"
+type Tab = "heatmap" | "sale-checklist" | "search" | "location-history" | "tote-data" | "data-sync"
 
 const STALE_MS = 15 * 60 * 1000 // 15 minutes
 
@@ -875,6 +875,276 @@ function ToteDataTab() {
   )
 }
 
+// ─── DataSyncTab ──────────────────────────────────────────────────────────────
+
+type LogEntry = { time: number; level: "info" | "ok" | "warn" | "error"; text: string }
+
+function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComplete: () => Promise<SyncStatus | null> }) {
+  const [running, setRunning] = useState(false)
+  const [log, setLog] = useState<LogEntry[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [phase, setPhase] = useState<string>("")
+  const [batchTotal, setBatchTotal] = useState(0)
+  const [itemTotal, setItemTotal] = useState(0)
+  const [liveCount, setLiveCount] = useState(status?.itemCount ?? 0)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [endedAt, setEndedAt] = useState<number | null>(null)
+  const cancelRef = useRef(false)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  // Keep liveCount in sync with status when not running
+  useEffect(() => { if (!running) setLiveCount(status?.itemCount ?? 0) }, [status?.itemCount, running])
+
+  // Poll DB count while sync is running
+  useEffect(() => {
+    if (!running) return
+    const t = setInterval(async () => {
+      try {
+        const r = await fetch("/api/warehouse/sync/status")
+        const d = await r.json()
+        setLiveCount(d.itemCount ?? 0)
+      } catch {}
+    }, 2000)
+    return () => clearInterval(t)
+  }, [running])
+
+  // Auto-scroll log to bottom
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
+  }, [log.length])
+
+  function addLog(level: LogEntry["level"], text: string) {
+    setLog(l => [...l, { time: Date.now(), level, text }])
+  }
+
+  async function runSync() {
+    if (running) return
+    cancelRef.current = false
+    setRunning(true)
+    setError(null)
+    setLog([])
+    setBatchTotal(0)
+    setItemTotal(0)
+    setStartedAt(Date.now())
+    setEndedAt(null)
+    addLog("info", "Starting sync — connecting to Business Central…")
+
+    try {
+      // ── Stage 1: Receipt Lines ──────────────────────────────────────────────
+      setPhase("Receipt Lines")
+      addLog("info", "Stage 1/3 · Receipt Lines (the main item list)")
+      let more = true
+      let batch = 0
+      let stageItems = 0
+      while (more) {
+        if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
+        batch++
+        const t0 = Date.now()
+        addLog("info", `  Batch ${batch} · fetching up to 2,500 items…`)
+        try {
+          const res = await fetch("/api/warehouse/sync/receipt-lines", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ maxPages: 5 }),
+          })
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+          const ms = Date.now() - t0
+          stageItems += data.itemsProcessed ?? 0
+          setItemTotal(t => t + (data.itemsProcessed ?? 0))
+          setBatchTotal(b => b + 1)
+          addLog("ok", `  Batch ${batch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s${data.more ? " · more pages remaining…" : ""}`)
+          more = data.more === true
+          if (batch >= 200) { addLog("warn", "  Safety cap (200 batches) reached — stopping"); break }
+        } catch (e: any) {
+          addLog("error", `  Batch ${batch} failed: ${e.message ?? e}`)
+          throw e
+        }
+      }
+      addLog("ok", `Stage 1 complete — ${stageItems.toLocaleString()} items processed`)
+
+      // ── Stage 2: Auction Lines ──────────────────────────────────────────────
+      if (!cancelRef.current) {
+        setPhase("Auction Lines")
+        addLog("info", "Stage 2/3 · Auction Lines (current lot numbers, vendor emails)")
+        const t0 = Date.now()
+        try {
+          const res = await fetch("/api/warehouse/sync/auction-lines", { method: "POST" })
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+          const ms = Date.now() - t0
+          setItemTotal(t => t + (data.itemsProcessed ?? 0))
+          addLog("ok", `Stage 2 complete — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s`)
+        } catch (e: any) {
+          addLog("error", `Stage 2 failed: ${e.message ?? e}`)
+          throw e
+        }
+      }
+
+      // ── Stage 3: Change Log ─────────────────────────────────────────────────
+      if (!cancelRef.current) {
+        setPhase("Change Log")
+        addLog("info", "Stage 3/3 · Change Log (latest location scans)")
+        const t0 = Date.now()
+        try {
+          const res = await fetch("/api/warehouse/sync/changelog", { method: "POST" })
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+          const ms = Date.now() - t0
+          addLog("ok", `Stage 3 complete — ${(data.itemsProcessed ?? 0).toLocaleString()} entries in ${(ms / 1000).toFixed(1)}s`)
+        } catch (e: any) {
+          // Changelog is best-effort
+          addLog("warn", `Stage 3 failed (non-fatal): ${e.message ?? e}`)
+        }
+      }
+
+      addLog("ok", "✓ All sync stages finished")
+      setPhase("Done")
+    } catch (e: any) {
+      const msg = e.message ?? String(e)
+      setError(msg)
+      addLog("error", `✗ Sync stopped: ${msg}`)
+      setPhase("Failed")
+    } finally {
+      setEndedAt(Date.now())
+      setRunning(false)
+      await onComplete()
+    }
+  }
+
+  function fmtTime(t: number): string {
+    return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+  }
+
+  function fmtAge(iso: string | undefined): string {
+    if (!iso) return "never"
+    const ms = Date.now() - new Date(iso).getTime()
+    const m = Math.floor(ms / 60000)
+    if (m < 1) return "just now"
+    if (m < 60) return `${m}m ago`
+    const h = Math.floor(m / 60)
+    if (h < 24) return `${h}h ago`
+    return `${Math.floor(h / 24)}d ago`
+  }
+
+  const elapsedSec = startedAt ? Math.floor(((endedAt ?? Date.now()) - startedAt) / 1000) : 0
+  const elapsedStr = `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
+
+  return (
+    <div className="h-full overflow-y-auto p-6 max-w-4xl mx-auto">
+      <h2 className="text-xl font-semibold text-white mb-1">Data Sync</h2>
+      <p className="text-sm text-gray-400 mb-6">
+        Pulls warehouse items, current lot numbers, and location scans from Business Central into the local database.
+        Subsequent runs are incremental — only changed records are re-fetched.
+      </p>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Items in DB</div>
+          <div className="text-2xl font-mono text-white">{liveCount.toLocaleString()}</div>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Receipt Lines</div>
+          <div className="text-sm text-gray-200">{fmtAge(status?.sources.receipt_lines?.completedAt)}</div>
+          <div className="text-xs text-gray-500">{status?.sources.receipt_lines?.itemsProcessed?.toLocaleString() ?? 0} last run</div>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Auction Lines</div>
+          <div className="text-sm text-gray-200">{fmtAge(status?.sources.auction_lines?.completedAt)}</div>
+          <div className="text-xs text-gray-500">{status?.sources.auction_lines?.itemsProcessed?.toLocaleString() ?? 0} last run</div>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Change Log</div>
+          <div className="text-sm text-gray-200">{fmtAge(status?.sources.changelog?.completedAt)}</div>
+          <div className="text-xs text-gray-500">{status?.sources.changelog?.itemsProcessed?.toLocaleString() ?? 0} last run</div>
+        </div>
+      </div>
+
+      {/* Run button */}
+      <div className="flex items-center gap-3 mb-4">
+        {!running ? (
+          <button
+            onClick={runSync}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors"
+          >
+            ⟳ Run sync now
+          </button>
+        ) : (
+          <button
+            onClick={() => { cancelRef.current = true; addLog("warn", "Cancel requested — finishing current batch…") }}
+            className="px-5 py-2.5 bg-red-700 hover:bg-red-600 text-white rounded-lg font-medium text-sm transition-colors"
+          >
+            ⛔ Cancel
+          </button>
+        )}
+
+        {running && (
+          <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-2 text-yellow-400">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <span className="font-medium">{phase}</span>
+            </div>
+            <span className="text-gray-400">·</span>
+            <span className="text-gray-300">{batchTotal} batch{batchTotal === 1 ? "" : "es"}</span>
+            <span className="text-gray-400">·</span>
+            <span className="text-gray-300">{itemTotal.toLocaleString()} items processed</span>
+            <span className="text-gray-400">·</span>
+            <span className="text-gray-500 tabular-nums">{elapsedStr}</span>
+          </div>
+        )}
+
+        {!running && endedAt && !error && (
+          <span className="text-sm text-emerald-400">✓ Finished in {elapsedStr} · {itemTotal.toLocaleString()} items processed</span>
+        )}
+        {!running && error && (
+          <span className="text-sm text-red-400">✗ Stopped after {elapsedStr}</span>
+        )}
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4 bg-red-950/40 border border-red-700/50 rounded-lg p-3">
+          <div className="text-sm font-semibold text-red-300 mb-1">Sync error</div>
+          <div className="text-xs text-red-200 font-mono break-all">{error}</div>
+        </div>
+      )}
+
+      {/* Log */}
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs text-gray-500 uppercase tracking-wider">Activity log</span>
+        {log.length > 0 && (
+          <button onClick={() => setLog([])} className="text-xs text-gray-500 hover:text-gray-300">Clear</button>
+        )}
+      </div>
+      <div
+        ref={logRef}
+        className="bg-black/50 border border-gray-800 rounded-lg p-3 font-mono text-xs h-96 overflow-y-auto"
+      >
+        {log.length === 0 ? (
+          <div className="text-gray-600 italic">No activity yet — click "Run sync now" to begin.</div>
+        ) : (
+          log.map((entry, i) => {
+            const colour =
+              entry.level === "ok"    ? "text-emerald-400" :
+              entry.level === "warn"  ? "text-yellow-400"  :
+              entry.level === "error" ? "text-red-400"     :
+                                        "text-gray-400"
+            return (
+              <div key={i} className={`${colour} leading-relaxed whitespace-pre-wrap`}>
+                <span className="text-gray-600">[{fmtTime(entry.time)}]</span> {entry.text}
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function BCWarehousePage() {
@@ -938,6 +1208,7 @@ export default function BCWarehousePage() {
     { id: "search",           label: "Search by Location" },
     { id: "location-history", label: "Location History" },
     { id: "tote-data",        label: "Tote Data" },
+    { id: "data-sync",        label: "Data Sync" },
   ]
 
   return (
@@ -970,6 +1241,7 @@ export default function BCWarehousePage() {
             {tab === "search"           && <SearchByLocationTab />}
             {tab === "location-history" && <LocationHistoryTab />}
             {tab === "tote-data"        && <ToteDataTab />}
+            {tab === "data-sync"        && <DataSyncTab status={status} onComplete={fetchStatus} />}
           </>
         )}
       </div>
