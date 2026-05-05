@@ -1431,12 +1431,22 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
   const photoRef = useRef<HTMLInputElement>(null)
 
   const [titleVal, setTitleVal] = useState(lot?.title ?? "")
+  const [descVal,  setDescVal]  = useState(lot?.description ?? "")
 
   // Parse stored condition "Good to Excellent" → cond1="Good", cond2="Excellent"
   const condParts = (lot?.condition ?? "").split(" to ")
   const [cond1, setCond1] = useState(condParts[0] ?? "")
   const [cond2, setCond2] = useState(condParts[1] ?? "")
   const condValue = [cond1, cond2].filter(Boolean).sort((a, b) => CONDITIONS.indexOf(b) - CONDITIONS.indexOf(a)).join(" to ")
+
+  function addConditionToDesc() {
+    if (!condValue) return
+    const condText = `Condition appears ${condValue}.`
+    setDescVal(prev => {
+      const trimmed = prev.trimEnd()
+      return trimmed ? `${trimmed} ${condText}` : condText
+    })
+  }
 
   // Parcel size is stored in notes
   const [parcel, setParcel] = useState(lot?.notes ?? "")
@@ -1541,8 +1551,16 @@ function LotEditView({ lot, auctionId, onDone }: { lot: Lot | null; auctionId: s
                 className={`${input} resize-none`} />
             </div>
             <div>
-              <label className={lbl}>Description</label>
-              <textarea name="description" rows={4} defaultValue={lot.description}
+              <div className="flex items-center justify-between mb-1">
+                <label className={lbl} style={{ margin: 0 }}>Description</label>
+                {condValue && (
+                  <button type="button" onClick={addConditionToDesc}
+                    className="text-xs px-2.5 py-1 bg-[#2AB4A6]/20 border border-[#2AB4A6] text-[#2AB4A6] rounded hover:bg-[#2AB4A6]/30 transition-colors font-medium">
+                    + Add condition to description
+                  </button>
+                )}
+              </div>
+              <textarea name="description" rows={4} value={descVal} onChange={e => setDescVal(e.target.value)}
                 className={`${input} resize-none`} />
             </div>
             <div>
