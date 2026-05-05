@@ -1,66 +1,92 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getBCToken, bcPage } from "@/lib/bc"
+import { getBCToken, bcPageWithNext } from "@/lib/bc"
 import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 300
 
 // POST /api/warehouse/sync/changelog
-// Incrementally reads ChangeLogEntries for Article Location Code changes,
-// updating locationScannedAt on matching WarehouseItems.
-// Always incremental — only fetches entries newer than last sync.
-export async function POST() {
+// Reads ChangeLogEntries for Article Location Code changes, updating
+// locationScannedAt on matching WarehouseItems. Uses BC nextLink pagination
+// so it can walk the entire change log past the ~38k $skip cap.
+export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
   const token = await getBCToken()
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
 
-  const lastSync = await prisma.warehouseSyncLog.findFirst({
+  let full = false
+  let nextLink: string | null = null
+  let maxItems = 5000
+  try {
+    const body = await req.json()
+    if (body?.full)     full     = !!body.full
+    if (body?.nextLink) nextLink = String(body.nextLink)
+    if (body?.maxItems) maxItems = body.maxItems
+  } catch {}
+
+  const lastSync = (full || nextLink) ? null : await prisma.warehouseSyncLog.findFirst({
     where: { source: "changelog", status: "complete" },
     orderBy: { completedAt: "desc" },
   })
+  const lastTimestamp = lastSync?.lastTimestamp ?? null
 
   const syncLog = await prisma.warehouseSyncLog.create({
     data: { source: "changelog", status: "running" },
   })
 
   let itemsProcessed = 0
-  const lastTimestamp = lastSync?.lastTimestamp ?? null
   let newestTimestamp = lastTimestamp
+  const startMs = Date.now()
 
   try {
-    const BATCH = 500
-    let page = 0
-    let done = false
+    let urlOrEndpoint: string
+    let initialParams: Record<string, string | number> | undefined
 
-    while (!done) {
+    if (nextLink) {
+      urlOrEndpoint = nextLink
+      initialParams = undefined
+    } else {
+      urlOrEndpoint = "ChangeLogEntries"
+      // No $top — Prefer header drives paging; bare ISO datetime, ge for boundary
       const filterParts = [`Field_Caption eq 'Article Location Code'`]
-      if (lastTimestamp) {
-        // OData v4 — bare ISO 8601 literal, no datetime'...' wrapper (that's v3)
-        filterParts.push(`Date_and_Time ge ${lastTimestamp}`)
+      if (lastTimestamp) filterParts.push(`Date_and_Time ge ${lastTimestamp}`)
+      initialParams = {
+        $filter:  filterParts.join(" and "),
+        $select:  "Primary_Key_Field_2_Value,New_Value,Date_and_Time",
+        $orderby: "Date_and_Time asc",
       }
+    }
 
-      let rows: any[]
-      try {
-        rows = await bcPage(token, "ChangeLogEntries", {
-          $filter:  filterParts.join(" and "),
-          $select:  "Primary_Key_Field_2_Value,New_Value,Date_and_Time",
-          $orderby: "Date_and_Time asc",
-          $top:     BATCH,
-          $skip:    page * BATCH,
-        })
-      } catch { break }
+    let currentLink: string | null = null
+    let pageCount = 0
+
+    while (true) {
+      if (Date.now() - startMs > 50_000) break
+      if (itemsProcessed >= maxItems) break
+
+      const { rows, nextLink: nl } = await bcPageWithNext(
+        token,
+        currentLink ?? urlOrEndpoint,
+        currentLink ? undefined : initialParams,
+      )
+
+      pageCount++
+      currentLink = nl
 
       if (rows.length === 0) break
 
+      // Build updates: each entry sets locationScannedAt on the matching item
+      // if the entry is newer than what's already stored.
+      const CHUNK = 20
+      const updates: Promise<any>[] = []
       for (const r of rows) {
-        const uniqueId = String(r.Primary_Key_Field_2_Value ?? "").trim()
+        const uniqueId  = String(r.Primary_Key_Field_2_Value ?? "").trim()
         const scannedAt = r.Date_and_Time ? new Date(r.Date_and_Time) : null
         if (!uniqueId || !scannedAt) continue
 
-        // Update locationScannedAt if this entry is newer than what we have
-        await prisma.warehouseItem.updateMany({
+        updates.push(prisma.warehouseItem.updateMany({
           where: {
             uniqueId,
             OR: [
@@ -69,26 +95,45 @@ export async function POST() {
             ],
           },
           data: { locationScannedAt: scannedAt },
-        })
+        }))
 
-        itemsProcessed++
         if (r.Date_and_Time) newestTimestamp = r.Date_and_Time
       }
 
-      if (rows.length < BATCH) { done = true } else { page++ }
+      for (let i = 0; i < updates.length; i += CHUNK) {
+        await Promise.all(updates.slice(i, i + CHUNK))
+      }
+      itemsProcessed += updates.length
+
+      if (!nl) break
     }
+
+    const more = !!currentLink
 
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },
-      data: { status: "complete", completedAt: new Date(), itemsProcessed, lastTimestamp: newestTimestamp },
+      data: {
+        status:         "complete",
+        completedAt:    new Date(),
+        itemsProcessed,
+        lastTimestamp:  newestTimestamp,
+      },
     })
 
-    return NextResponse.json({ ok: true, itemsProcessed, incremental: !!lastTimestamp })
+    return NextResponse.json({
+      ok:           true,
+      itemsProcessed,
+      incremental:  !full && !!lastTimestamp,
+      more,
+      nextLink:     currentLink,
+      full,
+      pages:        pageCount,
+    })
   } catch (e: any) {
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },
       data: { status: "failed", completedAt: new Date(), error: e.message, itemsProcessed },
     })
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json({ error: e.message, itemsProcessed }, { status: 500 })
   }
 }
