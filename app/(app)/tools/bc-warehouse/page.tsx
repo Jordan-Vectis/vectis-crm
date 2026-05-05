@@ -14,11 +14,11 @@ type SyncStatus = {
   }
 }
 
-type HeatLocation = { code: string; total: number }
+type HeatLocation = { code: string; name: string; total: number; known: boolean; cataloguingBench: boolean }
 type HeatData = {
   locations: HeatLocation[]
   unlocated: number
-  meta: { total: number }
+  meta: { total: number; knownLocations: number; unknownLocations: number; occupiedLocations: number; emptyLocations: number }
 }
 
 type SaleItem = {
@@ -217,12 +217,30 @@ function FirstSyncPanel({ onComplete }: { onComplete: () => void }) {
 
 // ─── WarehouseHeatmapTab ──────────────────────────────────────────────────────
 
+// Traffic-light colours by item count
+function fillColor(total: number): { bg: string; ring: string; text: string } {
+  if (total === 0)  return { bg: "bg-gray-900",   ring: "ring-gray-800",   text: "text-gray-600" }
+  if (total <= 2)   return { bg: "bg-emerald-700/70", ring: "ring-emerald-500/40", text: "text-emerald-100" }
+  if (total <= 5)   return { bg: "bg-yellow-600/70", ring: "ring-yellow-400/40", text: "text-yellow-50" }
+  if (total <= 9)   return { bg: "bg-orange-600/80", ring: "ring-orange-400/50", text: "text-orange-50" }
+  return                  { bg: "bg-red-700",        ring: "ring-red-500/60",   text: "text-red-50" }
+}
+
+// Group code "A10A1" → aisle "A10", bay "A", shelf "1"
+function parseLocation(code: string): { aisle: string; bay: string; shelf: string } | null {
+  const m = code.match(/^([A-Z]?\d+)([A-Z]+)(\d+)$/)
+  if (!m) return null
+  return { aisle: m[1], bay: m[2], shelf: m[3] }
+}
+
 function WarehouseHeatmapTab() {
   const [data, setData] = useState<HeatData | null>(null)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
   const [items, setItems] = useState<SearchItem[]>([])
   const [itemsLoading, setItemsLoading] = useState(false)
+  const [aisleFilter, setAisleFilter] = useState<string>("ALL")
+  const [showEmpty, setShowEmpty] = useState(true)
 
   useEffect(() => {
     fetch("/api/warehouse/heatmap")
@@ -245,55 +263,195 @@ function WarehouseHeatmapTab() {
   if (loading) return <div className="p-6 text-gray-400 text-sm">Loading heatmap…</div>
   if (!data) return <div className="p-6 text-red-400 text-sm">Failed to load heatmap</div>
 
-  const max = Math.max(...data.locations.map(l => l.total), 1)
+  // Group locations by aisle, then by bay
+  type Group = Map<string /* bay */, HeatLocation[]>
+  const aisles = new Map<string, Group>()
+  const other:  HeatLocation[] = []
+
+  for (const loc of data.locations) {
+    const parsed = parseLocation(loc.code)
+    if (!parsed) { other.push(loc); continue }
+    if (!aisles.has(parsed.aisle)) aisles.set(parsed.aisle, new Map())
+    const bayMap = aisles.get(parsed.aisle)!
+    if (!bayMap.has(parsed.bay)) bayMap.set(parsed.bay, [])
+    bayMap.get(parsed.bay)!.push(loc)
+  }
+
+  // Aisle list, sorted naturally (A1, A2, ..., A10, ...)
+  const aisleNames = [...aisles.keys()].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+  )
+
+  // Filter aisles to display
+  const visibleAisles = aisleFilter === "ALL"
+    ? aisleNames
+    : aisleNames.filter(a => a === aisleFilter)
+
+  // Stats
+  const occupied = data.meta.occupiedLocations
+  const empty    = data.meta.emptyLocations
 
   return (
     <div className="flex h-full">
-      {/* Location grid */}
-      <div className="w-72 flex-shrink-0 overflow-y-auto border-r border-gray-700 p-3">
-        <div className="text-xs text-gray-500 mb-2 px-1">
-          {data.locations.length} locations · {data.meta.total} items
+      {/* Heatmap panel */}
+      <div className="flex-1 overflow-y-auto p-4 min-w-0">
+
+        {/* Header bar */}
+        <div className="flex flex-wrap items-center gap-3 mb-4 pb-3 border-b border-gray-800">
+          <div className="text-sm">
+            <span className="text-white font-semibold">{data.locations.length.toLocaleString()}</span>
+            <span className="text-gray-500"> locations · </span>
+            <span className="text-emerald-400 font-medium">{occupied.toLocaleString()}</span>
+            <span className="text-gray-500"> occupied · </span>
+            <span className="text-gray-500 font-medium">{empty.toLocaleString()} empty · </span>
+            <span className="text-gray-300 font-medium">{data.meta.total.toLocaleString()}</span>
+            <span className="text-gray-500"> items total</span>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            {/* Aisle filter */}
+            <select
+              value={aisleFilter}
+              onChange={e => setAisleFilter(e.target.value)}
+              className="bg-gray-800 border border-gray-700 text-gray-200 rounded text-xs px-2 py-1.5 focus:outline-none focus:border-blue-500"
+            >
+              <option value="ALL">All aisles ({aisleNames.length})</option>
+              {aisleNames.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+
+            <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showEmpty}
+                onChange={e => setShowEmpty(e.target.checked)}
+                className="accent-blue-500"
+              />
+              Show empty
+            </label>
+          </div>
         </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-3 mb-4 text-xs text-gray-400">
+          <span className="text-gray-500 uppercase tracking-wider">Fill level:</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gray-900 ring-1 ring-gray-800" /> Empty</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-700/70" /> 1–2</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-yellow-600/70" /> 3–5</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-600/80" /> 6–9</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-700" /> 10+</span>
+        </div>
+
+        {/* Unlocated chip */}
         {data.unlocated > 0 && (
           <button
             onClick={() => selectLocation("")}
-            className={`w-full text-left px-3 py-2 rounded mb-1 text-sm flex justify-between items-center ${
-              selected === "" ? "bg-blue-700 text-white" : "bg-gray-800 hover:bg-gray-700 text-gray-300"
+            className={`mb-4 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              selected === "" ? "bg-blue-700 border-blue-500 text-white" : "bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500"
             }`}
           >
-            <span className="italic text-gray-400">Unlocated</span>
-            <span className="font-mono text-xs">{data.unlocated}</span>
+            ⚠ Unlocated · {data.unlocated.toLocaleString()} items
           </button>
         )}
-        {data.locations.map(loc => {
-          const heat = loc.total / max
-          const bg = heat > 0.75 ? "bg-red-900" : heat > 0.5 ? "bg-orange-900" : heat > 0.25 ? "bg-yellow-900" : "bg-gray-800"
-          return (
-            <button
-              key={loc.code}
-              onClick={() => selectLocation(loc.code)}
-              className={`w-full text-left px-3 py-2 rounded mb-1 text-sm flex justify-between items-center ${
-                selected === loc.code ? "bg-blue-700 text-white" : `${bg} hover:brightness-125 text-gray-200`
-              }`}
-            >
-              <span className="font-mono">{loc.code}</span>
-              <span className="text-xs opacity-70">{loc.total}</span>
-            </button>
-          )
-        })}
+
+        {/* Aisles */}
+        <div className="space-y-5">
+          {visibleAisles.map(aisle => {
+            const bays = aisles.get(aisle)!
+            const bayNames = [...bays.keys()].sort()
+            const totalInAisle = [...bays.values()].flat().reduce((s, l) => s + l.total, 0)
+            const filledInAisle = [...bays.values()].flat().filter(l => l.total > 0).length
+            const totalCells = [...bays.values()].flat().length
+
+            return (
+              <div key={aisle} className="bg-gray-900/40 rounded-lg border border-gray-800 p-3">
+                <div className="flex items-baseline justify-between mb-2">
+                  <h3 className="text-sm font-semibold text-white font-mono">{aisle}</h3>
+                  <span className="text-xs text-gray-500">
+                    {filledInAisle}/{totalCells} shelves · {totalInAisle} items
+                  </span>
+                </div>
+
+                {/* Bays grid */}
+                <div className="space-y-1.5">
+                  {bayNames.map(bay => {
+                    const shelves = bays.get(bay)!.sort((a, b) => {
+                      const na = parseInt(parseLocation(a.code)?.shelf ?? "0", 10)
+                      const nb = parseInt(parseLocation(b.code)?.shelf ?? "0", 10)
+                      return na - nb
+                    })
+                    return (
+                      <div key={bay} className="flex items-center gap-2">
+                        <span className="text-xs font-mono text-gray-500 w-6 flex-shrink-0">{bay}</span>
+                        <div className="flex flex-wrap gap-1">
+                          {shelves.map(loc => {
+                            if (!showEmpty && loc.total === 0) return null
+                            const c = fillColor(loc.total)
+                            const isSel = selected === loc.code
+                            const shelfNum = parseLocation(loc.code)?.shelf ?? loc.code
+                            return (
+                              <button
+                                key={loc.code}
+                                onClick={() => selectLocation(loc.code)}
+                                title={`${loc.code} — ${loc.total} item${loc.total === 1 ? "" : "s"}`}
+                                className={`w-9 h-9 rounded text-xs font-mono font-semibold flex flex-col items-center justify-center transition-all ${c.bg} ${c.text} ring-1 ${c.ring} hover:brightness-125 hover:scale-110 ${
+                                  isSel ? "ring-2 ring-blue-400 scale-110" : ""
+                                }`}
+                              >
+                                <span className="leading-none text-[10px] opacity-70">{shelfNum}</span>
+                                <span className="leading-none text-[11px]">{loc.total || ""}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Other (codes not matching aisle/bay/shelf pattern) */}
+          {aisleFilter === "ALL" && other.length > 0 && (
+            <div className="bg-gray-900/40 rounded-lg border border-gray-800 p-3">
+              <h3 className="text-sm font-semibold text-white mb-2">Other locations</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {other.filter(l => showEmpty || l.total > 0).map(loc => {
+                  const c = fillColor(loc.total)
+                  const isSel = selected === loc.code
+                  return (
+                    <button
+                      key={loc.code}
+                      onClick={() => selectLocation(loc.code)}
+                      title={`${loc.code} — ${loc.total} items`}
+                      className={`px-2.5 py-1.5 rounded text-xs font-mono ${c.bg} ${c.text} ring-1 ${c.ring} hover:brightness-125 ${
+                        isSel ? "ring-2 ring-blue-400" : ""
+                      }`}
+                    >
+                      {loc.code} <span className="opacity-60">{loc.total}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Items panel */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="w-96 flex-shrink-0 border-l border-gray-800 overflow-y-auto p-4 bg-gray-950">
         {!selected && selected !== "" ? (
-          <div className="text-gray-500 text-sm mt-8 text-center">Select a location to see items</div>
+          <div className="text-gray-500 text-sm mt-8 text-center">Click a shelf to see its items</div>
         ) : itemsLoading ? (
           <div className="text-gray-400 text-sm">Loading…</div>
         ) : items.length === 0 ? (
           <div className="text-gray-500 text-sm">No items found</div>
         ) : (
           <div className="space-y-2">
-            <div className="text-xs text-gray-500 mb-3">{items.length} items in {selected || "unlocated"}</div>
+            <div className="mb-3 pb-2 border-b border-gray-800">
+              <div className="font-mono text-base text-blue-400 font-semibold">{selected || "Unlocated"}</div>
+              <div className="text-xs text-gray-500">{items.length} item{items.length === 1 ? "" : "s"}</div>
+            </div>
             {items.map(item => (
               <div key={item.uniqueId} className="bg-gray-800 rounded-lg px-4 py-3 text-sm">
                 <div className="flex justify-between items-start gap-2">
@@ -739,7 +897,22 @@ export default function BCWarehousePage() {
     if (syncingRef.current) return
     syncingRef.current = true
     try {
-      await fetch("/api/warehouse/sync/receipt-lines", { method: "POST" })
+      // Loop receipt-lines until more === false (each call handles 5 pages × 500 = 2,500 items)
+      let more = true
+      let safety = 0
+      while (more && safety < 200) {
+        const res = await fetch("/api/warehouse/sync/receipt-lines", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ maxPages: 5 }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) break
+        more = data.more === true
+        safety++
+        // Refresh status periodically so the user sees the count climb
+        if (safety % 4 === 0) await fetchStatus()
+      }
       await fetch("/api/warehouse/sync/auction-lines", { method: "POST" })
       await fetch("/api/warehouse/sync/changelog", { method: "POST" })
       await fetchStatus()
