@@ -55,7 +55,8 @@ export async function POST() {
       }
 
       if (lastTimestamp) {
-        params.$filter = `EVA_SystemModifiedAt gt datetime'${lastTimestamp}'`
+        // OData v4 — bare ISO 8601 literal, no datetime'...' wrapper (that's v3)
+        params.$filter = `EVA_SystemModifiedAt ge ${lastTimestamp}`
       }
 
       let rows: any[]

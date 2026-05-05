@@ -37,7 +37,8 @@ export async function POST() {
     while (!done) {
       const filterParts = [`Field_Caption eq 'Article Location Code'`]
       if (lastTimestamp) {
-        filterParts.push(`Date_and_Time gt datetime'${lastTimestamp}'`)
+        // OData v4 — bare ISO 8601 literal, no datetime'...' wrapper (that's v3)
+        filterParts.push(`Date_and_Time ge ${lastTimestamp}`)
       }
 
       let rows: any[]
