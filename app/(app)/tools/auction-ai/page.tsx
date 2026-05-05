@@ -52,7 +52,7 @@ function ToastContainer() {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "kpruns" | "instructions" | "kpcheck" | "macro"
+type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "kpruns" | "instructions" | "kpcheck" | "macro" | "doublecheck"
 
 type ChatMessage = {
   role: "user" | "model"
@@ -2672,6 +2672,331 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
   )
 }
 
+// ─── Double Check Tab ─────────────────────────────────────────────────────────
+
+type DCLot = {
+  id:              string
+  label:           string
+  reference:       string
+  description:     string
+  verdict?:        "ok" | "issues"
+  contradictions?: string
+  unsupported?:    string
+  status?:         "idle" | "checking" | "ok" | "issues" | "error"
+}
+
+function DoubleCheckTab({ model: globalModel }: { model: string }) {
+  const [code,        setCode]        = useState("")
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
+  const [lots,        setLots]        = useState<DCLot[]>([])
+  const [checking,    setChecking]    = useState(false)
+  const [progress,    setProgress]    = useState<{ done: number; total: number; current?: string } | null>(null)
+  const [expandedLot, setExpandedLot] = useState<string | null>(null)
+  const [localModel,  setLocalModel]  = useState(globalModel)
+  const [modelList,   setModelList]   = useState<string[]>([globalModel])
+  const [log,         setLog]         = useState<string[]>([])
+  const [showResults, setShowResults] = useState(false)
+  const [runList,     setRunList]     = useState<{ id: string; code: string; _count: { lots: number } }[]>([])
+  const logRef    = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef(false)
+  const abortRef  = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    fetch("/api/auction-ai/models").then(r => r.json()).then(j => { if (j.models?.length) setModelList(j.models) }).catch(() => {})
+    fetch("/api/auction-ai/runs").then(r => r.json()).then(setRunList).catch(() => {})
+  }, [])
+
+  function addLog(msg: string) {
+    const ts = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    setLog(l => [...l, `[${ts}]  ${msg}`])
+    setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 50)
+  }
+
+  async function handleLoad() {
+    const upper = code.trim().toUpperCase()
+    if (!upper) return
+    setLoading(true); setError(null); setLots([]); setShowResults(false); setLog([])
+    try {
+      // Find the run for this code
+      const match = runList.find(r => r.code === upper)
+      if (!match) throw new Error(`No saved run found for "${upper}". Run the Batch Run tab with an auction code first.`)
+
+      const res = await fetch(`/api/auction-ai/runs/${match.id}`)
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed to load run")
+      const data = await res.json()
+
+      // Only lots that have both a description AND an originalDescription can be double-checked
+      const checkable: DCLot[] = (data.lots ?? [])
+        .filter((l: any) => l.description?.trim() && l.originalDescription?.trim())
+        .map((l: any) => ({
+          id:          l.id,
+          label:       l.lot,
+          reference:   l.originalDescription,
+          description: l.description,
+          status:      "idle" as const,
+        }))
+
+      if (checkable.length === 0) {
+        const total = (data.lots ?? []).length
+        throw new Error(
+          total === 0
+            ? `No lots found for "${upper}".`
+            : `None of the ${total} lots in this run have an original description to compare against. Original descriptions are saved when the AI Upgrade tab sends existing descriptions to the AI.`
+        )
+      }
+
+      setLots(checkable)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleStop() {
+    cancelRef.current = true
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
+    addLog("⛔ Stopped")
+  }
+
+  async function runCheck() {
+    const toCheck = lots.filter(l => l.reference && l.description)
+    if (!toCheck.length || checking) return
+    cancelRef.current = false
+    setShowResults(false)
+    setChecking(true)
+    setLog([])
+    setProgress({ done: 0, total: toCheck.length })
+    setLots(prev => prev.map(l => ({ ...l, status: "checking", verdict: undefined, contradictions: undefined, unsupported: undefined })))
+    addLog(`── Starting double check: ${toCheck.length} lots · model: ${localModel}`)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    try {
+      const res = await fetch("/api/auction-ai/double-check", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ lots: toCheck.map(l => ({ label: l.label, reference: l.reference, description: l.description })), model: localModel }),
+        signal:  controller.signal,
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText)
+
+      const reader  = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      const lotStartTimes: Record<string, number> = {}
+
+      while (true) {
+        if (cancelRef.current) { reader.cancel(); break }
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n"); buffer = lines.pop()!
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "progress") {
+            lotStartTimes[msg.label] = Date.now()
+            setProgress({ done: msg.index, total: toCheck.length, current: msg.label })
+            addLog(`  · ${msg.index + 1}/${toCheck.length} ${msg.label} — checking…`)
+          } else if (msg.type === "result") {
+            const ms = lotStartTimes[msg.label] ? Date.now() - lotStartTimes[msg.label] : 0
+            const flag = msg.verdict === "ok" ? "✓ clean" : "⚑ issues found"
+            addLog(`  ${flag} — ${msg.label} (${(ms / 1000).toFixed(1)}s)${msg.contradictions ? ` · contradiction: ${msg.contradictions.slice(0, 60)}…` : ""}`)
+            setLots(prev => prev.map(l =>
+              l.label === msg.label
+                ? { ...l, verdict: msg.verdict, contradictions: msg.contradictions, unsupported: msg.unsupported, status: msg.verdict }
+                : l
+            ))
+            setProgress({ done: msg.index + 1, total: toCheck.length })
+          } else if (msg.type === "error") {
+            addLog(`  ✗ ${msg.label} — ${msg.error}`)
+            setLots(prev => prev.map(l => l.label === msg.label ? { ...l, status: "error" } : l))
+          } else if (msg.type === "done") {
+            addLog("── Complete")
+          }
+        }
+      }
+    } catch (e: any) {
+      if (!cancelRef.current) { addLog(`✗ Failed: ${e.message}`); setError(e.message) }
+    } finally {
+      abortRef.current = null
+      setChecking(false)
+      setProgress(null)
+      setShowResults(true)
+    }
+  }
+
+  const issueCount = lots.filter(l => l.status === "issues").length
+  const okCount    = lots.filter(l => l.status === "ok").length
+  const errCount   = lots.filter(l => l.status === "error").length
+
+  return (
+    <div className="space-y-5 max-w-5xl">
+      <div>
+        <h2 className="text-xl font-semibold text-white mb-1">Double Check</h2>
+        <p className="text-sm text-gray-400">
+          Compares the original description against the AI-generated version to flag contradictions or
+          unverifiable claims. Loads from a saved run where the AI Upgrade tab sent the original description as context.
+        </p>
+      </div>
+
+      {/* Model selector */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-2">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">Model</p>
+        <div className="border border-gray-700 rounded-lg overflow-hidden">
+          {modelList.map(m => {
+            const isSelected = localModel === m
+            return (
+              <button key={m} onClick={() => setLocalModel(m)}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors border-b border-gray-800 last:border-0 ${isSelected ? "bg-indigo-950/40" : "hover:bg-[#1a1a1e]"}`}>
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isSelected ? "bg-indigo-400" : "bg-gray-700"}`} />
+                <span className={`text-sm flex-1 font-mono ${isSelected ? "text-indigo-300" : "text-gray-400"}`}>{m}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Load */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-3">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">Auction Code</p>
+        <div className="flex gap-2">
+          <Autocomplete
+            value={code}
+            onChange={v => setCode(v.replace(/\s+\(\d+ lots\)$/, "").toUpperCase())}
+            options={runList.map(r => `${r.code}  (${r._count.lots} lots)`)}
+            placeholder="Enter auction code…"
+          />
+          <button onClick={handleLoad} disabled={!code.trim() || loading}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors flex-shrink-0">
+            {loading ? "Loading…" : "Load"}
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-400 bg-red-950/30 rounded-lg px-3 py-2">{error}</p>}
+        {lots.length > 0 && !checking && !showResults && (
+          <p className="text-xs text-gray-400">
+            <span className="text-indigo-300 font-semibold">{lots.length}</span> lot{lots.length !== 1 ? "s" : ""} with original descriptions ready to check
+          </p>
+        )}
+      </div>
+
+      {/* Run */}
+      {lots.length > 0 && (
+        <div className="flex items-center gap-3">
+          {!checking ? (
+            <button onClick={runCheck}
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm rounded-lg transition-colors">
+              🔎 Run Double Check ({lots.length} lots)
+            </button>
+          ) : (
+            <button onClick={handleStop}
+              className="px-5 py-2.5 bg-red-900/50 hover:bg-red-900/80 border border-red-700 text-red-300 font-semibold text-sm rounded-lg transition-colors">
+              ⛔ Stop
+            </button>
+          )}
+          {progress && (
+            <div className="flex-1 flex items-center gap-3">
+              <div className="flex-1 bg-gray-800 rounded-full h-2">
+                <div className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
+              </div>
+              <span className="text-xs text-gray-400 whitespace-nowrap">{progress.done} / {progress.total}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Log */}
+      {log.length > 0 && (
+        <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-3 max-h-40 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
+          {log.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+      )}
+
+      {/* Results */}
+      {showResults && lots.some(l => l.status && l.status !== "idle") && (
+        <div className="space-y-3">
+          {/* Summary */}
+          <div className="flex items-center gap-4 flex-wrap">
+            {okCount > 0    && <span className="text-xs font-semibold text-green-400 bg-green-950/40 border border-green-800/50 rounded-full px-3 py-1">✓ {okCount} clean</span>}
+            {issueCount > 0 && <span className="text-xs font-semibold text-red-400   bg-red-950/40   border border-red-800/50   rounded-full px-3 py-1">⚑ {issueCount} with issues</span>}
+            {errCount > 0   && <span className="text-xs font-semibold text-gray-400  bg-gray-800/40  border border-gray-700     rounded-full px-3 py-1">✗ {errCount} errors</span>}
+          </div>
+
+          {/* Lot list — show issues first */}
+          {[...lots]
+            .sort((a, b) => {
+              const rank = (s?: string) => s === "issues" ? 0 : s === "error" ? 1 : 2
+              return rank(a.status) - rank(b.status)
+            })
+            .filter(l => l.status && l.status !== "idle" && l.status !== "checking")
+            .map(lot => {
+              const isExpanded = expandedLot === lot.label
+              const hasIssues  = lot.status === "issues"
+              return (
+                <div key={lot.label}
+                  className={`border rounded-xl overflow-hidden transition-colors ${
+                    hasIssues
+                      ? "border-red-800/60 bg-red-950/20"
+                      : lot.status === "error"
+                        ? "border-gray-700 bg-gray-900/30"
+                        : "border-green-800/40 bg-green-950/10"
+                  }`}>
+                  <button
+                    onClick={() => setExpandedLot(isExpanded ? null : lot.label)}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left">
+                    <span className={`text-base flex-shrink-0 ${hasIssues ? "text-red-400" : lot.status === "error" ? "text-gray-500" : "text-green-400"}`}>
+                      {hasIssues ? "⚑" : lot.status === "error" ? "✗" : "✓"}
+                    </span>
+                    <span className="font-mono text-sm text-gray-200 flex-1">{lot.label}</span>
+                    {hasIssues && lot.contradictions && (
+                      <span className="text-xs text-red-400 truncate max-w-sm opacity-80">{lot.contradictions.slice(0, 80)}{lot.contradictions.length > 80 ? "…" : ""}</span>
+                    )}
+                    <span className="text-gray-600 text-xs flex-shrink-0">{isExpanded ? "▲" : "▼"}</span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-800 px-4 py-4 space-y-4">
+                      {lot.contradictions && (
+                        <div>
+                          <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-1">Contradictions</p>
+                          <p className="text-sm text-red-200">{lot.contradictions}</p>
+                        </div>
+                      )}
+                      {lot.unsupported && (
+                        <div>
+                          <p className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-1">Unverifiable claims</p>
+                          <p className="text-sm text-yellow-200">{lot.unsupported}</p>
+                        </div>
+                      )}
+                      {lot.status === "error" && (
+                        <p className="text-xs text-gray-500">Check failed — try running again</p>
+                      )}
+                      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-800">
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Reference (original)</p>
+                          <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{lot.reference}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">New description</p>
+                          <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{lot.description}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
@@ -2682,6 +3007,7 @@ const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
   { id: "barcode",      label: "Barcode Sorter",     icon: "▦"  },
   { id: "copier",       label: "Description Copier", icon: "📋" },
   { id: "kpcheck",      label: "Key Points Check",   icon: "✓"  },
+  { id: "doublecheck",  label: "Double Check",       icon: "🔎", accent: "#6366f1" },
   { id: "instructions", label: "Instructions",       icon: "📝" },
   { id: "macro",        label: "Macro Downloader",   icon: "⌨️" },
 ]
@@ -2779,6 +3105,7 @@ export default function AuctionAIPage() {
         <div className={tab === "barcode"      ? "" : "hidden"}><BarcodeTab /></div>
         <div className={tab === "copier"       ? "" : "hidden"}><CopierTab /></div>
         <div className={tab === "kpcheck"      ? "" : "hidden"}><KeyPointsCheckTab model={model} /></div>
+        <div className={tab === "doublecheck"  ? "" : "hidden"}>{tab === "doublecheck" && <DoubleCheckTab model={model} />}</div>
         <div className={tab === "instructions" ? "" : "hidden"}><InstructionsTab /></div>
         <div className={tab === "macro"        ? "" : "hidden"}><MacroTab /></div>
       </main>
