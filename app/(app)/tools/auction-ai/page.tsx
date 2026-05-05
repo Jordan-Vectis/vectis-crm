@@ -1075,7 +1075,7 @@ function BarcodeTab() {
 
 type SortBy = "uniqueId" | "barcode" | "lotNumber"
 
-type CopierRow = { folder: string; description: string; estimate: string; uniqueId?: string; barcode?: string; lotNumber?: string }
+type CopierRow = { folder: string; description: string; estimate: string; uniqueId?: string; barcode?: string; lotNumber?: string; imageUrls?: string[] }
 
 function sortRows(rows: CopierRow[], sortBy: SortBy) {
   return [...rows].sort((a, b) => {
@@ -1113,6 +1113,7 @@ function CopierTab() {
   const [error, setError]       = useState<string | null>(null)
   const [jumpQuery, setJumpQuery] = useState("")
   const [jumpOpen, setJumpOpen]   = useState(false)
+  const [thumbUrl, setThumbUrl]   = useState<string | null>(null)
 
   const sortedRows = sortRows(rows, sortBy)
 
@@ -1128,12 +1129,27 @@ function CopierTab() {
           uniqueId:    String(r["Receipt Unique ID"] ?? r.UniqueID ?? r["Unique ID"] ?? r.uniqueId ?? ""),
           barcode:     String(r.Barcode ?? r.barcode ?? ""),
           lotNumber:   String(r["Lot Number"] ?? r.LotNumber ?? r.lotNumber ?? ""),
+          imageUrls:   Array.isArray(r.ImageUrls) ? r.ImageUrls : [],
         })))
         setIdx(0)
         localStorage.removeItem("copier_preload")
       } catch {}
     }
   }, [])
+
+  // Fetch signed URL for the first image of the current row
+  useEffect(() => {
+    const key = row?.imageUrls?.[0]
+    if (!key) { setThumbUrl(null); return }
+    let cancelled = false
+    fetch(`/api/catalogue/signed-url?key=${encodeURIComponent(key)}`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setThumbUrl(d.url ?? null) })
+      .catch(() => { if (!cancelled) setThumbUrl(null) })
+    return () => { cancelled = true }
+  }, [sortedRows[idx]?.imageUrls?.[0]])
+
+  const row = sortedRows[idx]
 
   function loadFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1263,13 +1279,24 @@ function CopierTab() {
                 const value = rowLabel(row)
                 return (
                   <>
-                    {value && (
-                      <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">
-                        <span className="text-gray-500 font-sans font-normal">{label}: </span>{value}
-                      </p>
-                    )}
-                    <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
-                    {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
+                    <div className="flex gap-4">
+                      {/* Thumbnail */}
+                      {thumbUrl && (
+                        <a href={thumbUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                          <img src={thumbUrl} alt="Lot" className="w-28 h-28 object-cover rounded-lg border border-gray-700 hover:opacity-90 transition-opacity" />
+                        </a>
+                      )}
+                      {/* Text */}
+                      <div className="min-w-0 flex-1">
+                        {value && (
+                          <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">
+                            <span className="text-gray-500 font-sans font-normal">{label}: </span>{value}
+                          </p>
+                        )}
+                        <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
+                        {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
+                      </div>
+                    </div>
                   </>
                 )
               })()}

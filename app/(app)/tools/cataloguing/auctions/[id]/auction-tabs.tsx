@@ -310,6 +310,7 @@ export default function AuctionTabs({ auction, lots }: { auction: Auction; lots:
               "Lot Number":         l.lotNumber || "",
               Description:          l.description,
               Estimate:             l.estimateLow && l.estimateHigh ? `Estimate: £${l.estimateLow}–£${l.estimateHigh}` : "",
+              ImageUrls:            l.imageUrls || [],
             }))
             localStorage.setItem("copier_preload", JSON.stringify(data))
             window.open("/tools/auction-ai?tab=copier", "_blank")
