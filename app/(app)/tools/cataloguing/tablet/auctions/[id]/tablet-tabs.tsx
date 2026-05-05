@@ -126,8 +126,10 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
           editingLotId
             ? <TabletLotEdit
                 lot={editingLot}
+                allLots={lots}
                 auctionId={auction.id}
                 onDone={() => { setEditingLotId(null); router.refresh() }}
+                onNavigate={(id) => { setEditingLotId(id); router.refresh() }}
               />
             : <TabletManageLots
                 lots={lots}
@@ -287,11 +289,24 @@ function TabletManageLots({ lots, auctionId, onEdit, onDelete }: {
 
 // ─── Lot edit — single-column touch-friendly form ─────────────────────────────
 
-function TabletLotEdit({ lot, auctionId, onDone }: {
+function TabletLotEdit({ lot, allLots, auctionId, onDone, onNavigate }: {
   lot: Lot | null
+  allLots: Lot[]
   auctionId: string
   onDone: () => void
+  onNavigate: (id: string) => void
 }) {
+  // Sorted list matches the manage-lots sort order
+  const sortedLots = useMemo(() => [...allLots].sort((a, b) => {
+    const an = parseInt(a.lotNumber, 10)
+    const bn = parseInt(b.lotNumber, 10)
+    if (!isNaN(an) && !isNaN(bn)) return an - bn
+    return a.lotNumber.localeCompare(b.lotNumber)
+  }), [allLots])
+
+  const currentIdx = sortedLots.findIndex(l => l.id === lot?.id)
+  const prevLot    = currentIdx > 0 ? sortedLots[currentIdx - 1] : null
+  const nextLot    = currentIdx < sortedLots.length - 1 ? sortedLots[currentIdx + 1] : null
   const [pending, start] = useTransition()
   const [saved, setSaved] = useState(false)
   const [imageKeys, setImageKeys] = useState<string[]>(lot?.imageUrls ?? [])
@@ -377,62 +392,17 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
 
   return (
     <div className="p-4 pb-8">
-      {/* Back */}
-      <button
-        onClick={onDone}
-        style={{ touchAction: "manipulation" }}
-        className="flex items-center gap-2 text-[#2AB4A6] text-base font-medium mb-6 p-2 -ml-2"
-      >
-        ← Back to lots
-      </button>
-
-      {/* Photos section — at top for quick access */}
-      <div className="bg-[#1C1C1E] border border-gray-700 rounded-2xl p-4 mb-5">
-        <p className={lbl}>Photos</p>
-        <input
-          ref={photoRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handlePhotoUpload}
-        />
+      {/* Back + lot counter */}
+      <div className="flex items-center justify-between mb-6">
         <button
-          type="button"
-          onClick={() => photoRef.current?.click()}
-          disabled={uploadingPhoto}
+          onClick={onDone}
           style={{ touchAction: "manipulation" }}
-          className="w-full py-4 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
+          className="flex items-center gap-2 text-[#2AB4A6] text-base font-medium p-2 -ml-2"
         >
-          <span className="text-2xl">📷</span>
-          <span className="font-medium">{uploadingPhoto ? "Uploading…" : "Take / add photo"}</span>
+          ← Back to lots
         </button>
-
-        {imageKeys.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            {imageKeys.map((key, i) => (
-              <div key={key} className="relative aspect-square">
-                {signedUrls[key] ? (
-                  <img
-                    src={signedUrls[key]}
-                    alt={`Photo ${i + 1}`}
-                    className="w-full h-full object-cover rounded-xl border border-gray-700"
-                  />
-                ) : (
-                  <div className="w-full h-full rounded-xl border border-gray-700 bg-[#2C2C2E] flex items-center justify-center">
-                    <span className="text-gray-600 text-sm">Loading…</span>
-                  </div>
-                )}
-                <button
-                  onClick={() => handlePhotoDelete(key)}
-                  style={{ touchAction: "manipulation" }}
-                  className="absolute -top-2 -right-2 w-9 h-9 bg-red-600 rounded-full text-white text-base flex items-center justify-center"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
+        {sortedLots.length > 0 && (
+          <span className="text-sm text-gray-500">{currentIdx + 1} / {sortedLots.length}</span>
         )}
       </div>
 
@@ -613,19 +583,79 @@ function TabletLotEdit({ lot, auctionId, onDone }: {
           </button>
         </div>
 
-        {saved && (
-          <div className="flex gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onDone}
-              style={{ touchAction: "manipulation" }}
-              className="flex-1 py-4 rounded-xl border border-gray-700 text-gray-300 text-base font-medium"
-            >
-              ← Back to lots
-            </button>
+        {/* Prev / Next navigation */}
+        <div className="flex gap-3 pt-1">
+          <button
+            type="button"
+            onClick={() => prevLot && onNavigate(prevLot.id)}
+            disabled={!prevLot}
+            style={{ touchAction: "manipulation" }}
+            className="flex-1 py-4 rounded-xl border border-gray-700 text-gray-300 text-base font-semibold disabled:opacity-30 active:bg-[#2C2C2E]"
+          >
+            ← Prev
+          </button>
+          <button
+            type="button"
+            onClick={() => nextLot && onNavigate(nextLot.id)}
+            disabled={!nextLot}
+            style={{ touchAction: "manipulation", background: nextLot ? ACCENT : "#2C2C2E", color: nextLot ? "#1C1C1E" : "#6b7280" }}
+            className="flex-1 py-4 rounded-xl font-semibold text-base disabled:opacity-30"
+          >
+            Next Lot →
+          </button>
+        </div>
+
+      </form>
+
+      {/* Photos — at bottom so they don't push the form fields down */}
+      <div className="bg-[#1C1C1E] border border-gray-700 rounded-2xl p-4 mt-5">
+        <p className={lbl}>Photos {imageKeys.length > 0 && <span className="text-[#2AB4A6]">({imageKeys.length})</span>}</p>
+        <input
+          ref={photoRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handlePhotoUpload}
+        />
+        <button
+          type="button"
+          onClick={() => photoRef.current?.click()}
+          disabled={uploadingPhoto}
+          style={{ touchAction: "manipulation" }}
+          className="w-full py-4 rounded-xl border-2 border-dashed border-gray-600 hover:border-[#2AB4A6] text-gray-400 hover:text-[#2AB4A6] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
+        >
+          <span className="text-2xl">📷</span>
+          <span className="font-medium">{uploadingPhoto ? "Uploading…" : "Take / add photo"}</span>
+        </button>
+
+        {imageKeys.length > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            {imageKeys.map((key, i) => (
+              <div key={key} className="relative aspect-square">
+                {signedUrls[key] ? (
+                  <img
+                    src={signedUrls[key]}
+                    alt={`Photo ${i + 1}`}
+                    className="w-full h-full object-cover rounded-xl border border-gray-700"
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-xl border border-gray-700 bg-[#2C2C2E] flex items-center justify-center">
+                    <span className="text-gray-600 text-sm">Loading…</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => handlePhotoDelete(key)}
+                  style={{ touchAction: "manipulation" }}
+                  className="absolute -top-2 -right-2 w-9 h-9 bg-red-600 rounded-full text-white text-base flex items-center justify-center"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
           </div>
         )}
-      </form>
+      </div>
     </div>
   )
 }
