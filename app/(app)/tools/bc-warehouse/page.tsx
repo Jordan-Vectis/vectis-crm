@@ -1003,38 +1003,80 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       addLog("ok", `Stage 1 complete — ${stageItems.toLocaleString()} items processed`)
 
       // ── Stage 2: Auction Lines ──────────────────────────────────────────────
+      // Loops with nextLink the same way as receipt-lines so it walks past
+      // the BC $skip cap and finishes the whole table.
       if (!cancelRef.current) {
         setPhase("Auction Lines")
-        addLog("info", "Stage 2/3 · Auction Lines (current lot numbers, vendor emails)")
-        const t0 = Date.now()
-        try {
-          const res = await fetch("/api/warehouse/sync/auction-lines", { method: "POST" })
-          const data = await res.json().catch(() => ({}))
-          if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-          const ms = Date.now() - t0
-          setItemTotal(t => t + (data.itemsProcessed ?? 0))
-          addLog("ok", `Stage 2 complete — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s`)
-        } catch (e: any) {
-          addLog("error", `Stage 2 failed: ${e.message ?? e}`)
-          throw e
+        addLog("info", `Stage 2/3 · Auction Lines (current lot numbers, vendor emails)${full ? " — FULL re-sync" : " — incremental"}`)
+        let aMore = true
+        let aBatch = 0
+        let aStageItems = 0
+        let aNextLink: string | null = null
+        while (aMore) {
+          if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
+          aBatch++
+          const t0 = Date.now()
+          addLog("info", `  Batch ${aBatch} · fetching up to 5,000 items…`)
+          try {
+            const res: Response = await fetch("/api/warehouse/sync/auction-lines", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({ full: aBatch === 1 ? full : false, nextLink: aNextLink, maxItems: 5000 }),
+            })
+            const data: any = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+            const ms = Date.now() - t0
+            aStageItems += data.itemsProcessed ?? 0
+            setItemTotal(t => t + (data.itemsProcessed ?? 0))
+            setBatchTotal(b => b + 1)
+            addLog("ok", `  Batch ${aBatch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
+            aMore = data.more === true
+            aNextLink = data.nextLink ?? null
+            if (aBatch >= 500) { addLog("warn", "  Safety cap (500 batches) reached — stopping"); break }
+          } catch (e: any) {
+            addLog("error", `  Batch ${aBatch} failed: ${e.message ?? e}`)
+            throw e
+          }
         }
+        addLog("ok", `Stage 2 complete — ${aStageItems.toLocaleString()} items processed`)
       }
 
       // ── Stage 3: Change Log ─────────────────────────────────────────────────
+      // Loops with nextLink — the change log can be very large.
       if (!cancelRef.current) {
         setPhase("Change Log")
-        addLog("info", "Stage 3/3 · Change Log (latest location scans)")
-        const t0 = Date.now()
-        try {
-          const res = await fetch("/api/warehouse/sync/changelog", { method: "POST" })
-          const data = await res.json().catch(() => ({}))
-          if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-          const ms = Date.now() - t0
-          addLog("ok", `Stage 3 complete — ${(data.itemsProcessed ?? 0).toLocaleString()} entries in ${(ms / 1000).toFixed(1)}s`)
-        } catch (e: any) {
-          // Changelog is best-effort
-          addLog("warn", `Stage 3 failed (non-fatal): ${e.message ?? e}`)
+        addLog("info", `Stage 3/3 · Change Log (latest location scans)${full ? " — FULL re-sync" : " — incremental"}`)
+        let cMore = true
+        let cBatch = 0
+        let cStageItems = 0
+        let cNextLink: string | null = null
+        while (cMore) {
+          if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
+          cBatch++
+          const t0 = Date.now()
+          addLog("info", `  Batch ${cBatch} · fetching up to 5,000 entries…`)
+          try {
+            const res: Response = await fetch("/api/warehouse/sync/changelog", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({ full: cBatch === 1 ? full : false, nextLink: cNextLink, maxItems: 5000 }),
+            })
+            const data: any = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+            const ms = Date.now() - t0
+            cStageItems += data.itemsProcessed ?? 0
+            setBatchTotal(b => b + 1)
+            addLog("ok", `  Batch ${cBatch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} entries in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
+            cMore = data.more === true
+            cNextLink = data.nextLink ?? null
+            if (cBatch >= 500) { addLog("warn", "  Safety cap (500 batches) reached — stopping"); break }
+          } catch (e: any) {
+            // Changelog is best-effort — log as warning, continue overall sync
+            addLog("warn", `  Batch ${cBatch} failed (non-fatal): ${e.message ?? e}`)
+            break
+          }
         }
+        addLog("ok", `Stage 3 complete — ${cStageItems.toLocaleString()} entries processed`)
       }
 
       addLog("ok", "✓ All sync stages finished")
