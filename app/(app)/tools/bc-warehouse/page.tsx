@@ -6,19 +6,22 @@ import { useState, useEffect, useCallback, useRef } from "react"
 
 type SyncStatus = {
   itemCount: number
+  toteCount: number
   running: string[]
   sources: {
     receipt_lines: { completedAt: string; itemsProcessed: number } | null
     auction_lines:  { completedAt: string; itemsProcessed: number } | null
     changelog:      { completedAt: string; itemsProcessed: number } | null
+    totes:          { completedAt: string; itemsProcessed: number } | null
   }
 }
 
-type HeatLocation = { code: string; name: string; total: number; known: boolean; cataloguingBench: boolean }
+type HeatLocation = { code: string; name: string; items: number; totes: number; total: number; known: boolean; cataloguingBench: boolean }
 type HeatData = {
   locations: HeatLocation[]
   unlocated: number
-  meta: { total: number; knownLocations: number; unknownLocations: number; occupiedLocations: number; emptyLocations: number }
+  unlocatedBreakdown?: { items: number; totes: number }
+  meta: { total: number; totalItems: number; totalTotes: number; knownLocations: number; unknownLocations: number; occupiedLocations: number; emptyLocations: number }
 }
 
 type SaleItem = {
@@ -306,8 +309,10 @@ function WarehouseHeatmapTab() {
             <span className="text-emerald-400 font-medium">{occupied.toLocaleString()}</span>
             <span className="text-gray-500"> occupied · </span>
             <span className="text-gray-500 font-medium">{empty.toLocaleString()} empty · </span>
-            <span className="text-gray-300 font-medium">{data.meta.total.toLocaleString()}</span>
-            <span className="text-gray-500"> items total</span>
+            <span className="text-gray-300 font-medium">{data.meta.totalItems?.toLocaleString() ?? 0}</span>
+            <span className="text-gray-500"> items · </span>
+            <span className="text-cyan-300 font-medium">{data.meta.totalTotes?.toLocaleString() ?? 0}</span>
+            <span className="text-gray-500"> totes</span>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
@@ -341,6 +346,8 @@ function WarehouseHeatmapTab() {
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-yellow-600/70" /> 3–5</span>
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-600/80" /> 6–9</span>
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-700" /> 10+</span>
+          <span className="text-gray-700">·</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cyan-400" /> Has tote</span>
         </div>
 
         {/* Unlocated chip */}
@@ -412,16 +419,20 @@ function WarehouseHeatmapTab() {
                             }
                             const c = fillColor(loc.total)
                             const isSel = selected === loc.code
+                            const tip = `${loc.code} — ${loc.total} total · ${loc.items} item${loc.items === 1 ? "" : "s"} · ${loc.totes} tote${loc.totes === 1 ? "" : "s"}`
                             return (
                               <button
                                 key={loc.code}
                                 onClick={() => selectLocation(loc.code)}
-                                title={`${loc.code} — ${loc.total} item${loc.total === 1 ? "" : "s"}`}
-                                className={`w-9 h-9 rounded text-xs font-mono font-semibold flex items-center justify-center transition-all ${c.bg} ${c.text} ring-1 ${c.ring} hover:brightness-125 hover:scale-110 ${
+                                title={tip}
+                                className={`relative w-9 h-9 rounded text-xs font-mono font-semibold flex items-center justify-center transition-all ${c.bg} ${c.text} ring-1 ${c.ring} hover:brightness-125 hover:scale-110 ${
                                   isSel ? "ring-2 ring-blue-400 scale-110" : ""
                                 }`}
                               >
                                 {loc.total || ""}
+                                {loc.totes > 0 && (
+                                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-cyan-400 ring-1 ring-gray-900" title={`${loc.totes} tote${loc.totes === 1 ? "" : "s"}`} />
+                                )}
                               </button>
                             )
                           })}
@@ -969,7 +980,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
   // Each returns { items, batches } and logs both human-readable and raw BC info
 
   async function runStage(
-    endpoint: "receipt-lines" | "auction-lines" | "changelog",
+    endpoint: "receipt-lines" | "auction-lines" | "changelog" | "totes",
     label: string,
     full: boolean,
   ): Promise<{ items: number; batches: number }> {
@@ -1015,7 +1026,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
   }
 
   async function runOneStage(
-    endpoint: "receipt-lines" | "auction-lines" | "changelog",
+    endpoint: "receipt-lines" | "auction-lines" | "changelog" | "totes",
     label: string,
     full: boolean,
   ) {
@@ -1068,14 +1079,14 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       // BC's $skip cap (~38k). The server returns nextLink in each response;
       // we pass it back on the next call until it becomes null.
       setPhase("Receipt Lines")
-      addLog("info", `Stage 1/3 · Receipt Lines (the main item list)${full ? " — FULL re-sync" : " — incremental"}`)
+      addLog("info", `Stage 1/4 · Receipt Lines (the main item list)${full ? " — FULL re-sync" : " — incremental"}`)
       const r1 = await runStage("receipt-lines", "Receipt Lines", full)
       addLog("ok", `Stage 1 complete — ${r1.items.toLocaleString()} items processed`)
 
       // ── Stage 2: Auction Lines ──────────────────────────────────────────────
       if (!cancelRef.current) {
         setPhase("Auction Lines")
-        addLog("info", `Stage 2/3 · Auction Lines (current lot numbers, vendor emails)${full ? " — FULL re-sync" : " — incremental"}`)
+        addLog("info", `Stage 2/4 · Auction Lines (current lot numbers, vendor emails)${full ? " — FULL re-sync" : " — incremental"}`)
         const r2 = await runStage("auction-lines", "Auction Lines", full)
         addLog("ok", `Stage 2 complete — ${r2.items.toLocaleString()} items processed`)
       }
@@ -1083,13 +1094,25 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       // ── Stage 3: Change Log ─────────────────────────────────────────────────
       if (!cancelRef.current) {
         setPhase("Change Log")
-        addLog("info", `Stage 3/3 · Change Log (latest location scans)${full ? " — FULL re-sync" : " — incremental"}`)
+        addLog("info", `Stage 3/4 · Change Log (latest location scans)${full ? " — FULL re-sync" : " — incremental"}`)
         try {
           const r3 = await runStage("changelog", "Change Log", full)
           addLog("ok", `Stage 3 complete — ${r3.items.toLocaleString()} entries processed`)
         } catch (e: any) {
           // Changelog is best-effort — don't fail the overall sync
           addLog("warn", `Stage 3 failed (non-fatal): ${e.message ?? e}`)
+        }
+      }
+
+      // ── Stage 4: Totes ──────────────────────────────────────────────────────
+      if (!cancelRef.current) {
+        setPhase("Totes")
+        addLog("info", `Stage 4/4 · Totes (Receipt_Totes_Excel — physical tote locations)${full ? " — FULL re-sync" : " — incremental"}`)
+        try {
+          const r4 = await runStage("totes", "Totes", full)
+          addLog("ok", `Stage 4 complete — ${r4.items.toLocaleString()} totes processed`)
+        } catch (e: any) {
+          addLog("warn", `Stage 4 failed (non-fatal): ${e.message ?? e}`)
         }
       }
 
@@ -1134,10 +1157,11 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       </p>
 
       {/* Stats grid — each table card has its own re-sync buttons */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Items in DB</div>
           <div className="text-2xl font-mono text-white">{liveCount.toLocaleString()}</div>
+          <div className="text-xs text-gray-500 mt-1">{(status?.toteCount ?? 0).toLocaleString()} totes</div>
         </div>
 
         {/* Receipt Lines */}
@@ -1212,6 +1236,32 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
               onClick={() => {
                 if (!confirm("Full re-sync of Change Log?")) return
                 runOneStage("changelog", "Change Log", true)
+              }}
+              className="flex-1 text-[11px] px-2 py-1 rounded bg-amber-900/40 hover:bg-amber-800/60 text-amber-300 disabled:opacity-30 transition-colors"
+            >
+              ⤓ Full
+            </button>
+          </div>
+        </div>
+
+        {/* Totes (Receipt_Totes_Excel) */}
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex flex-col">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Totes</div>
+          <div className="text-sm text-gray-200">{fmtAge(status?.sources.totes?.completedAt)}</div>
+          <div className="text-xs text-gray-500">{status?.sources.totes?.itemsProcessed?.toLocaleString() ?? 0} last run</div>
+          <div className="mt-2 flex gap-1">
+            <button
+              disabled={running}
+              onClick={() => runOneStage("totes", "Totes", false)}
+              className="flex-1 text-[11px] px-2 py-1 rounded bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 disabled:opacity-30 transition-colors"
+            >
+              ⟳ Sync
+            </button>
+            <button
+              disabled={running}
+              onClick={() => {
+                if (!confirm("Full re-sync of Totes?")) return
+                runOneStage("totes", "Totes", true)
               }}
               className="flex-1 text-[11px] px-2 py-1 rounded bg-amber-900/40 hover:bg-amber-800/60 text-amber-300 disabled:opacity-30 transition-colors"
             >
