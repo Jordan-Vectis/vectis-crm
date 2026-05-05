@@ -91,7 +91,8 @@ export async function POST(req: NextRequest) {
       }
       if (lastTimestamp) {
         // ge (not gt) so items sharing a timestamp at the boundary aren't skipped
-        initialParams.$filter = `EVA_SystemModifiedAt ge datetime'${lastTimestamp}'`
+        // OData v4 — bare ISO 8601 literal, no datetime'...' wrapper (that's v3)
+        initialParams.$filter = `EVA_SystemModifiedAt ge ${lastTimestamp}`
       }
     }
 
