@@ -464,6 +464,46 @@ export async function bulkAssignUniqueIds(
   return { updated, skipped }
 }
 
+// Appends "Condition appears [condition]." to every lot that has a condition set
+// but whose description doesn't already contain that phrase.
+// Returns { updated, skipped } counts.
+export async function bulkAddConditionsToDescriptions(
+  auctionId: string
+): Promise<{ updated: number; skipped: number }> {
+  await requireCataloguer()
+
+  const lots = await prisma.catalogueLot.findMany({
+    where:  { auctionId, condition: { not: null } },
+    select: { id: true, condition: true, description: true },
+  })
+
+  let updated = 0
+  let skipped = 0
+
+  for (const lot of lots) {
+    const condition = lot.condition?.trim()
+    if (!condition) { skipped++; continue }
+
+    const condText = `Condition appears ${condition}.`
+
+    // Skip if the condition text is already present in the description
+    if ((lot.description ?? "").includes(condText)) { skipped++; continue }
+
+    const newDesc = lot.description?.trimEnd()
+      ? `${lot.description.trimEnd()} ${condText}`
+      : condText
+
+    await prisma.catalogueLot.update({
+      where: { id: lot.id },
+      data:  { description: newDesc },
+    })
+    updated++
+  }
+
+  revalidatePath(`/tools/cataloguing/auctions/${auctionId}`)
+  return { updated, skipped }
+}
+
 // Returns the next receiptUniqueId for a base receipt, e.g. "R000123" → "R000123-4"
 // Counts existing lots whose receiptUniqueId starts with "{base}-"
 async function sequencedReceiptUid(base: string, extra = 0): Promise<string> {
