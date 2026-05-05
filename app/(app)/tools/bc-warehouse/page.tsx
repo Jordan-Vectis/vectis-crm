@@ -23,6 +23,7 @@ type HeatData = {
 
 type SaleItem = {
   uniqueId: string
+  barcode: string | null
   lotNo: string | null
   currentLotNo: string | null
   description: string | null
@@ -38,6 +39,7 @@ type SaleItem = {
 
 type SaleAuction = {
   code: string
+  name: string | null
   date: string | null
   items: SaleItem[]
 }
@@ -530,9 +532,11 @@ function SaleChecklistTab() {
   if (loading) return <div className="p-6 text-gray-400 text-sm">Loading sale checklist…</div>
   if (!data) return <div className="p-6 text-red-400 text-sm">Failed to load sale checklist</div>
 
-  const auctions = data.auctions.filter(a =>
-    !search || a.code.toLowerCase().includes(search.toLowerCase())
-  )
+  const auctions = data.auctions.filter(a => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return a.code.toLowerCase().includes(q) || (a.name?.toLowerCase().includes(q) ?? false)
+  })
 
   return (
     <div className="h-full flex flex-col">
@@ -540,7 +544,7 @@ function SaleChecklistTab() {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search auction code…"
+          placeholder="Search auction code or name…"
           className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
         />
         {(["all", "located", "missing"] as const).map(f => (
@@ -575,10 +579,13 @@ function SaleChecklistTab() {
                 onClick={() => setExpanded(isOpen ? null : auction.code)}
                 className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-750 text-left"
               >
-                <div className="flex items-center gap-3">
-                  <span className="font-mono font-semibold text-white">{auction.code}</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="font-mono font-semibold text-white flex-shrink-0">{auction.code}</span>
+                  {auction.name && (
+                    <span className="text-sm text-gray-300 truncate">{auction.name}</span>
+                  )}
                   {auction.date && (
-                    <span className="text-xs text-gray-400">{new Date(auction.date).toLocaleDateString()}</span>
+                    <span className="text-xs text-gray-400 flex-shrink-0">{new Date(auction.date).toLocaleDateString()}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-xs">
@@ -595,6 +602,7 @@ function SaleChecklistTab() {
                     <thead className="bg-gray-900 text-gray-400">
                       <tr>
                         <th className="px-3 py-2 text-left">Unique ID</th>
+                        <th className="px-3 py-2 text-left">Barcode</th>
                         <th className="px-3 py-2 text-left">Lot</th>
                         <th className="px-3 py-2 text-left">Description</th>
                         <th className="px-3 py-2 text-left">Location</th>
@@ -606,6 +614,7 @@ function SaleChecklistTab() {
                       {items.map(item => (
                         <tr key={item.uniqueId} className={!item.location ? "bg-red-950/30" : ""}>
                           <td className="px-3 py-2 font-mono text-gray-300">{item.uniqueId}</td>
+                          <td className="px-3 py-2 font-mono text-gray-400">{item.barcode ?? "—"}</td>
                           <td className="px-3 py-2 text-gray-300">{item.currentLotNo ?? item.lotNo ?? "—"}</td>
                           <td className="px-3 py-2 text-gray-200 max-w-xs truncate">
                             {item.artist ? <span className="text-yellow-400">{item.artist} — </span> : null}
