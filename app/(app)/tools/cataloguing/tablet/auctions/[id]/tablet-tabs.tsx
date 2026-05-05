@@ -125,11 +125,12 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
         {tab === "manage" && (
           editingLotId
             ? <TabletLotEdit
+                key={editingLotId}
                 lot={editingLot}
                 allLots={lots}
                 auctionId={auction.id}
                 onDone={() => { setEditingLotId(null); router.refresh() }}
-                onNavigate={(id) => { setEditingLotId(id); router.refresh() }}
+                onNavigate={(id) => setEditingLotId(id)}
               />
             : <TabletManageLots
                 lots={lots}
