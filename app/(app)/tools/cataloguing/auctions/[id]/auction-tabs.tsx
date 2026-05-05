@@ -54,7 +54,7 @@ const AUCTION_TYPES = [
   "GENERAL","DIECAST","TRAINS","VINYL","TV_FILM","MATCHBOX","COMICS","BEARS","DOLLS",
 ]
 
-const CONDITIONS = ["Mint","Near Mint","Excellent","Good","Fair","Poor"]
+const CONDITIONS = ["Mint","Near Mint","Excellent","Good Plus","Good","Fair","Poor"]
 const STATUSES   = ["ENTERED","REVIEWED","PUBLISHED","SOLD","UNSOLD","WITHDRAWN"]
 
 const STATUS_STYLES: Record<string, string> = {
@@ -1652,19 +1652,25 @@ function LotEditView({ lot, auctionId, allLots, entryDir, onDone, onEdit }: { lo
                 className={`${input} resize-none`} />
             </div>
             <div>
-              <label className={lbl}>Condition</label>
-              <div className="flex flex-wrap gap-1.5 mb-1">
+              <div className="flex items-center gap-2 mb-1">
+                <label className={lbl} style={{ margin: 0 }}>Condition</label>
+                {cond1 && <button type="button" onClick={() => setCond1("")} className="text-xs text-gray-500 hover:text-red-400 transition-colors leading-none">× clear</button>}
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-2">
                 {CONDITIONS.map(c => (
-                  <button key={c} type="button" onClick={() => setCond1(v => v === c ? "" : c)}
+                  <button key={c} type="button" onClick={() => setCond1(c)}
                     className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${cond1 === c ? "border-[#2AB4A6] bg-[#2AB4A6]/20 text-[#2AB4A6]" : "border-gray-700 text-gray-400 hover:border-gray-500"}`}>
                     {c}
                   </button>
                 ))}
               </div>
-              <label className={`${lbl} mt-2`}>Condition To <span className="text-gray-600">(optional)</span></label>
+              <div className="flex items-center gap-2 mb-1">
+                <label className={lbl} style={{ margin: 0 }}>Condition To <span className="text-gray-600 font-normal">(optional)</span></label>
+                {cond2 && <button type="button" onClick={() => setCond2("")} className="text-xs text-gray-500 hover:text-red-400 transition-colors leading-none">× clear</button>}
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {CONDITIONS.map(c => (
-                  <button key={c} type="button" onClick={() => setCond2(v => v === c ? "" : c)}
+                  <button key={c} type="button" onClick={() => setCond2(c)}
                     className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${cond2 === c ? "border-[#2AB4A6] bg-[#2AB4A6]/20 text-[#2AB4A6]" : "border-gray-700 text-gray-400 hover:border-gray-500"}`}>
                     {c}
                   </button>
