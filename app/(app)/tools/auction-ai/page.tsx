@@ -431,6 +431,7 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
   const cancelRef  = useRef(false)
   const pauseRef   = useRef(false)
   const [paused,       setPaused]       = useState(false)
+  const [grounded,     setGrounded]     = useState(false)
   const [auctionCode,  setAuctionCode]  = useState("")
   const [savedLots,    setSavedLots]    = useState<Set<string>>(new Set())
   const [savedRunId,   setSavedRunId]   = useState<string | null>(null)
@@ -615,6 +616,7 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
           const fd = new FormData()
           fd.append("systemInstruction", systemInstruction)
           fd.append("model", modelToUse)
+          fd.append("grounded", grounded ? "true" : "false")
           files.forEach((f, j) => fd.append(`lot_${lot}_image_${j}`, f, f.name))
 
           const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
@@ -764,6 +766,14 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
           placeholder="Paste your system instruction here…" rows={3}
           className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] resize-none" />
       )}
+
+      {/* ── Google Search grounding ── */}
+      <label className={`flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg border transition-colors ${grounded ? "bg-blue-950/50 border-blue-600/60 text-blue-300" : "bg-[#2C2C2E] border-gray-700 text-gray-400 hover:border-gray-500"}`}>
+        <input type="checkbox" checked={grounded} onChange={e => setGrounded(e.target.checked)}
+          className="w-3.5 h-3.5 rounded accent-blue-500" />
+        <span className="text-xs font-medium">🔍 Google Search</span>
+        <span className="text-xs opacity-60">lets Gemini look up catalogue numbers in real time</span>
+      </label>
 
       {/* ── Auction Code ── */}
       <div>
