@@ -135,7 +135,9 @@ export async function bcPageWithNext(
       Accept:            "application/json",
       "OData-MaxVersion": "4.0",
       Authorization:     `Bearer ${token}`,
-      Prefer:            "odata.maxpagesize=500",
+      // include-annotations asks BC to actually emit @odata.nextLink
+      // (some BC tenants suppress it unless preferences are explicit)
+      Prefer:            "odata.maxpagesize=500, odata.include-annotations=\"*\"",
     },
     signal: AbortSignal.timeout(45_000),
   })

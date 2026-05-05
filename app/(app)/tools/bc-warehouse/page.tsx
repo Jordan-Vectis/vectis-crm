@@ -913,6 +913,7 @@ type LogEntry = { time: number; level: "info" | "ok" | "warn" | "error"; text: s
 function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComplete: () => Promise<SyncStatus | null> }) {
   const [running, setRunning] = useState(false)
   const [log, setLog] = useState<LogEntry[]>([])
+  const [bcLog, setBcLog] = useState<LogEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [phase, setPhase] = useState<string>("")
   const [batchTotal, setBatchTotal] = useState(0)
@@ -922,6 +923,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
   const [endedAt, setEndedAt] = useState<number | null>(null)
   const cancelRef = useRef(false)
   const logRef = useRef<HTMLDivElement>(null)
+  const bcLogRef = useRef<HTMLDivElement>(null)
 
   // Keep liveCount in sync with status when not running
   useEffect(() => { if (!running) setLiveCount(status?.itemCount ?? 0) }, [status?.itemCount, running])
@@ -939,13 +941,100 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
     return () => clearInterval(t)
   }, [running])
 
-  // Auto-scroll log to bottom
+  // Auto-scroll logs to bottom
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [log.length])
+  useEffect(() => {
+    if (bcLogRef.current) bcLogRef.current.scrollTop = bcLogRef.current.scrollHeight
+  }, [bcLog.length])
 
   function addLog(level: LogEntry["level"], text: string) {
     setLog(l => [...l, { time: Date.now(), level, text }])
+  }
+  function addBcLog(level: LogEntry["level"], text: string) {
+    setBcLog(l => [...l, { time: Date.now(), level, text }])
+  }
+
+  // ── Per-stage runners ────────────────────────────────────────────────────
+  // Each returns { items, batches } and logs both human-readable and raw BC info
+
+  async function runStage(
+    endpoint: "receipt-lines" | "auction-lines" | "changelog",
+    label: string,
+    full: boolean,
+  ): Promise<{ items: number; batches: number }> {
+    let more = true
+    let batch = 0
+    let items = 0
+    let nextLink: string | null = null
+    while (more) {
+      if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
+      batch++
+      const t0 = Date.now()
+      addLog("info", `  Batch ${batch} · fetching up to 5,000…`)
+      try {
+        const res: Response = await fetch(`/api/warehouse/sync/${endpoint}`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ full: batch === 1 ? full : false, nextLink, maxItems: 5000 }),
+        })
+        const data: any = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+        const ms = Date.now() - t0
+        items += data.itemsProcessed ?? 0
+        setItemTotal(t => t + (data.itemsProcessed ?? 0))
+        setBatchTotal(b => b + 1)
+        addLog("ok", `  Batch ${batch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
+
+        // Raw BC diagnostic feed
+        addBcLog(
+          data.more ? "info" : "warn",
+          `[${label}] batch ${batch} → BC pages: ${data.pages ?? "?"}, items processed: ${data.itemsProcessed ?? "?"}, more: ${data.more}, nextLink: ${data.nextLink ? data.nextLink.slice(-80) : "(none)"}`,
+        )
+
+        more = data.more === true
+        nextLink = data.nextLink ?? null
+        if (batch >= 500) { addLog("warn", "  Safety cap (500 batches) reached — stopping"); break }
+      } catch (e: any) {
+        addLog("error", `  Batch ${batch} failed: ${e.message ?? e}`)
+        addBcLog("error", `[${label}] batch ${batch} → ${e.message ?? e}`)
+        throw e
+      }
+    }
+    return { items, batches: batch }
+  }
+
+  async function runOneStage(
+    endpoint: "receipt-lines" | "auction-lines" | "changelog",
+    label: string,
+    full: boolean,
+  ) {
+    if (running) return
+    cancelRef.current = false
+    setRunning(true)
+    setError(null)
+    setLog([])
+    setBcLog([])
+    setBatchTotal(0)
+    setItemTotal(0)
+    setStartedAt(Date.now())
+    setEndedAt(null)
+    setPhase(label)
+    addLog("info", `${full ? "FULL re-sync" : "Incremental sync"} · ${label}`)
+    try {
+      const { items } = await runStage(endpoint, label, full)
+      addLog("ok", `${label} complete — ${items.toLocaleString()} items processed`)
+    } catch (e: any) {
+      const msg = e.message ?? String(e)
+      setError(msg)
+      addLog("error", `✗ Stopped: ${msg}`)
+      setPhase("Failed")
+    } finally {
+      setEndedAt(Date.now())
+      setRunning(false)
+      await onComplete()
+    }
   }
 
   async function runSync(opts: { full?: boolean } = {}) {
@@ -955,6 +1044,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
     setRunning(true)
     setError(null)
     setLog([])
+    setBcLog([])
     setBatchTotal(0)
     setItemTotal(0)
     setStartedAt(Date.now())
@@ -970,113 +1060,28 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       // we pass it back on the next call until it becomes null.
       setPhase("Receipt Lines")
       addLog("info", `Stage 1/3 · Receipt Lines (the main item list)${full ? " — FULL re-sync" : " — incremental"}`)
-      let more = true
-      let batch = 0
-      let stageItems = 0
-      let nextLink: string | null = null
-      while (more) {
-        if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
-        batch++
-        const t0 = Date.now()
-        addLog("info", `  Batch ${batch} · fetching up to 5,000 items…`)
-        try {
-          const res: Response = await fetch("/api/warehouse/sync/receipt-lines", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ full: batch === 1 ? full : false, nextLink, maxItems: 5000 }),
-          })
-          const data: any = await res.json().catch(() => ({}))
-          if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-          const ms = Date.now() - t0
-          stageItems += data.itemsProcessed ?? 0
-          setItemTotal(t => t + (data.itemsProcessed ?? 0))
-          setBatchTotal(b => b + 1)
-          addLog("ok", `  Batch ${batch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
-          more = data.more === true
-          nextLink = data.nextLink ?? null
-          if (batch >= 500) { addLog("warn", "  Safety cap (500 batches) reached — stopping"); break }
-        } catch (e: any) {
-          addLog("error", `  Batch ${batch} failed: ${e.message ?? e}`)
-          throw e
-        }
-      }
-      addLog("ok", `Stage 1 complete — ${stageItems.toLocaleString()} items processed`)
+      const r1 = await runStage("receipt-lines", "Receipt Lines", full)
+      addLog("ok", `Stage 1 complete — ${r1.items.toLocaleString()} items processed`)
 
       // ── Stage 2: Auction Lines ──────────────────────────────────────────────
-      // Loops with nextLink the same way as receipt-lines so it walks past
-      // the BC $skip cap and finishes the whole table.
       if (!cancelRef.current) {
         setPhase("Auction Lines")
         addLog("info", `Stage 2/3 · Auction Lines (current lot numbers, vendor emails)${full ? " — FULL re-sync" : " — incremental"}`)
-        let aMore = true
-        let aBatch = 0
-        let aStageItems = 0
-        let aNextLink: string | null = null
-        while (aMore) {
-          if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
-          aBatch++
-          const t0 = Date.now()
-          addLog("info", `  Batch ${aBatch} · fetching up to 5,000 items…`)
-          try {
-            const res: Response = await fetch("/api/warehouse/sync/auction-lines", {
-              method:  "POST",
-              headers: { "Content-Type": "application/json" },
-              body:    JSON.stringify({ full: aBatch === 1 ? full : false, nextLink: aNextLink, maxItems: 5000 }),
-            })
-            const data: any = await res.json().catch(() => ({}))
-            if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-            const ms = Date.now() - t0
-            aStageItems += data.itemsProcessed ?? 0
-            setItemTotal(t => t + (data.itemsProcessed ?? 0))
-            setBatchTotal(b => b + 1)
-            addLog("ok", `  Batch ${aBatch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
-            aMore = data.more === true
-            aNextLink = data.nextLink ?? null
-            if (aBatch >= 500) { addLog("warn", "  Safety cap (500 batches) reached — stopping"); break }
-          } catch (e: any) {
-            addLog("error", `  Batch ${aBatch} failed: ${e.message ?? e}`)
-            throw e
-          }
-        }
-        addLog("ok", `Stage 2 complete — ${aStageItems.toLocaleString()} items processed`)
+        const r2 = await runStage("auction-lines", "Auction Lines", full)
+        addLog("ok", `Stage 2 complete — ${r2.items.toLocaleString()} items processed`)
       }
 
       // ── Stage 3: Change Log ─────────────────────────────────────────────────
-      // Loops with nextLink — the change log can be very large.
       if (!cancelRef.current) {
         setPhase("Change Log")
         addLog("info", `Stage 3/3 · Change Log (latest location scans)${full ? " — FULL re-sync" : " — incremental"}`)
-        let cMore = true
-        let cBatch = 0
-        let cStageItems = 0
-        let cNextLink: string | null = null
-        while (cMore) {
-          if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
-          cBatch++
-          const t0 = Date.now()
-          addLog("info", `  Batch ${cBatch} · fetching up to 5,000 entries…`)
-          try {
-            const res: Response = await fetch("/api/warehouse/sync/changelog", {
-              method:  "POST",
-              headers: { "Content-Type": "application/json" },
-              body:    JSON.stringify({ full: cBatch === 1 ? full : false, nextLink: cNextLink, maxItems: 5000 }),
-            })
-            const data: any = await res.json().catch(() => ({}))
-            if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-            const ms = Date.now() - t0
-            cStageItems += data.itemsProcessed ?? 0
-            setBatchTotal(b => b + 1)
-            addLog("ok", `  Batch ${cBatch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} entries in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
-            cMore = data.more === true
-            cNextLink = data.nextLink ?? null
-            if (cBatch >= 500) { addLog("warn", "  Safety cap (500 batches) reached — stopping"); break }
-          } catch (e: any) {
-            // Changelog is best-effort — log as warning, continue overall sync
-            addLog("warn", `  Batch ${cBatch} failed (non-fatal): ${e.message ?? e}`)
-            break
-          }
+        try {
+          const r3 = await runStage("changelog", "Change Log", full)
+          addLog("ok", `Stage 3 complete — ${r3.items.toLocaleString()} entries processed`)
+        } catch (e: any) {
+          // Changelog is best-effort — don't fail the overall sync
+          addLog("warn", `Stage 3 failed (non-fatal): ${e.message ?? e}`)
         }
-        addLog("ok", `Stage 3 complete — ${cStageItems.toLocaleString()} entries processed`)
       }
 
       addLog("ok", "✓ All sync stages finished")
@@ -1119,26 +1124,91 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
         Subsequent runs are incremental — only changed records are re-fetched.
       </p>
 
-      {/* Stats grid */}
+      {/* Stats grid — each table card has its own re-sync buttons */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Items in DB</div>
           <div className="text-2xl font-mono text-white">{liveCount.toLocaleString()}</div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+
+        {/* Receipt Lines */}
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex flex-col">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Receipt Lines</div>
           <div className="text-sm text-gray-200">{fmtAge(status?.sources.receipt_lines?.completedAt)}</div>
           <div className="text-xs text-gray-500">{status?.sources.receipt_lines?.itemsProcessed?.toLocaleString() ?? 0} last run</div>
+          <div className="mt-2 flex gap-1">
+            <button
+              disabled={running}
+              onClick={() => runOneStage("receipt-lines", "Receipt Lines", false)}
+              className="flex-1 text-[11px] px-2 py-1 rounded bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 disabled:opacity-30 transition-colors"
+              title="Incremental sync of receipt lines only"
+            >
+              ⟳ Sync
+            </button>
+            <button
+              disabled={running}
+              onClick={() => {
+                if (!confirm("Full re-sync of Receipt Lines? This walks the entire ~186k row table and can take 5+ minutes.")) return
+                runOneStage("receipt-lines", "Receipt Lines", true)
+              }}
+              className="flex-1 text-[11px] px-2 py-1 rounded bg-amber-900/40 hover:bg-amber-800/60 text-amber-300 disabled:opacity-30 transition-colors"
+              title="Re-fetch every row from BC"
+            >
+              ⤓ Full
+            </button>
+          </div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+
+        {/* Auction Lines */}
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex flex-col">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Auction Lines</div>
           <div className="text-sm text-gray-200">{fmtAge(status?.sources.auction_lines?.completedAt)}</div>
           <div className="text-xs text-gray-500">{status?.sources.auction_lines?.itemsProcessed?.toLocaleString() ?? 0} last run</div>
+          <div className="mt-2 flex gap-1">
+            <button
+              disabled={running}
+              onClick={() => runOneStage("auction-lines", "Auction Lines", false)}
+              className="flex-1 text-[11px] px-2 py-1 rounded bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 disabled:opacity-30 transition-colors"
+            >
+              ⟳ Sync
+            </button>
+            <button
+              disabled={running}
+              onClick={() => {
+                if (!confirm("Full re-sync of Auction Lines?")) return
+                runOneStage("auction-lines", "Auction Lines", true)
+              }}
+              className="flex-1 text-[11px] px-2 py-1 rounded bg-amber-900/40 hover:bg-amber-800/60 text-amber-300 disabled:opacity-30 transition-colors"
+            >
+              ⤓ Full
+            </button>
+          </div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+
+        {/* Change Log */}
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex flex-col">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Change Log</div>
           <div className="text-sm text-gray-200">{fmtAge(status?.sources.changelog?.completedAt)}</div>
           <div className="text-xs text-gray-500">{status?.sources.changelog?.itemsProcessed?.toLocaleString() ?? 0} last run</div>
+          <div className="mt-2 flex gap-1">
+            <button
+              disabled={running}
+              onClick={() => runOneStage("changelog", "Change Log", false)}
+              className="flex-1 text-[11px] px-2 py-1 rounded bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 disabled:opacity-30 transition-colors"
+            >
+              ⟳ Sync
+            </button>
+            <button
+              disabled={running}
+              onClick={() => {
+                if (!confirm("Full re-sync of Change Log?")) return
+                runOneStage("changelog", "Change Log", true)
+              }}
+              className="flex-1 text-[11px] px-2 py-1 rounded bg-amber-900/40 hover:bg-amber-800/60 text-amber-300 disabled:opacity-30 transition-colors"
+            >
+              ⤓ Full
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1228,6 +1298,35 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
                                         "text-gray-400"
             return (
               <div key={i} className={`${colour} leading-relaxed whitespace-pre-wrap`}>
+                <span className="text-gray-600">[{fmtTime(entry.time)}]</span> {entry.text}
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {/* Raw BC response feed */}
+      <div className="mt-4 mb-1 flex items-center justify-between">
+        <span className="text-xs text-gray-500 uppercase tracking-wider">Raw BC responses</span>
+        {bcLog.length > 0 && (
+          <button onClick={() => setBcLog([])} className="text-xs text-gray-500 hover:text-gray-300">Clear</button>
+        )}
+      </div>
+      <div
+        ref={bcLogRef}
+        className="bg-black/50 border border-gray-800 rounded-lg p-3 font-mono text-[11px] h-56 overflow-y-auto"
+      >
+        {bcLog.length === 0 ? (
+          <div className="text-gray-600 italic">Each BC response logged here — page count, items returned, whether a nextLink was issued, and the tail of the skiptoken if present. If BC stops issuing nextLink before all rows are walked, that's how to spot it.</div>
+        ) : (
+          bcLog.map((entry, i) => {
+            const colour =
+              entry.level === "ok"    ? "text-emerald-400" :
+              entry.level === "warn"  ? "text-yellow-400"  :
+              entry.level === "error" ? "text-red-400"     :
+                                        "text-cyan-300"
+            return (
+              <div key={i} className={`${colour} leading-relaxed whitespace-pre-wrap break-all`}>
                 <span className="text-gray-600">[{fmtTime(entry.time)}]</span> {entry.text}
               </div>
             )
