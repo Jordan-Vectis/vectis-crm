@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     where: { code },
     include: {
       lots: {
-        select: { id: true, lotNumber: true, title: true, keyPoints: true, description: true, barcode: true },
+        select: { id: true, lotNumber: true, title: true, keyPoints: true, description: true, barcode: true, imageUrls: true },
         orderBy: { lotNumber: "asc" },
       },
     },
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
       keyPoints:   l.keyPoints ?? "",
       description: l.description ?? "",
       barcode:     l.barcode ?? null,
+      imageUrls:   l.imageUrls ?? [],
     })),
   })
 }

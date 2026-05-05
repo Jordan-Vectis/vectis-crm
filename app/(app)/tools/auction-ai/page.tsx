@@ -52,7 +52,7 @@ function ToastContainer() {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "kpruns" | "instructions" | "kpcheck" | "macro"
+type Tab = "chat" | "batch" | "barcode" | "copier" | "runs" | "kpruns" | "instructions" | "kpcheck" | "macro" | "doublecheck"
 
 type ChatMessage = {
   role: "user" | "model"
@@ -431,6 +431,7 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
   const cancelRef  = useRef(false)
   const pauseRef   = useRef(false)
   const [paused,       setPaused]       = useState(false)
+  const [grounded,     setGrounded]     = useState(false)
   const [auctionCode,  setAuctionCode]  = useState("")
   const [savedLots,    setSavedLots]    = useState<Set<string>>(new Set())
   const [savedRunId,   setSavedRunId]   = useState<string | null>(null)
@@ -615,6 +616,7 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
           const fd = new FormData()
           fd.append("systemInstruction", systemInstruction)
           fd.append("model", modelToUse)
+          fd.append("grounded", grounded ? "true" : "false")
           files.forEach((f, j) => fd.append(`lot_${lot}_image_${j}`, f, f.name))
 
           const res  = await fetch("/api/auction-ai/batch", { method: "POST", body: fd })
@@ -764,6 +766,14 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
           placeholder="Paste your system instruction here…" rows={3}
           className="w-full bg-[#2C2C2E] border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-[#C8A96E] resize-none" />
       )}
+
+      {/* ── Google Search grounding ── */}
+      <label className={`flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg border transition-colors ${grounded ? "bg-blue-950/50 border-blue-600/60 text-blue-300" : "bg-[#2C2C2E] border-gray-700 text-gray-400 hover:border-gray-500"}`}>
+        <input type="checkbox" checked={grounded} onChange={e => setGrounded(e.target.checked)}
+          className="w-3.5 h-3.5 rounded accent-blue-500" />
+        <span className="text-xs font-medium">🔍 Google Search</span>
+        <span className="text-xs opacity-60">lets Gemini look up catalogue numbers in real time</span>
+      </label>
 
       {/* ── Auction Code ── */}
       <div>
@@ -1065,7 +1075,7 @@ function BarcodeTab() {
 
 type SortBy = "uniqueId" | "barcode" | "lotNumber"
 
-type CopierRow = { folder: string; description: string; estimate: string; uniqueId?: string; barcode?: string; lotNumber?: string }
+type CopierRow = { folder: string; description: string; estimate: string; uniqueId?: string; barcode?: string; lotNumber?: string; imageUrls?: string[] }
 
 function sortRows(rows: CopierRow[], sortBy: SortBy) {
   return [...rows].sort((a, b) => {
@@ -1103,6 +1113,7 @@ function CopierTab() {
   const [error, setError]       = useState<string | null>(null)
   const [jumpQuery, setJumpQuery] = useState("")
   const [jumpOpen, setJumpOpen]   = useState(false)
+  const [thumbUrl, setThumbUrl]   = useState<string | null>(null)
 
   const sortedRows = sortRows(rows, sortBy)
 
@@ -1118,12 +1129,25 @@ function CopierTab() {
           uniqueId:    String(r["Receipt Unique ID"] ?? r.UniqueID ?? r["Unique ID"] ?? r.uniqueId ?? ""),
           barcode:     String(r.Barcode ?? r.barcode ?? ""),
           lotNumber:   String(r["Lot Number"] ?? r.LotNumber ?? r.lotNumber ?? ""),
+          imageUrls:   Array.isArray(r.ImageUrls) ? r.ImageUrls : [],
         })))
         setIdx(0)
         localStorage.removeItem("copier_preload")
       } catch {}
     }
   }, [])
+
+  // Fetch signed URL for the first image of the current row
+  useEffect(() => {
+    const key = row?.imageUrls?.[0]
+    if (!key) { setThumbUrl(null); return }
+    let cancelled = false
+    fetch(`/api/catalogue/signed-url?key=${encodeURIComponent(key)}`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setThumbUrl(d.url ?? null) })
+      .catch(() => { if (!cancelled) setThumbUrl(null) })
+    return () => { cancelled = true }
+  }, [sortedRows[idx]?.imageUrls?.[0]])
 
   function loadFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1253,13 +1277,24 @@ function CopierTab() {
                 const value = rowLabel(row)
                 return (
                   <>
-                    {value && (
-                      <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">
-                        <span className="text-gray-500 font-sans font-normal">{label}: </span>{value}
-                      </p>
-                    )}
-                    <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
-                    {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
+                    <div className="flex gap-4">
+                      {/* Thumbnail */}
+                      {thumbUrl && (
+                        <a href={thumbUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                          <img src={thumbUrl} alt="Lot" className="w-28 h-28 object-cover rounded-lg border border-gray-700 hover:opacity-90 transition-opacity" />
+                        </a>
+                      )}
+                      {/* Text */}
+                      <div className="min-w-0 flex-1">
+                        {value && (
+                          <p className="text-xs font-mono text-[#C8A96E] font-semibold mb-2">
+                            <span className="text-gray-500 font-sans font-normal">{label}: </span>{value}
+                          </p>
+                        )}
+                        <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{row.description}</p>
+                        {row.estimate && <p className="text-[#C8A96E] text-sm font-semibold mt-2">{row.estimate}</p>}
+                      </div>
+                    </div>
                   </>
                 )
               })()}
@@ -2662,6 +2697,367 @@ function KeyPointsCheckTab({ model: globalModel }: { model: string }) {
   )
 }
 
+// ─── Double Check Tab ─────────────────────────────────────────────────────────
+
+type DCLot = {
+  id:              string
+  label:           string
+  description:     string
+  imageUrls?:      string[]
+  verdict?:        "ok" | "issues"
+  contradictions?: string
+  unsupported?:    string
+  status?:         "idle" | "checking" | "ok" | "issues" | "error"
+}
+
+function DoubleCheckTab({ model: globalModel }: { model: string }) {
+  const [code,        setCode]        = useState("")
+  const [auctionId,   setAuctionId]   = useState<string | null>(null)
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
+  const [lots,        setLots]        = useState<DCLot[]>([])
+  const [checking,    setChecking]    = useState(false)
+  const [progress,    setProgress]    = useState<{ done: number; total: number } | null>(null)
+  const [expandedLot, setExpandedLot] = useState<string | null>(null)
+  const [localModel,  setLocalModel]  = useState(globalModel)
+  const [modelList,   setModelList]   = useState<string[]>([globalModel])
+  const [modelStatus, setModelStatus] = useState<Record<string, { ok: boolean; ms: number; error?: string } | "testing">>({})
+  const [testingAll,  setTestingAll]  = useState(false)
+  const [log,         setLog]         = useState<string[]>([])
+  const [showResults, setShowResults] = useState(false)
+  const [auctionList, setAuctionList] = useState<{ code: string; name: string }[]>([])
+  const logRef    = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef(false)
+  const abortRef  = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    fetch("/api/auction-ai/models").then(r => r.json()).then(j => { if (j.models?.length) setModelList(j.models) }).catch(() => {})
+    fetch("/api/auction-ai/auctions").then(r => r.json()).then(d => { if (Array.isArray(d)) setAuctionList(d) }).catch(() => {})
+  }, [])
+
+  function addLog(msg: string) {
+    const ts = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    setLog(l => [...l, `[${ts}]  ${msg}`])
+    setTimeout(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }), 50)
+  }
+
+  async function testAllModels() {
+    setTestingAll(true)
+    const initial: Record<string, "testing"> = {}
+    modelList.forEach(m => { initial[m] = "testing" })
+    setModelStatus(initial)
+    for (const m of modelList) {
+      try {
+        const res  = await fetch("/api/auction-ai/model-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
+        const data = await res.json()
+        setModelStatus(prev => ({ ...prev, [m]: data }))
+      } catch (e: any) {
+        setModelStatus(prev => ({ ...prev, [m]: { ok: false, ms: 0, error: e.message } }))
+      }
+      await new Promise(r => setTimeout(r, 1000))
+    }
+    setTestingAll(false)
+  }
+
+  async function handleLoad() {
+    const upper = code.trim().toUpperCase()
+    if (!upper) return
+    setLoading(true); setError(null); setLots([]); setAuctionId(null); setShowResults(false); setLog([])
+    try {
+      const res = await fetch(`/api/auction-ai/catalogue-lots?code=${encodeURIComponent(upper)}`)
+      if (!res.ok) throw new Error((await res.json()).error ?? "Catalogue not found")
+      const data = await res.json()
+      setAuctionId(data.auctionId ?? null)
+
+      // Load all lots that have a description
+      const loaded: DCLot[] = data.lots
+        .filter((l: any) => l.description?.trim())
+        .map((l: any) => ({
+          id:          l.id,
+          label:       l.lotNumber || l.receiptUniqueId || l.id,
+          description: l.description,
+          imageUrls:   l.imageUrls ?? [],
+          status:      "idle" as const,
+        }))
+
+      if (loaded.length === 0) {
+        throw new Error(`No lots with descriptions found for "${upper}". Add descriptions via the Batch Run tab or cataloguing page first.`)
+      }
+      setLots(loaded)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleStop() {
+    cancelRef.current = true
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
+    addLog("⛔ Stopped")
+  }
+
+  async function runCheck() {
+    const toCheck = lots.filter(l => l.description)
+    if (!toCheck.length || checking) return
+    cancelRef.current = false
+    setShowResults(false)
+    setChecking(true)
+    setLog([])
+    setProgress({ done: 0, total: toCheck.length })
+    setLots(prev => prev.map(l => ({ ...l, status: "checking", verdict: undefined, contradictions: undefined, unsupported: undefined })))
+    const withPhotos = toCheck.filter(l => (l.imageUrls?.length ?? 0) > 0).length
+    addLog(`── Starting double check: ${toCheck.length} lots · ${withPhotos} with photos · model: ${localModel}`)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    try {
+      // Fetch and base64-encode images for each lot (up to 6 per lot)
+      addLog("  · Preparing images…")
+      const lotsWithImages = await Promise.all(
+        toCheck.map(async (l) => {
+          const urls = (l.imageUrls ?? []).slice(0, 6)
+          const images = await Promise.all(
+            urls.map(async (url) => {
+              try {
+                const r = await fetch(url)
+                const buf = await r.arrayBuffer()
+                const data = btoa(String.fromCharCode(...new Uint8Array(buf)))
+                const mimeType = r.headers.get("content-type") || "image/jpeg"
+                return { data, mimeType }
+              } catch {
+                return null
+              }
+            })
+          )
+          return {
+            label:       l.label,
+            description: l.description,
+            images:      images.filter(Boolean) as { data: string; mimeType: string }[],
+          }
+        })
+      )
+
+      const res = await fetch("/api/auction-ai/double-check", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ lots: lotsWithImages, model: localModel }),
+        signal:  controller.signal,
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText)
+
+      const reader  = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      const lotStartTimes: Record<string, number> = {}
+
+      while (true) {
+        if (cancelRef.current) { reader.cancel(); break }
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n"); buffer = lines.pop()!
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const msg = JSON.parse(line)
+          if (msg.type === "progress") {
+            lotStartTimes[msg.label] = Date.now()
+            setProgress({ done: msg.index, total: toCheck.length })
+            addLog(`  · ${msg.index + 1}/${toCheck.length} ${msg.label} — checking…`)
+          } else if (msg.type === "result") {
+            const ms = lotStartTimes[msg.label] ? Date.now() - lotStartTimes[msg.label] : 0
+            addLog(`  ${msg.verdict === "ok" ? "✓ clean" : "⚑ issues"} — ${msg.label} (${(ms / 1000).toFixed(1)}s)`)
+            setLots(prev => prev.map(l =>
+              l.label === msg.label
+                ? { ...l, verdict: msg.verdict, contradictions: msg.contradictions, unsupported: msg.unsupported, status: msg.verdict }
+                : l
+            ))
+            setProgress({ done: msg.index + 1, total: toCheck.length })
+          } else if (msg.type === "error") {
+            addLog(`  ✗ ${msg.label} — ${msg.error}`)
+            setLots(prev => prev.map(l => l.label === msg.label ? { ...l, status: "error" } : l))
+          } else if (msg.type === "done") {
+            addLog("── Complete")
+          }
+        }
+      }
+    } catch (e: any) {
+      if (!cancelRef.current) { addLog(`✗ Failed: ${e.message}`); setError(e.message) }
+    } finally {
+      abortRef.current = null
+      setChecking(false)
+      setProgress(null)
+      setShowResults(true)
+    }
+  }
+
+  const issueCount = lots.filter(l => l.status === "issues").length
+  const okCount    = lots.filter(l => l.status === "ok").length
+  const errCount   = lots.filter(l => l.status === "error").length
+
+  return (
+    <div className="space-y-5 max-w-5xl">
+      <div>
+        <h2 className="text-xl font-semibold text-white mb-1">Double Check</h2>
+        <p className="text-sm text-gray-400">
+          Loads descriptions and photos from the catalogue and runs a second AI pass to spot factual errors,
+          inconsistencies, or claims that look guessed — especially where photos are blurry or details aren't clearly visible.
+        </p>
+      </div>
+
+      {/* Model selector */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Model</p>
+          <button onClick={testAllModels} disabled={testingAll}
+            className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors">
+            {testingAll ? "Testing…" : "⚡ Test all models"}
+          </button>
+        </div>
+        <div className="border border-gray-700 rounded-lg overflow-hidden">
+          {modelList.map(m => {
+            const status     = modelStatus[m]
+            const isSelected = localModel === m
+            return (
+              <button key={m} onClick={() => setLocalModel(m)}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors border-b border-gray-800 last:border-0 ${isSelected ? "bg-indigo-950/40" : "hover:bg-[#1a1a1e]"}`}>
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isSelected ? "bg-indigo-400" : "bg-gray-700"}`} />
+                <span className={`text-sm flex-1 font-mono ${isSelected ? "text-indigo-300" : "text-gray-400"}`}>{m}</span>
+                {status === "testing" && <span className="text-xs text-gray-500 animate-pulse">testing…</span>}
+                {status && status !== "testing" && (
+                  status.ok
+                    ? <span className={`text-xs font-medium ${status.ms < 5000 ? "text-green-400" : status.ms < 12000 ? "text-yellow-400" : "text-orange-400"}`}>✓ {(status.ms / 1000).toFixed(1)}s</span>
+                    : <span className="text-xs text-red-400 truncate max-w-[200px]" title={status.error}>✗ {status.error?.match(/\[(\d{3}[^\]]*)\]/)?.[1] ?? "error"}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Load from catalogue */}
+      <div className="bg-[#2C2C2E] border border-gray-700 rounded-xl p-4 space-y-3">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">Auction</p>
+        <div className="flex gap-2">
+          <Autocomplete
+            value={code}
+            onChange={v => setCode(v.replace(/\s*—.*$/, "").trim().toUpperCase())}
+            options={auctionList.map(a => `${a.code} — ${a.name}`)}
+            placeholder="Enter auction code…"
+          />
+          <button onClick={handleLoad} disabled={!code.trim() || loading}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors flex-shrink-0">
+            {loading ? "Loading…" : "Load"}
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-400 bg-red-950/30 rounded-lg px-3 py-2">{error}</p>}
+        {lots.length > 0 && !checking && (
+          <p className="text-xs text-gray-400">
+            <span className="text-indigo-300 font-semibold">{lots.length}</span> lot{lots.length !== 1 ? "s" : ""} loaded
+            {(() => { const n = lots.filter(l => (l.imageUrls?.length ?? 0) > 0).length; return n > 0 ? <> · <span className="text-indigo-300 font-semibold">{n}</span> with photos</> : <> · <span className="text-yellow-500">no photos</span></> })()}
+          </p>
+        )}
+      </div>
+
+      {/* Run */}
+      {lots.length > 0 && (
+        <div className="flex items-center gap-3">
+          {!checking ? (
+            <button onClick={runCheck}
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm rounded-lg transition-colors">
+              🔎 Run Double Check ({lots.length} lots)
+            </button>
+          ) : (
+            <button onClick={handleStop}
+              className="px-5 py-2.5 bg-red-900/50 hover:bg-red-900/80 border border-red-700 text-red-300 font-semibold text-sm rounded-lg transition-colors">
+              ⛔ Stop
+            </button>
+          )}
+          {progress && (
+            <div className="flex-1 flex items-center gap-3">
+              <div className="flex-1 bg-gray-800 rounded-full h-2">
+                <div className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
+              </div>
+              <span className="text-xs text-gray-400 whitespace-nowrap">{progress.done} / {progress.total}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Log */}
+      {log.length > 0 && (
+        <div ref={logRef} className="bg-[#0d0d0f] border border-gray-800 rounded-xl p-3 max-h-40 overflow-y-auto font-mono text-xs text-gray-400 space-y-0.5">
+          {log.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+      )}
+
+      {/* Results */}
+      {showResults && lots.some(l => l.status && l.status !== "idle") && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-4 flex-wrap">
+            {okCount > 0    && <span className="text-xs font-semibold text-green-400 bg-green-950/40 border border-green-800/50 rounded-full px-3 py-1">✓ {okCount} clean</span>}
+            {issueCount > 0 && <span className="text-xs font-semibold text-red-400   bg-red-950/40   border border-red-800/50   rounded-full px-3 py-1">⚑ {issueCount} with issues</span>}
+            {errCount > 0   && <span className="text-xs font-semibold text-gray-400  bg-gray-800/40  border border-gray-700     rounded-full px-3 py-1">✗ {errCount} errors</span>}
+          </div>
+
+          {[...lots]
+            .sort((a, b) => {
+              const rank = (s?: string) => s === "issues" ? 0 : s === "error" ? 1 : 2
+              return rank(a.status) - rank(b.status)
+            })
+            .filter(l => l.status && l.status !== "idle" && l.status !== "checking")
+            .map(lot => {
+              const isExpanded = expandedLot === lot.label
+              const hasIssues  = lot.status === "issues"
+              return (
+                <div key={lot.label}
+                  className={`border rounded-xl overflow-hidden ${
+                    hasIssues ? "border-red-800/60 bg-red-950/20" : lot.status === "error" ? "border-gray-700 bg-gray-900/30" : "border-green-800/40 bg-green-950/10"
+                  }`}>
+                  <button onClick={() => setExpandedLot(isExpanded ? null : lot.label)}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left">
+                    <span className={`text-base flex-shrink-0 ${hasIssues ? "text-red-400" : lot.status === "error" ? "text-gray-500" : "text-green-400"}`}>
+                      {hasIssues ? "⚑" : lot.status === "error" ? "✗" : "✓"}
+                    </span>
+                    <span className="font-mono text-sm text-gray-200 flex-1">{lot.label}</span>
+                    {hasIssues && lot.contradictions && (
+                      <span className="text-xs text-red-400 truncate max-w-sm opacity-80">{lot.contradictions.slice(0, 80)}{lot.contradictions.length > 80 ? "…" : ""}</span>
+                    )}
+                    <span className="text-gray-600 text-xs flex-shrink-0">{isExpanded ? "▲" : "▼"}</span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-800 px-4 py-4 space-y-4">
+                      {lot.contradictions && (
+                        <div>
+                          <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-1">Issues found</p>
+                          <p className="text-sm text-red-200">{lot.contradictions}</p>
+                        </div>
+                      )}
+                      {lot.unsupported && (
+                        <div>
+                          <p className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-1">Unverifiable claims</p>
+                          <p className="text-sm text-yellow-200">{lot.unsupported}</p>
+                        </div>
+                      )}
+                      {lot.status === "error" && <p className="text-xs text-gray-500">Check failed — try running again</p>}
+                      <div className="pt-2 border-t border-gray-800">
+                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Description</p>
+                        <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{lot.description}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
@@ -2672,6 +3068,7 @@ const TABS: { id: Tab; label: string; icon: string; accent?: string }[] = [
   { id: "barcode",      label: "Barcode Sorter",     icon: "▦"  },
   { id: "copier",       label: "Description Copier", icon: "📋" },
   { id: "kpcheck",      label: "Key Points Check",   icon: "✓"  },
+  { id: "doublecheck",  label: "Double Check",       icon: "🔎", accent: "#6366f1" },
   { id: "instructions", label: "Instructions",       icon: "📝" },
   { id: "macro",        label: "Macro Downloader",   icon: "⌨️" },
 ]
@@ -2769,6 +3166,7 @@ export default function AuctionAIPage() {
         <div className={tab === "barcode"      ? "" : "hidden"}><BarcodeTab /></div>
         <div className={tab === "copier"       ? "" : "hidden"}><CopierTab /></div>
         <div className={tab === "kpcheck"      ? "" : "hidden"}><KeyPointsCheckTab model={model} /></div>
+        <div className={tab === "doublecheck"  ? "" : "hidden"}>{tab === "doublecheck" && <DoubleCheckTab model={model} />}</div>
         <div className={tab === "instructions" ? "" : "hidden"}><InstructionsTab /></div>
         <div className={tab === "macro"        ? "" : "hidden"}><MacroTab /></div>
       </main>

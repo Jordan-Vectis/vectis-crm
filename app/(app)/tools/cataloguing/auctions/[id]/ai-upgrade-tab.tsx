@@ -78,6 +78,7 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
   const [testingAll,   setTestingAll]   = useState(false)
   const [sendDesc,     setSendDesc]     = useState(true)
   const [contextField, setContextField] = useState<"keyPoints" | "description">("keyPoints")
+  const [grounded,     setGrounded]     = useState(false)
   const [selectedLotIds, setSelectedLotIds] = useState<Set<string>>(
     () => new Set(lots.filter(l => !l.aiUpgraded && l.imageUrls.length > 0).map(l => l.id))
   )
@@ -252,6 +253,7 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
           const fd = new FormData()
           fd.set("systemInstruction", systemInstruction)
           fd.set("model", model)
+          fd.set("grounded", grounded ? "true" : "false")
           photos.forEach((blob, j) => {
             fd.append(`lot_${lot.lotNumber}_image_${j}`, blob, `photo_${j}.jpg`)
           })
@@ -510,6 +512,11 @@ export default function AiUpgradeTab({ auctionId, auctionCode, lots, onDone }: P
             </select>
             <span className="text-sm text-gray-300">to the AI</span>
             <span className="text-xs text-gray-600">(helps the AI refine rather than rewrite from scratch)</span>
+            <label className={`flex items-center gap-2 cursor-pointer px-2.5 py-1 rounded-lg border transition-colors ${grounded ? "bg-blue-950/50 border-blue-600/60 text-blue-300" : "border-gray-700 text-gray-400 hover:border-gray-500"}`}>
+              <input type="checkbox" checked={grounded} onChange={e => setGrounded(e.target.checked)}
+                className="w-3.5 h-3.5 rounded accent-blue-500" />
+              <span className="text-xs font-medium">🔍 Google Search</span>
+            </label>
           </div>
 
           {/* Lot selector */}

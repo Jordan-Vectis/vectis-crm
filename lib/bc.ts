@@ -110,6 +110,44 @@ export async function bcPage(
   return (await res.json()).value ?? []
 }
 
+// bcPageWithNext: returns rows AND the @odata.nextLink for server-driven paging.
+// BC has a hard $skip limit (often ~38k–40k); past that, $skip starts returning
+// empty pages even when more data exists. The @odata.nextLink uses skiptoken
+// pagination which has no upper limit — the canonical way to walk a full table.
+export async function bcPageWithNext(
+  token: string,
+  endpointOrUrl: string,
+  params?: Record<string, string | number>,
+): Promise<{ rows: any[]; nextLink: string | null; count?: number }> {
+  let urlStr: string
+  if (endpointOrUrl.startsWith("http")) {
+    // Full URL (a nextLink from a previous response)
+    urlStr = endpointOrUrl
+  } else {
+    const base = baseUrl() + endpointOrUrl
+    const qs = params
+      ? Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&")
+      : ""
+    urlStr = qs ? `${base}?${qs}` : base
+  }
+  const res = await fetch(urlStr, {
+    headers: {
+      Accept:            "application/json",
+      "OData-MaxVersion": "4.0",
+      Authorization:     `Bearer ${token}`,
+      Prefer:            "odata.maxpagesize=500",
+    },
+    signal: AbortSignal.timeout(45_000),
+  })
+  if (!res.ok) throw new Error(`BC API ${res.status}: ${await res.text()}`)
+  const json = await res.json()
+  return {
+    rows:     json.value ?? [],
+    nextLink: json["@odata.nextLink"] ?? null,
+    count:    json["@odata.count"],
+  }
+}
+
 export async function bcFetchAll(
   token: string,
   endpoint: string,

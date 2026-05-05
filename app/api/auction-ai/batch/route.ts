@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData()
   const systemInstruction = formData.get("systemInstruction") as string ?? ""
   const modelId           = formData.get("model") as string || "gemini-3-flash-preview"
+  const grounded          = formData.get("grounded") === "true"
 
   // Each lot is submitted as: lot_{name}_image_{i} files
   // We reconstruct the lots from the file field names
@@ -31,6 +32,10 @@ export async function POST(req: NextRequest) {
   const model = genai.getGenerativeModel({
     model: modelId,
     systemInstruction: systemInstruction || undefined,
+    // Google Search grounding lets Gemini look up catalogue numbers and product details
+    // in real time. Only enabled when the client requests it — strict presets are unaffected.
+    // Note: not all models support grounding; errors surface in the client log.
+    ...(grounded ? { tools: [{ googleSearch: {} } as any] } : {}),
   })
 
   // No retries here — throw immediately so the real Gemini error surfaces in the

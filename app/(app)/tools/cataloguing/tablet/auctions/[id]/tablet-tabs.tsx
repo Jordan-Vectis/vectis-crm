@@ -68,6 +68,7 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
   const router = useRouter()
   const [tab, setTab] = useState<Tab>("manage")
   const [editingLotId, setEditingLotId] = useState<string | null>(null)
+  const [navDir, setNavDir] = useState<"next" | "prev" | null>(null)
   const editingLot = lots.find(l => l.id === editingLotId) ?? null
 
   return (
@@ -125,11 +126,13 @@ export default function TabletTabs({ auction, lots }: { auction: Auction; lots: 
         {tab === "manage" && (
           editingLotId
             ? <TabletLotEdit
+                key={editingLotId}
                 lot={editingLot}
                 allLots={lots}
                 auctionId={auction.id}
-                onDone={() => { setEditingLotId(null); router.refresh() }}
-                onNavigate={(id) => { setEditingLotId(id); router.refresh() }}
+                entryDir={navDir}
+                onDone={() => { setNavDir(null); setEditingLotId(null); router.refresh() }}
+                onNavigate={(id, dir) => { setNavDir(dir); setEditingLotId(id) }}
               />
             : <TabletManageLots
                 lots={lots}
@@ -287,14 +290,15 @@ function TabletManageLots({ lots, auctionId, onEdit, onDelete }: {
   )
 }
 
-// ─── Lot edit — single-column touch-friendly form ─────────────────────────────
+// ─── Lot edit ─────────────────────────────────────────────────────────────────
 
-function TabletLotEdit({ lot, allLots, auctionId, onDone, onNavigate }: {
+function TabletLotEdit({ lot, allLots, auctionId, entryDir, onDone, onNavigate }: {
   lot: Lot | null
   allLots: Lot[]
   auctionId: string
+  entryDir?: "next" | "prev" | null
   onDone: () => void
-  onNavigate: (id: string) => void
+  onNavigate: (id: string, dir: "next" | "prev") => void
 }) {
   // Sorted list matches the manage-lots sort order
   const sortedLots = useMemo(() => [...allLots].sort((a, b) => {
@@ -313,6 +317,33 @@ function TabletLotEdit({ lot, allLots, auctionId, onDone, onNavigate }: {
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const scrollRef  = useRef<HTMLDivElement>(null)
+
+  // Slide-in animation on mount
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const startX = entryDir === "next" ? "60px" : entryDir === "prev" ? "-60px" : "0"
+    el.style.transform = `translateX(${startX})`
+    el.style.opacity = "0"
+    requestAnimationFrame(() => {
+      el.style.transition = "transform 220ms cubic-bezier(0.25,0.46,0.45,0.94), opacity 180ms ease"
+      el.style.transform = "translateX(0)"
+      el.style.opacity = "1"
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function navigate(id: string, dir: "next" | "prev") {
+    const el = contentRef.current
+    if (!el) { onNavigate(id, dir); return }
+    const endX = dir === "next" ? "-60px" : "60px"
+    el.style.transition = "transform 180ms cubic-bezier(0.55,0,1,0.45), opacity 160ms ease"
+    el.style.transform = `translateX(${endX})`
+    el.style.opacity = "0"
+    setTimeout(() => onNavigate(id, dir), 185)
+  }
 
   const [titleVal, setTitleVal] = useState(lot?.title ?? "")
 
@@ -391,20 +422,41 @@ function TabletLotEdit({ lot, allLots, auctionId, onDone, onNavigate }: {
   if (!lot) return null
 
   return (
-    <div className="p-4 pb-8">
-      {/* Back + lot counter */}
-      <div className="flex items-center justify-between mb-6">
+    <div ref={scrollRef} className="pb-8">
+      {/* Sticky nav bar: Back · counter · Prev · Next */}
+      <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-3 bg-[#141416] border-b border-gray-800">
         <button
           onClick={onDone}
           style={{ touchAction: "manipulation" }}
-          className="flex items-center gap-2 text-[#2AB4A6] text-base font-medium p-2 -ml-2"
+          className="text-[#2AB4A6] text-sm font-medium py-2 pr-3 flex-shrink-0"
         >
-          ← Back to lots
+          ← Back
         </button>
-        {sortedLots.length > 0 && (
-          <span className="text-sm text-gray-500">{currentIdx + 1} / {sortedLots.length}</span>
-        )}
+        <span className="text-xs text-gray-600 flex-1 text-center">
+          {currentIdx + 1} / {sortedLots.length}
+        </span>
+        <button
+          type="button"
+          onClick={() => prevLot && navigate(prevLot.id, "prev")}
+          disabled={!prevLot}
+          style={{ touchAction: "manipulation" }}
+          className="px-4 py-2.5 rounded-xl border border-gray-700 text-gray-300 text-sm font-semibold disabled:opacity-25 active:bg-[#2C2C2E] flex-shrink-0"
+        >
+          ← Prev
+        </button>
+        <button
+          type="button"
+          onClick={() => nextLot && navigate(nextLot.id, "next")}
+          disabled={!nextLot}
+          style={{ touchAction: "manipulation", background: nextLot ? ACCENT : "#2C2C2E", color: nextLot ? "#1C1C1E" : "#6b7280" }}
+          className="px-4 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-25 flex-shrink-0"
+        >
+          Next →
+        </button>
       </div>
+
+      {/* Animated content */}
+      <div ref={contentRef} className="p-4 pt-5">
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -583,28 +635,6 @@ function TabletLotEdit({ lot, allLots, auctionId, onDone, onNavigate }: {
           </button>
         </div>
 
-        {/* Prev / Next navigation */}
-        <div className="flex gap-3 pt-1">
-          <button
-            type="button"
-            onClick={() => prevLot && onNavigate(prevLot.id)}
-            disabled={!prevLot}
-            style={{ touchAction: "manipulation" }}
-            className="flex-1 py-4 rounded-xl border border-gray-700 text-gray-300 text-base font-semibold disabled:opacity-30 active:bg-[#2C2C2E]"
-          >
-            ← Prev
-          </button>
-          <button
-            type="button"
-            onClick={() => nextLot && onNavigate(nextLot.id)}
-            disabled={!nextLot}
-            style={{ touchAction: "manipulation", background: nextLot ? ACCENT : "#2C2C2E", color: nextLot ? "#1C1C1E" : "#6b7280" }}
-            className="flex-1 py-4 rounded-xl font-semibold text-base disabled:opacity-30"
-          >
-            Next Lot →
-          </button>
-        </div>
-
       </form>
 
       {/* Photos — at bottom so they don't push the form fields down */}
@@ -656,6 +686,7 @@ function TabletLotEdit({ lot, allLots, auctionId, onDone, onNavigate }: {
           </div>
         )}
       </div>
+      </div>{/* end animated content */}
     </div>
   )
 }
