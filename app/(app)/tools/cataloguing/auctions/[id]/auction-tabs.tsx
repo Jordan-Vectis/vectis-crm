@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids, toggleLotAiUpgraded, massCreateLots, bulkAssignUniqueIds } from "@/lib/actions/catalogue"
+import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, deleteLotPhoto, fillLotsFromTotes, togglePublished, generateTitlesFromDescriptions, assignLotNumbers, setStartingBids, toggleLotAiUpgraded, massCreateLots, bulkAssignUniqueIds, bulkAddConditionsToDescriptions } from "@/lib/actions/catalogue"
 import LotWizardTab, { CATEGORY_MAP, BRANDS_LIST } from "./lot-wizard-tab"
 import PhotoOnlyTab from "./photo-only-tab"
 import ImportTab from "./import-tab"
@@ -584,6 +584,25 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
   const [uniqueIdMsg, setUniqueIdMsg]     = useState<string | null>(null)
   const [uniqueIdPending, startUniqueId]  = useTransition()
 
+  // Bulk add conditions to descriptions
+  const [condMsg, setCondMsg]         = useState<string | null>(null)
+  const [condPending, startCond]      = useTransition()
+
+  function handleBulkAddConditions() {
+    const lotsWithCond = lots.filter(l => l.condition?.trim())
+    if (lotsWithCond.length === 0) {
+      setCondMsg("No lots have a condition set.")
+      setTimeout(() => setCondMsg(null), 3000)
+      return
+    }
+    if (!confirm(`This will append the condition to the description for up to ${lotsWithCond.length} lot${lotsWithCond.length !== 1 ? "s" : ""} (skips any that already have it). Continue?`)) return
+    startCond(async () => {
+      const { updated, skipped } = await bulkAddConditionsToDescriptions(auctionId)
+      setCondMsg(`✓ ${updated} lot${updated !== 1 ? "s" : ""} updated, ${skipped} skipped`)
+      setTimeout(() => setCondMsg(null), 4000)
+    })
+  }
+
   // ── Per-column filters ──────────────────────────────────────────────────
   const [fLotNo,         setFLotNo]         = useState("")
   const [fBarcode,       setFBarcode]       = useState("")
@@ -981,12 +1000,19 @@ function ManageLotsTab({ lots, auctionId, auction, onEdit, onDelete }: {
             className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${showUniqueIdMatcher ? "border-cyan-500 text-cyan-400 bg-cyan-900/20" : "border-gray-600 text-gray-400 hover:border-cyan-500 hover:text-cyan-400"}`}>
             🔗 Unique ID Matcher
           </button>
+          <button
+            onClick={handleBulkAddConditions}
+            disabled={condPending}
+            className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-600 text-gray-400 hover:border-[#2AB4A6] hover:text-[#2AB4A6] transition-colors disabled:opacity-50">
+            {condPending ? "Updating…" : "✚ Add Conditions to Descriptions"}
+          </button>
           {fillMsg  && <span className="text-xs text-[#2AB4A6]">{fillMsg}</span>}
           {lotterMsg && <span className="text-xs text-yellow-400">{lotterMsg}</span>}
           {bidsMsg  && <span className="text-xs text-green-400">{bidsMsg}</span>}
           {titlesMsg && <span className="text-xs text-[#2AB4A6]">{titlesMsg}</span>}
           {massMsg  && <span className="text-xs text-orange-400">{massMsg}</span>}
           {uniqueIdMsg && <span className="text-xs text-cyan-400">{uniqueIdMsg}</span>}
+          {condMsg && <span className="text-xs text-[#2AB4A6]">{condMsg}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {selected.size > 0 && (
