@@ -980,12 +980,12 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
         const t0 = Date.now()
         addLog("info", `  Batch ${batch} · fetching up to 5,000 items…`)
         try {
-          const res = await fetch("/api/warehouse/sync/receipt-lines", {
+          const res: Response = await fetch("/api/warehouse/sync/receipt-lines", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ full: batch === 1 ? full : false, nextLink, maxItems: 5000 }),
           })
-          const data = await res.json().catch(() => ({}))
+          const data: any = await res.json().catch(() => ({}))
           if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
           const ms = Date.now() - t0
           stageItems += data.itemsProcessed ?? 0
