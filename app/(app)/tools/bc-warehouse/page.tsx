@@ -371,42 +371,73 @@ function WarehouseHeatmapTab() {
                   </span>
                 </div>
 
-                {/* Bays grid */}
-                <div className="space-y-1.5">
-                  {bayNames.map(bay => {
-                    const shelves = bays.get(bay)!.sort((a, b) => {
-                      const na = parseInt(parseLocation(a.code)?.shelf ?? "0", 10)
-                      const nb = parseInt(parseLocation(b.code)?.shelf ?? "0", 10)
-                      return na - nb
-                    })
-                    return (
-                      <div key={bay} className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-gray-500 w-6 flex-shrink-0">{bay}</span>
-                        <div className="flex flex-wrap gap-1">
-                          {shelves.map(loc => {
-                            if (!showEmpty && loc.total === 0) return null
+                {/* Bays as columns, shelves as rows (shelf 1 at bottom, ascending up).
+                    Bay labels run along the bottom. */}
+                {(() => {
+                  // Build a lookup: bay → shelf number → location
+                  const lookup = new Map<string, Map<number, HeatLocation>>()
+                  let maxShelf = 0
+                  for (const bay of bayNames) {
+                    const map = new Map<number, HeatLocation>()
+                    for (const loc of bays.get(bay)!) {
+                      const sh = parseInt(parseLocation(loc.code)?.shelf ?? "0", 10)
+                      if (sh > 0) {
+                        map.set(sh, loc)
+                        if (sh > maxShelf) maxShelf = sh
+                      }
+                    }
+                    lookup.set(bay, map)
+                  }
+
+                  // Shelves descending (so highest shelf is at top, shelf 1 at bottom)
+                  const shelfRows: number[] = []
+                  for (let s = maxShelf; s >= 1; s--) shelfRows.push(s)
+
+                  return (
+                    <div className="inline-block">
+                      {/* Shelf rows */}
+                      {shelfRows.map(shelfNum => (
+                        <div key={shelfNum} className="flex items-center gap-1 mb-1 last:mb-0">
+                          <span className="text-[10px] font-mono text-gray-600 w-4 flex-shrink-0 text-right">{shelfNum}</span>
+                          {bayNames.map(bay => {
+                            const loc = lookup.get(bay)?.get(shelfNum)
+                            if (!loc) {
+                              // Empty placeholder so columns line up
+                              return <div key={bay} className="w-9 h-9" />
+                            }
+                            if (!showEmpty && loc.total === 0) {
+                              return <div key={bay} className="w-9 h-9" />
+                            }
                             const c = fillColor(loc.total)
                             const isSel = selected === loc.code
-                            const shelfNum = parseLocation(loc.code)?.shelf ?? loc.code
                             return (
                               <button
                                 key={loc.code}
                                 onClick={() => selectLocation(loc.code)}
                                 title={`${loc.code} — ${loc.total} item${loc.total === 1 ? "" : "s"}`}
-                                className={`w-9 h-9 rounded text-xs font-mono font-semibold flex flex-col items-center justify-center transition-all ${c.bg} ${c.text} ring-1 ${c.ring} hover:brightness-125 hover:scale-110 ${
+                                className={`w-9 h-9 rounded text-xs font-mono font-semibold flex items-center justify-center transition-all ${c.bg} ${c.text} ring-1 ${c.ring} hover:brightness-125 hover:scale-110 ${
                                   isSel ? "ring-2 ring-blue-400 scale-110" : ""
                                 }`}
                               >
-                                <span className="leading-none text-[10px] opacity-70">{shelfNum}</span>
-                                <span className="leading-none text-[11px]">{loc.total || ""}</span>
+                                {loc.total || ""}
                               </button>
                             )
                           })}
                         </div>
+                      ))}
+
+                      {/* Bay labels along the bottom */}
+                      <div className="flex items-center gap-1 mt-1 pt-1 border-t border-gray-800">
+                        <span className="w-4 flex-shrink-0" />
+                        {bayNames.map(bay => (
+                          <span key={bay} className="w-9 text-center text-xs font-mono font-semibold text-gray-400">
+                            {bay}
+                          </span>
+                        ))}
                       </div>
-                    )
-                  })}
-                </div>
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
