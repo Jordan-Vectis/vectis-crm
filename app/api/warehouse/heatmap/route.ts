@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import LOCATIONS from "@/lib/warehouse-locations.json"
-import { Prisma } from "@prisma/client"
 
 // GET /api/warehouse/heatmap
 // Supports optional query params:
@@ -17,13 +16,13 @@ export async function GET(req: NextRequest) {
   const auction = params.get("auction") ?? ""
 
   // ── Item filter predicate ───────────────────────────────────────────────────
-  const itemFilter: Prisma.WarehouseItemWhereInput = {}
-  if (filter === "active")             itemFilter.catalogued = { not: true }
-  if (filter === "catalogued_located") itemFilter.catalogued = true
-  if (filter === "barcodes")           itemFilter.barcode    = { not: null }
+  const itemFilter: Record<string, any> = {}
+  if (filter === "active")             itemFilter.catalogued  = { not: true }
+  if (filter === "catalogued_located") itemFilter.catalogued  = true
+  if (filter === "barcodes")           itemFilter.barcode     = { not: null }
   if (auction)                         itemFilter.auctionCode = auction
 
-  const itemLocatedWhere: Prisma.WarehouseItemWhereInput = {
+  const itemLocatedWhere = {
     ...itemFilter,
     location: { not: null, notIn: ["", " "] },
   }
@@ -35,11 +34,11 @@ export async function GET(req: NextRequest) {
   const showItems = filter !== "totes_only"
   const showTotes = filter !== "barcodes" && !auction
 
-  const toteFilter: Prisma.WarehouseToteWhereInput = {}
+  const toteFilter: Record<string, any> = {}
   if (filter === "active")             toteFilter.catalogued = { not: true }
   if (filter === "catalogued_located") toteFilter.catalogued = true
 
-  const toteLocatedWhere: Prisma.WarehouseToteWhereInput = {
+  const toteLocatedWhere = {
     ...toteFilter,
     location: { not: null, notIn: ["", " "] },
   }
