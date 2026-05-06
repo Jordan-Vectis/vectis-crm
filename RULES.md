@@ -14,6 +14,17 @@ Update this file whenever a rule genuinely changes.
 
 ---
 
+## Deployment — Railway Only
+
+The app is hosted on **Railway**, not Vercel. Never reference a `.vercel.app` URL.
+
+- Production: https://vectis-crm-production.up.railway.app
+- Staging: ask Jordan for the Railway staging URL if needed — do NOT guess it
+- Auto-deploys: push to `main` → production, push to `staging` → staging environment on Railway
+- Never tell the user to open a `vercel.app` URL for any reason
+
+---
+
 ## General
 
 - This is **not a CRM**. It is "the app". Never use the word CRM in UI copy, logs, or comments.
