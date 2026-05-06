@@ -667,6 +667,7 @@ function WarehouseHeatmapTab() {
 
 function SaleChecklistTab() {
   const [data, setData] = useState<SaleData | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<"all" | "located" | "missing">("all")
   const [search, setSearch] = useState("")
@@ -674,13 +675,17 @@ function SaleChecklistTab() {
 
   useEffect(() => {
     fetch("/api/warehouse/sale-checklist")
-      .then(r => r.json())
+      .then(async r => {
+        const d = await r.json()
+        if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+        return d
+      })
       .then(d => { setData(d); setLoading(false) })
-      .catch(() => setLoading(false))
+      .catch(e => { setError(e.message); setLoading(false) })
   }, [])
 
   if (loading) return <div className="p-6 text-gray-400 text-sm">Loading sale checklist…</div>
-  if (!data) return <div className="p-6 text-red-400 text-sm">Failed to load sale checklist</div>
+  if (error || !data) return <div className="p-6 text-red-400 text-sm">Failed to load sale checklist{error ? `: ${error}` : ""}</div>
 
   const auctions = data.auctions.filter(a => {
     if (!search) return true
