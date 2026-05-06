@@ -9,30 +9,28 @@ import { getBCTokenAny, bcPage } from "@/lib/bc"
 // CatalogueAuction (the app's cataloguing system) is intentionally not used here.
 
 
-let _bcDebug: { rowCount: number; fields: string[]; sample: any } = { rowCount: 0, fields: [], sample: null }
-
 async function fetchBCAuctionNames(): Promise<Map<string, string>> {
   const nameByCode = new Map<string, string>()
   try {
     const token = await getBCTokenAny()
     if (!token) return nameByCode
 
-    const rows = await bcPage(token, "Auction_Lines_Excel", { $top: 2000 })
-    _bcDebug = {
-      rowCount: rows.length,
-      fields:   rows[0] ? Object.keys(rows[0]) : [],
-      sample:   rows[0] ?? null,
-    }
+    // Auction_Lines_Excel has one row per item. Use $apply=groupby to get
+    // distinct EVA_AuctionNo + EVA_AuctionName pairs — one per auction code.
+    // EVA_AuctionNo matches WarehouseItem.auctionCode (= EVA_SalesAllocation in receipt lines).
+    const rows = await bcPage(token, "Auction_Lines_Excel", {
+      $apply: "groupby((EVA_AuctionNo,EVA_AuctionName))",
+    })
 
     for (const r of rows) {
-      const code = String(r.EVA_SalesAllocation ?? "").trim()
-      const name = String(r.EVA_AuctionName     ?? "").trim()
+      const code = String(r.EVA_AuctionNo   ?? "").trim()
+      const name = String(r.EVA_AuctionName ?? "").trim()
       if (code && name && !nameByCode.has(code.toUpperCase())) {
         nameByCode.set(code.toUpperCase(), name)
       }
     }
-  } catch (e: any) {
-    _bcDebug = { rowCount: -1, fields: [], sample: { error: e.message } }
+  } catch {
+    // BC unavailable — names will be null, codes still show
   }
   return nameByCode
 }
@@ -85,5 +83,5 @@ export async function GET() {
   const auctions = [...auctionMap.values()]
     .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
 
-  return NextResponse.json({ auctions, total: rows.length, _bcDebug })
+  return NextResponse.json({ auctions, total: rows.length })
 }
