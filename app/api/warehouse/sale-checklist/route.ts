@@ -9,11 +9,7 @@ import { getBCTokenAny, bcPage } from "@/lib/bc"
 // CatalogueAuction (the app's cataloguing system) is intentionally not used here.
 
 const ARL_CODE_CANDIDATES = ["EVA_ARL_AuctionCode", "EVA_SalesAllocation", "Auction_Code", "AuctionCode"]
-const ARL_NAME_CANDIDATES = [
-  "EVA_ARL_AuctionName", "EVA_ARL_AuctionDescription", "EVA_ARL_SaleDescription",
-  "EVA_AuctionName", "EVA_AuctionDescription", "EVA_SalesAllocationDescription",
-  "Auction_Name", "AuctionName", "Sale_Name",
-]
+const ARL_NAME_CANDIDATES = ["EVA_AuctionName", "EVA_ARL_AuctionName", "Auction_Name", "AuctionName"]
 
 async function fetchBCAuctionNames(): Promise<Map<string, string>> {
   const nameByCode = new Map<string, string>()
