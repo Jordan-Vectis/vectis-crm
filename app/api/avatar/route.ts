@@ -39,15 +39,16 @@ export async function POST(req: NextRequest) {
       }
 
       case "create": {
-        const { presenterUrl } = body
-        if (!presenterUrl) {
+        // Use presenter_id for D-ID's stock presenters (more reliable than source_url)
+        const { presenterId } = body
+        if (!presenterId) {
           return NextResponse.json({ error: "No presenter selected" }, { status: 400 })
         }
 
         const res = await fetch(`${DID_API}/talks/streams`, {
           method:  "POST",
           headers: didHeaders(),
-          body:    JSON.stringify({ source_url: presenterUrl }),
+          body:    JSON.stringify({ presenter_id: presenterId }),
         })
 
         if (!res.ok) {
@@ -72,10 +73,16 @@ export async function POST(req: NextRequest) {
 
       case "ice": {
         const { id, session_id, candidate } = body
+        // D-ID requires the candidate fields flattened — NOT nested under a candidate object
         const res = await fetch(`${DID_API}/talks/streams/${id}/ice`, {
           method:  "POST",
           headers: didHeaders(),
-          body:    JSON.stringify({ candidate, session_id }),
+          body:    JSON.stringify({
+            candidate:     candidate.candidate,
+            sdpMid:        candidate.sdpMid,
+            sdpMLineIndex: candidate.sdpMLineIndex,
+            session_id,
+          }),
         })
 
         if (!res.ok) return NextResponse.json({ error: "ICE failed" }, { status: res.status })
@@ -100,8 +107,8 @@ export async function POST(req: NextRequest) {
         })
 
         if (!res.ok) {
-          const text = await res.text()
-          return NextResponse.json({ error: text }, { status: res.status })
+          const errText = await res.text()
+          return NextResponse.json({ error: errText }, { status: res.status })
         }
 
         return NextResponse.json(await res.json())

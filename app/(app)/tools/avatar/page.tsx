@@ -5,10 +5,11 @@ import { useRef, useState, useCallback, useEffect } from "react"
 type Status = "idle" | "connecting" | "connected" | "speaking" | "error"
 
 type Presenter = {
-  id:            string
+  presenter_id:  string
+  id?:           string
   name:          string
   thumbnail_url: string
-  image_url:     string
+  image_url?:    string
 }
 
 const STATUS_LABEL: Record<Status, string> = {
@@ -58,13 +59,13 @@ export default function AvatarPage() {
       .then((r) => r.json())
       .then((data: Presenter[]) => {
         setPresenters(data)
-        if (data.length > 0) setSelectedId(data[0].id)
+        if (data.length > 0) setSelectedId(data[0].presenter_id ?? data[0].id ?? null)
       })
       .catch(() => {})
       .finally(() => setLoadingPresenters(false))
   }, [])
 
-  const selectedPresenter = presenters.find((p) => p.id === selectedId)
+  const selectedPresenter = presenters.find((p) => (p.presenter_id ?? p.id) === selectedId)
 
   const cleanup = useCallback(async (silent = false) => {
     if (speakTimer.current)   clearTimeout(speakTimer.current)
@@ -101,7 +102,7 @@ export default function AvatarPage() {
     setStatus("connected")
   }, [])
 
-  const connect = useCallback(async (presenterUrl: string) => {
+  const connect = useCallback(async (presenterId: string) => {
     await cleanup(true)
     setStatus("connecting")
     setError(null)
@@ -117,7 +118,7 @@ export default function AvatarPage() {
       const createRes = await fetch("/api/avatar", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ action: "create", presenterUrl }),
+        body:    JSON.stringify({ action: "create", presenterId }),
       })
 
       if (!createRes.ok) {
@@ -191,7 +192,8 @@ export default function AvatarPage() {
   }, [cleanup, markConnected])
 
   const handleSelectPresenter = useCallback((p: Presenter) => {
-    setSelectedId(p.id)
+    const pid = p.presenter_id ?? p.id ?? null
+    setSelectedId(pid)
     // If currently live, disconnect so user can reconnect with new presenter
     if (status === "connected" || status === "speaking" || status === "connecting") {
       cleanup().then(() => setStatus("idle"))
@@ -358,7 +360,7 @@ export default function AvatarPage() {
             <h2 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">Connection</h2>
             {status === "idle" || status === "error" ? (
               <button
-                onClick={() => selectedPresenter && connect(selectedPresenter.image_url)}
+                onClick={() => selectedPresenter && connect(selectedPresenter.presenter_id ?? selectedPresenter.id ?? "")}
                 disabled={!selectedPresenter || loadingPresenters}
                 className="w-full py-2.5 bg-[#2AB4A6] hover:bg-[#22a090] active:bg-[#1a8078] text-black font-semibold rounded-lg transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -395,7 +397,7 @@ export default function AvatarPage() {
             <div className="mt-3 flex flex-col gap-2">
               <button
                 onClick={speak}
-                disabled={status !== "connected" || !script.trim()}
+                disabled={status !== "connected" || script.trim().length < 3}
                 className="w-full py-2.5 bg-[#2AB4A6] hover:bg-[#22a090] active:bg-[#1a8078] text-black font-semibold rounded-lg transition-colors text-sm disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {status === "speaking" ? (
