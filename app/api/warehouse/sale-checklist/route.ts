@@ -9,15 +9,20 @@ import { getBCTokenAny, bcPage } from "@/lib/bc"
 // CatalogueAuction (the app's cataloguing system) is intentionally not used here.
 
 
+let _bcDebug: { rowCount: number; fields: string[]; sample: any } = { rowCount: 0, fields: [], sample: null }
+
 async function fetchBCAuctionNames(): Promise<Map<string, string>> {
   const nameByCode = new Map<string, string>()
   try {
     const token = await getBCTokenAny()
     if (!token) return nameByCode
 
-    // Auction_Lines_Excel: EVA_AuctionNo = auction code (matches WarehouseItem.auctionCode),
-    // EVA_AuctionName = human-readable sale name. Both confirmed by user.
     const rows = await bcPage(token, "Auction_Lines_Excel", { $top: 2000 })
+    _bcDebug = {
+      rowCount: rows.length,
+      fields:   rows[0] ? Object.keys(rows[0]) : [],
+      sample:   rows[0] ?? null,
+    }
 
     for (const r of rows) {
       const code = String(r.EVA_SalesAllocation ?? "").trim()
@@ -26,8 +31,8 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
         nameByCode.set(code.toUpperCase(), name)
       }
     }
-  } catch {
-    // BC unavailable — names will be null, codes still show
+  } catch (e: any) {
+    _bcDebug = { rowCount: -1, fields: [], sample: { error: e.message } }
   }
   return nameByCode
 }
@@ -80,5 +85,5 @@ export async function GET() {
   const auctions = [...auctionMap.values()]
     .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
 
-  return NextResponse.json({ auctions, total: rows.length })
+  return NextResponse.json({ auctions, total: rows.length, _bcDebug })
 }
