@@ -37,7 +37,10 @@ export async function GET(req: NextRequest) {
 
   const toteFilter: Record<string, any> = {}
   if (filter === "active")             toteFilter.catalogued = { not: true }
-  if (filter === "catalogued_located") toteFilter.catalogued = true
+  // catalogued_located: totes NOT in Receipt_Totes_Excel have catalogued = null.
+  // Receipt_Totes_Excel only contains active (uncatalogued) totes — any tote that
+  // wasn't enriched by that sync is a finished tote, identified by catalogued IS NULL.
+  if (filter === "catalogued_located") toteFilter.catalogued = null
 
   const toteLocatedWhere = {
     ...toteFilter,
