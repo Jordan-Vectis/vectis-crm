@@ -4,10 +4,8 @@ import { auth } from "@/auth"
 const DID_API = "https://api.d-id.com"
 
 function didAuth() {
-  const key = process.env.DID_API_KEY ?? ""
-  // Key may be "email:token" (full credential) or just "token" (append : for basic auth)
-  const credential = key.includes(":") ? key : `${key}:`
-  return `Basic ${Buffer.from(credential).toString("base64")}`
+  // D-ID key is already in "base64email:secret" format — base64 encode it as-is for Basic auth
+  return `Basic ${Buffer.from(process.env.DID_API_KEY ?? "").toString("base64")}`
 }
 
 function didHeaders() {
