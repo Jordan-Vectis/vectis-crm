@@ -1608,14 +1608,14 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       // BC's $skip cap (~38k). The server returns nextLink in each response;
       // we pass it back on the next call until it becomes null.
       setPhase("Receipt Lines")
-      addLog("info", `Stage 1/4 · Receipt Lines (the main item list)${full ? " — FULL re-sync" : " — incremental"}`)
+      addLog("info", `Stage 1/6 · Receipt Lines (the main item list)${full ? " — FULL re-sync" : " — incremental"}`)
       const r1 = await runStage("receipt-lines", "Receipt Lines", full)
       addLog("ok", `Stage 1 complete — ${r1.items.toLocaleString()} items processed`)
 
       // ── Stage 2: Auction Lines ──────────────────────────────────────────────
       if (!cancelRef.current) {
         setPhase("Auction Lines")
-        addLog("info", `Stage 2/4 · Auction Lines (current lot numbers, vendor emails)${full ? " — FULL re-sync" : " — incremental"}`)
+        addLog("info", `Stage 2/6 · Auction Lines (current lot numbers, vendor emails)${full ? " — FULL re-sync" : " — incremental"}`)
         const r2 = await runStage("auction-lines", "Auction Lines", full)
         addLog("ok", `Stage 2 complete — ${r2.items.toLocaleString()} items processed`)
       }
@@ -1623,7 +1623,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       // ── Stage 3: Change Log ─────────────────────────────────────────────────
       if (!cancelRef.current) {
         setPhase("Change Log")
-        addLog("info", `Stage 3/4 · Change Log (latest location scans)${full ? " — FULL re-sync" : " — incremental"}`)
+        addLog("info", `Stage 3/6 · Change Log (latest location scans)${full ? " — FULL re-sync" : " — incremental"}`)
         try {
           const r3 = await runStage("changelog", "Change Log", full)
           addLog("ok", `Stage 3 complete — ${r3.items.toLocaleString()} entries processed`)
@@ -1636,7 +1636,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       // ── Stage 4: Totes (all) ────────────────────────────────────────────────
       if (!cancelRef.current) {
         setPhase("Totes")
-        addLog("info", `Stage 4/5 · Totes — all T/P-prefixed totes from Totes_Excel${full ? " — FULL re-sync" : ""}`)
+        addLog("info", `Stage 4/6 · Totes — all T/P-prefixed totes from Totes_Excel${full ? " — FULL re-sync" : ""}`)
         try {
           const r4 = await runStage("totes", "Totes", full)
           addLog("ok", `Stage 4 complete — ${r4.items.toLocaleString()} totes processed`)
@@ -1648,12 +1648,25 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       // ── Stage 5: Active Totes (enrichment) ─────────────────────────────────
       if (!cancelRef.current) {
         setPhase("Active Totes")
-        addLog("info", "Stage 5/5 · Active Totes — enriching from Receipt_Totes_Excel (vendor, location, status)")
+        addLog("info", "Stage 5/6 · Active Totes — enriching from Receipt_Totes_Excel (vendor, location, status)")
         try {
           const r5 = await runStage("totes-active", "Active Totes", false)
           addLog("ok", `Stage 5 complete — ${r5.items.toLocaleString()} active totes enriched`)
         } catch (e: any) {
           addLog("warn", `Stage 5 failed (non-fatal): ${e.message ?? e}`)
+        }
+      }
+
+      // ── Stage 6: Auction Names ──────────────────────────────────────────────
+      if (!cancelRef.current) {
+        setPhase("Auction Names")
+        addLog("info", "Stage 6/6 · Auction Names — storing sale names from Auction_Lines_Excel")
+        try {
+          const res = await fetch("/api/warehouse/sync/auction-names", { method: "POST" })
+          const data = await res.json()
+          addLog("ok", `Stage 6 complete — ${data.namesWritten ?? 0} names written for ${data.codesFound ?? 0} codes`)
+        } catch (e: any) {
+          addLog("warn", `Stage 6 failed (non-fatal): ${e.message ?? e}`)
         }
       }
 

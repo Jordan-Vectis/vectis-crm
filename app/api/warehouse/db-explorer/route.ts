@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
       uniqueId:     true,
       barcode:      true,
       auctionCode:  true,
+      auctionName:  true,
       auctionDate:  true,
       lotNo:        true,
       currentLotNo: true,
