@@ -1,81 +1,18 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { getBCTokenAny, bcPage } from "@/lib/bc"
 
 // GET /api/warehouse/sale-checklist
-// Returns all auction codes with their items and locations from WarehouseItem DB.
-// Auction names come from BC (Receipt_Lines_Excel) — not from local CatalogueAuction.
-
-const ARL_CODE_CANDIDATES = ["EVA_ARL_AuctionCode", "EVA_SalesAllocation", "Auction_Code", "AuctionCode", "Sale_Code"]
-const ARL_NAME_CANDIDATES = [
-  "EVA_ARL_AuctionName", "EVA_ARL_AuctionDescription", "EVA_ARL_SaleDescription",
-  "EVA_AuctionName", "EVA_AuctionDescription", "EVA_SalesAllocationDescription",
-  "Auction_Name", "AuctionName", "Sale_Name", "SaleName", "Description",
-]
-// Keywords that hint a field is a human-readable name/description (not a code or date)
-const NAME_HINT = /name|description|desc|title/i
-
-async function tryEndpointForNames(
-  token: string,
-  endpoint: string,
-  codeCandidates: string[],
-): Promise<Map<string, string>> {
-  const nameByCode = new Map<string, string>()
-  const sample = await bcPage(token, endpoint, { $top: 5 })
-  if (!sample.length) return nameByCode
-
-  const firstRow = sample[0]
-  const codeField = codeCandidates.find(f => f in firstRow)
-  if (!codeField) return nameByCode
-
-  // 1. Try known candidates first
-  let nameField = ARL_NAME_CANDIDATES.find(f => f in firstRow && firstRow[f])
-  // 2. Fall back: scan all string fields whose name hints at a description
-  if (!nameField) {
-    nameField = Object.keys(firstRow).find(
-      f => f !== codeField && NAME_HINT.test(f) && typeof firstRow[f] === "string" && firstRow[f],
-    )
-  }
-  if (!nameField) return nameByCode
-
-  const rows = await bcPage(token, endpoint, {
-    $top:    2000,
-    $select: `${codeField},${nameField}`,
-    $orderby: `${codeField} asc`,
-  })
-
-  for (const r of rows) {
-    const code = String(r[codeField] ?? "").trim()
-    const name = String(r[nameField] ?? "").trim()
-    if (code && name && !nameByCode.has(code.toUpperCase())) {
-      nameByCode.set(code.toUpperCase(), name)
-    }
-  }
-  return nameByCode
-}
-
-async function fetchBCAuctionNames(): Promise<Map<string, string>> {
-  try {
-    const token = await getBCTokenAny()
-    if (!token) return new Map()
-
-    // Try Auction_Receipt_Lines_Excel first (EVA_ARL_* fields), then Receipt_Lines_Excel
-    for (const endpoint of ["Auction_Receipt_Lines_Excel", "Receipt_Lines_Excel"]) {
-      const map = await tryEndpointForNames(token, endpoint, ARL_CODE_CANDIDATES)
-      if (map.size > 0) return map
-    }
-  } catch {
-    // BC unavailable — caller will fall back to local table
-  }
-  return new Map()
-}
-
+// Returns all auction codes with their items and locations from WarehouseItem DB,
+// plus the human-readable auction name from CatalogueAuction — but only for entries
+// that have no local lots attached. If a code has lots in the cataloguing system
+// it may carry a placeholder name (e.g. "Mass Import Test") that would overwrite
+// the real BC auction name, so we skip those.
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  const [rows, bcNames, catalogueAuctions] = await Promise.all([
+  const [rows, catalogueAuctions] = await Promise.all([
     prisma.warehouseItem.findMany({
       where: { auctionCode: { not: null } },
       select: {
@@ -97,14 +34,19 @@ export async function GET() {
       },
       orderBy: [{ auctionCode: "asc" }, { currentLotNo: "asc" }],
     }),
-    fetchBCAuctionNames(),
-    prisma.catalogueAuction.findMany({ select: { code: true, name: true } }),
+    // Only use names from catalogue entries that have no lots — those with lots
+    // may be test/placeholder auctions whose names shouldn't appear in the warehouse view.
+    prisma.catalogueAuction.findMany({
+      where:  { lots: { none: {} } },
+      select: { code: true, name: true },
+    }),
   ])
 
-  // BC names take priority; local CatalogueAuction is a fallback so names always show
+  // Code → auction name lookup (case-insensitive)
   const nameByCode = new Map<string, string>()
-  for (const a of catalogueAuctions) nameByCode.set(a.code.trim().toUpperCase(), a.name)
-  for (const [k, v] of bcNames)       nameByCode.set(k, v) // BC overwrites local
+  for (const a of catalogueAuctions) {
+    nameByCode.set(a.code.trim().toUpperCase(), a.name)
+  }
 
   // Group by auction code
   const auctionMap = new Map<string, { code: string; name: string | null; date: string | null; items: typeof rows }>()
