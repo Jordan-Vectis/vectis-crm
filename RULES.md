@@ -282,6 +282,18 @@ If this tab genuinely needs to change, discuss it first and update this rule.
 - `getBCTokenAny()` picks any valid non-expired token for system/cron use (no user context needed).
 - `WarehouseItem.uniqueId` is the primary key for matching against `CatalogueLot.receiptUniqueId`.
 
+### BC Field Name Reference — Auction/Sale Identifiers
+
+| Endpoint | Code field | Name field | Notes |
+|---|---|---|---|
+| `EVA_AuctionLine` | `EVA_AuctionNo` | `EVA_AuctionName` | Auction-level lookup — use this to resolve auction names |
+| `Receipt_Lines_Excel` | `EVA_SalesAllocation` | _(no name field)_ | Item-level — `EVA_SalesAllocation` matches `WarehouseItem.auctionCode` |
+| `Auction_Receipt_Lines_Excel` | `EVA_SalesAllocation` | _(no name field)_ | Item-level auction receipt lines |
+
+**To resolve auction names:** join `EVA_AuctionNo` from `EVA_AuctionLine` against `EVA_SalesAllocation` from `Receipt_Lines_Excel` / `WarehouseItem.auctionCode`.
+
+**Do not** use `CatalogueAuction` for names in any BC warehouse view — it is the local cataloguing system and will have stale/wrong names for BC auction codes.
+
 ---
 
 ## API Route Patterns
