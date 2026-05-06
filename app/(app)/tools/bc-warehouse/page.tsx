@@ -1116,10 +1116,23 @@ type ToteReport = {
   totes: SearchTote[]
 }
 
+function HorizBar({ value, max, color = "bg-blue-500" }: { value: number; max: number; color?: string }) {
+  const pct = max > 0 ? Math.max((value / max) * 100, 0.5) : 0
+  return (
+    <div className="flex items-center gap-3 min-w-0">
+      <div className="flex-1 bg-gray-800 rounded-sm h-5 overflow-hidden">
+        <div className={`${color} h-full rounded-sm transition-all`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs font-mono text-gray-300 w-10 text-right flex-shrink-0">{value.toLocaleString()}</span>
+    </div>
+  )
+}
+
 function ToteDataTab() {
   const [data, setData]       = useState<ToteReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
+  const [view, setView]       = useState<"category" | "location" | "raw">("category")
   const [showAll, setShowAll] = useState(false)
 
   async function load() {
@@ -1136,7 +1149,7 @@ function ToteDataTab() {
   useEffect(() => { load() }, [])
 
   if (loading) return <div className="p-6 text-gray-400 text-sm">Loading tote report…</div>
-  if (error)   return (
+  if (error) return (
     <div className="p-6 space-y-3">
       <p className="text-red-400 text-sm">{error}</p>
       <button onClick={load} className="px-4 py-2 bg-red-900 hover:bg-red-800 text-white rounded text-sm">Retry</button>
@@ -1144,143 +1157,172 @@ function ToteDataTab() {
   )
   if (!data) return null
 
-  const { stats, byCategory, byLocation, totes } = data
-  const visibleTotes = showAll ? totes : totes.slice(0, 100)
+  const { stats, byLocation, totes } = data
+
+  // Sort byCategory by activeTotes desc for the chart
+  const byCategory = [...data.byCategory].sort((a, b) => b.activeTotes - a.activeTotes)
+  const maxTotes   = Math.max(...byCategory.map(r => r.activeTotes), 1)
+  const maxLoc     = Math.max(...byLocation.map(r => r.toteCount), 1)
+
+  const largestCategory = byCategory[0]?.category ?? "—"
+  const visibleTotes    = showAll ? totes : totes.slice(0, 150)
 
   return (
-    <div className="h-full overflow-y-auto p-5 space-y-6 max-w-5xl mx-auto">
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="px-6 pt-5 pb-4 border-b border-gray-800 flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Tote Report</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Active totes by category and location</p>
+        </div>
+        <button
+          onClick={load}
+          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium transition-colors"
+        >
+          ⟳ Refresh
+        </button>
+      </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "Total Totes",  value: stats.total,      color: "text-white" },
-          { label: "Active",       value: stats.active,     color: "text-amber-300" },
-          { label: "Catalogued",   value: stats.catalogued, color: "text-green-400" },
-          { label: "Unknown",      value: stats.unknown,    color: "text-gray-400" },
-        ].map(s => (
-          <div key={s.label} className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">{s.label}</div>
-            <div className={`text-3xl font-mono font-semibold ${s.color}`}>{s.value.toLocaleString()}</div>
+      <div className="grid grid-cols-3 gap-3 px-6 py-4 border-b border-gray-800">
+        <div className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Totes</div>
+          <div className="text-2xl font-mono font-semibold text-white">{stats.total.toLocaleString()}</div>
+          <div className="text-xs text-gray-600 mt-0.5">
+            <span className="text-amber-400">{stats.active.toLocaleString()} active</span>
+            {" · "}
+            <span className="text-gray-500">{(stats.total - stats.active).toLocaleString()} done</span>
           </div>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Categories</div>
+          <div className="text-2xl font-mono font-semibold text-white">{byCategory.length}</div>
+          <div className="text-xs text-gray-600 mt-0.5">with active totes</div>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Largest Category</div>
+          <div className="text-lg font-semibold text-white truncate">{largestCategory}</div>
+          <div className="text-xs text-amber-400 mt-0.5">{byCategory[0]?.activeTotes.toLocaleString() ?? 0} active totes</div>
+        </div>
+      </div>
+
+      {/* Sub-tab bar */}
+      <div className="flex gap-1 px-6 pt-3 border-b border-gray-800">
+        {([
+          { id: "category", label: "By Category" },
+          { id: "location", label: "By Location" },
+          { id: "raw",      label: `Raw Data (${totes.length.toLocaleString()})` },
+        ] as const).map(t => (
+          <button
+            key={t.id}
+            onClick={() => setView(t.id)}
+            className={`px-4 py-2 text-sm rounded-t transition-colors ${
+              view === t.id
+                ? "bg-gray-800 text-white border-b-2 border-blue-500"
+                : "text-gray-400 hover:text-gray-200"
+            }`}
+          >
+            {t.label}
+          </button>
         ))}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-5">
-        {/* Items in totes by category */}
-        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-800">
-            <h3 className="text-sm font-semibold text-white">Totes by Category</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Items in totes and active tote count per category</p>
-          </div>
-          {byCategory.length === 0 ? (
-            <div className="p-4 text-sm text-gray-600">No data</div>
-          ) : (
-            <div className="overflow-y-auto max-h-72">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-950 text-gray-500 sticky top-0">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-medium">Category</th>
-                    <th className="px-4 py-2 text-right font-medium">Items in totes</th>
-                    <th className="px-4 py-2 text-right font-medium">Active totes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800/60">
-                  {byCategory.map(row => (
-                    <tr key={row.category} className="hover:bg-gray-800/30">
-                      <td className="px-4 py-2 text-gray-200">{row.category}</td>
-                      <td className="px-4 py-2 text-right font-mono text-gray-300">{row.itemCount.toLocaleString()}</td>
-                      <td className="px-4 py-2 text-right font-mono">
-                        {row.activeTotes > 0
-                          ? <span className="text-amber-300">{row.activeTotes.toLocaleString()}</span>
-                          : <span className="text-gray-600">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+      {/* Chart / Table area */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
 
-        {/* Top locations by tote count */}
-        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-800">
-            <h3 className="text-sm font-semibold text-white">Top Locations by Tote Count</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Locations with the most totes assigned to them</p>
-          </div>
-          {byLocation.length === 0 ? (
-            <div className="p-4 text-sm text-gray-600">No data</div>
-          ) : (
-            <div className="overflow-y-auto max-h-72">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-950 text-gray-500 sticky top-0">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-medium">Location</th>
-                    <th className="px-4 py-2 text-right font-medium">Totes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800/60">
-                  {byLocation.map(row => (
-                    <tr key={row.location} className="hover:bg-gray-800/30">
-                      <td className="px-4 py-2 font-mono text-gray-200">{row.location ?? "—"}</td>
-                      <td className="px-4 py-2 text-right font-mono text-gray-300">{row.toteCount.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Active totes list */}
-      <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-white">Active Totes</h3>
-            <p className="text-xs text-gray-500 mt-0.5">{totes.length.toLocaleString()} totes not yet catalogued</p>
-          </div>
-          <button onClick={load} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">⟳ Refresh</button>
-        </div>
-        {totes.length === 0 ? (
-          <div className="p-6 text-center text-gray-600 text-sm">No active totes found</div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-950 text-gray-500">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-medium">Tote No</th>
-                    <th className="px-4 py-2 text-left font-medium">Location</th>
-                    <th className="px-4 py-2 text-left font-medium">Receipt</th>
-                    <th className="px-4 py-2 text-left font-medium">Vendor</th>
-                    <th className="px-4 py-2 text-left font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800/60">
-                  {visibleTotes.map(t => (
-                    <tr key={t.toteNo} className="hover:bg-gray-800/30 transition-colors">
-                      <td className="px-4 py-2.5 font-mono text-cyan-300 font-semibold">{t.toteNo}</td>
-                      <td className="px-4 py-2.5 font-mono text-gray-400">{t.location ?? <span className="text-gray-700">—</span>}</td>
-                      <td className="px-4 py-2.5 text-gray-400">{t.receiptNo ?? <span className="text-gray-700">—</span>}</td>
-                      <td className="px-4 py-2.5 text-gray-300">{t.vendorName ?? t.vendorNo ?? <span className="text-gray-700">—</span>}</td>
-                      <td className="px-4 py-2.5 text-gray-500">{t.status && t.status !== "No Reserve" ? t.status : <span className="text-gray-700">—</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {totes.length > 100 && (
-              <div className="px-4 py-3 border-t border-gray-800 text-center">
-                <button
-                  onClick={() => setShowAll(v => !v)}
-                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  {showAll ? `Show fewer` : `Show all ${totes.length.toLocaleString()} totes`}
-                </button>
-              </div>
+        {/* ── By Category chart ── */}
+        {view === "category" && (
+          <div className="space-y-1.5 max-w-3xl">
+            {byCategory.length === 0 && (
+              <div className="text-gray-600 text-sm">No active totes found</div>
             )}
-          </>
+            {byCategory.map(row => (
+              <div key={row.category} className="grid items-center gap-3" style={{ gridTemplateColumns: "180px 1fr" }}>
+                <div className="text-xs text-gray-400 text-right truncate pr-2 font-mono">{row.category}</div>
+                <HorizBar value={row.activeTotes} max={maxTotes} color="bg-blue-500" />
+              </div>
+            ))}
+            {/* x-axis ticks */}
+            <div className="grid gap-3 mt-2 text-xs text-gray-600" style={{ gridTemplateColumns: "180px 1fr" }}>
+              <div />
+              <div className="flex justify-between pr-10">
+                <span>0</span>
+                <span>{Math.round(maxTotes / 4)}</span>
+                <span>{Math.round(maxTotes / 2)}</span>
+                <span>{Math.round((maxTotes * 3) / 4)}</span>
+                <span>{maxTotes}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── By Location chart ── */}
+        {view === "location" && (
+          <div className="space-y-1.5 max-w-3xl">
+            {byLocation.length === 0 && (
+              <div className="text-gray-600 text-sm">No location data found</div>
+            )}
+            {byLocation.map(row => (
+              <div key={row.location} className="grid items-center gap-3" style={{ gridTemplateColumns: "120px 1fr" }}>
+                <div className="text-xs text-gray-400 text-right truncate pr-2 font-mono">{row.location ?? "—"}</div>
+                <HorizBar value={row.toteCount} max={maxLoc} color="bg-cyan-500" />
+              </div>
+            ))}
+            <div className="grid gap-3 mt-2 text-xs text-gray-600" style={{ gridTemplateColumns: "120px 1fr" }}>
+              <div />
+              <div className="flex justify-between pr-10">
+                <span>0</span>
+                <span>{Math.round(maxLoc / 4)}</span>
+                <span>{Math.round(maxLoc / 2)}</span>
+                <span>{Math.round((maxLoc * 3) / 4)}</span>
+                <span>{maxLoc}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Raw data table ── */}
+        {view === "raw" && (
+          <div className="border border-gray-800 rounded-lg overflow-hidden">
+            {totes.length === 0 ? (
+              <div className="p-6 text-center text-gray-600 text-sm">No active totes found</div>
+            ) : (
+              <>
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-900 text-gray-500 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium">Tote No</th>
+                      <th className="px-4 py-2 text-left font-medium">Location</th>
+                      <th className="px-4 py-2 text-left font-medium">Receipt</th>
+                      <th className="px-4 py-2 text-left font-medium">Vendor</th>
+                      <th className="px-4 py-2 text-left font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/60">
+                    {visibleTotes.map(t => (
+                      <tr key={t.toteNo} className="hover:bg-gray-800/30 transition-colors">
+                        <td className="px-4 py-2.5 font-mono text-cyan-300 font-semibold">{t.toteNo}</td>
+                        <td className="px-4 py-2.5 font-mono text-gray-400">{t.location ?? <span className="text-gray-700">—</span>}</td>
+                        <td className="px-4 py-2.5 text-gray-400">{t.receiptNo ?? <span className="text-gray-700">—</span>}</td>
+                        <td className="px-4 py-2.5 text-gray-300">{t.vendorName ?? <span className="text-gray-700">—</span>}</td>
+                        <td className="px-4 py-2.5 text-gray-500">{t.status && t.status !== "No Reserve" ? t.status : <span className="text-gray-700">—</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {totes.length > 150 && (
+                  <div className="px-4 py-3 border-t border-gray-800 text-center bg-gray-900">
+                    <button
+                      onClick={() => setShowAll(v => !v)}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      {showAll ? "Show fewer" : `Show all ${totes.length.toLocaleString()} totes`}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>
