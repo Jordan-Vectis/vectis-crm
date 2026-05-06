@@ -11,16 +11,9 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
   const token = await getBCToken()
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
-  const [uncat, cat, all] = await Promise.all([
-    bcPageWithNext(token, "Receipt_Totes_Excel", { $top: 1, "$count": "true", $filter: "EVA_TOT_Catalogued eq false" }),
-    bcPageWithNext(token, "Receipt_Totes_Excel", { $top: 1, "$count": "true", $filter: "EVA_TOT_Catalogued eq true" }),
-    bcPageWithNext(token, "Receipt_Totes_Excel", { $top: 1, "$count": "true" }),
-  ])
-  return NextResponse.json({
-    uncatalogued: { count: uncat.count ?? null, sample: uncat.rows[0] ?? null },
-    catalogued:   { count: cat.count   ?? null, sample: cat.rows[0]   ?? null },
-    noFilter:     { count: all.count   ?? null, sample: all.rows[0]   ?? null },
-  })
+  const { rows, count } = await bcPageWithNext(token, "Totes_Excel", { $top: 2, "$count": "true" })
+  if (!rows.length) return NextResponse.json({ bcCount: count ?? null, fields: [], sample: null })
+  return NextResponse.json({ bcCount: count ?? null, fields: Object.keys(rows[0]), sample: rows[0], sample2: rows[1] ?? null })
 }
 
 // POST /api/warehouse/sync/totes
