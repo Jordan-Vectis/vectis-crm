@@ -11,71 +11,76 @@ import { prisma } from "@/lib/prisma"
 // Runs after receipt-lines + auction-lines sync so codes are already present.
 
 export async function POST() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  try {
+    const session = await auth()
+    if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  const token = await getBCToken()
-  if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
+    const token = await getBCToken()
+    if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
 
-  // Get one representative uniqueId per distinct auctionCode (only where name is missing)
-  const rows = await prisma.warehouseItem.findMany({
-    where: { auctionCode: { not: null }, auctionName: null },
-    select: { auctionCode: true, uniqueId: true },
-    orderBy: { uniqueId: "asc" },
-  })
+    // Get one representative uniqueId per distinct auctionCode (only where name is missing)
+    const rows = await prisma.warehouseItem.findMany({
+      where: { auctionCode: { not: null }, auctionName: null },
+      select: { auctionCode: true, uniqueId: true },
+      orderBy: { uniqueId: "asc" },
+    })
 
-  const codeToUniqueId = new Map<string, string>()
-  for (const r of rows) {
-    if (!codeToUniqueId.has(r.auctionCode!)) {
-      codeToUniqueId.set(r.auctionCode!, r.uniqueId)
-    }
-  }
-
-  if (codeToUniqueId.size === 0) {
-    return NextResponse.json({ ok: true, codesFound: 0, namesWritten: 0, message: "All names already stored" })
-  }
-
-  const entries    = [...codeToUniqueId.entries()]
-  const BATCH      = 30
-  let namesWritten = 0
-  const errors: string[] = []
-
-  for (let i = 0; i < entries.length; i += BATCH) {
-    const batch  = entries.slice(i, i + BATCH)
-    const filter = batch.map(([, id]) => `EVA_UniqueID eq '${id}'`).join(" or ")
-
-    try {
-      const bcRows = await bcPage(token, "Auction_Lines_Excel", {
-        $filter: filter,
-        $top:    batch.length + 5,
-      })
-
-      const updates: Promise<any>[] = []
-      for (const r of bcRows) {
-        const uid  = String(r.EVA_UniqueID    ?? "").trim()
-        const name = String(r.EVA_AuctionName ?? "").trim()
-        if (!uid || !name) continue
-
-        const code = batch.find(([, id]) => id === uid)?.[0]
-        if (!code) continue
-
-        updates.push(
-          prisma.warehouseItem.updateMany({
-            where: { auctionCode: code },
-            data:  { auctionName: name },
-          }).then(res => { namesWritten += res.count }),
-        )
+    const codeToUniqueId = new Map<string, string>()
+    for (const r of rows) {
+      if (!codeToUniqueId.has(r.auctionCode!)) {
+        codeToUniqueId.set(r.auctionCode!, r.uniqueId)
       }
-      await Promise.all(updates)
-    } catch (e: any) {
-      errors.push(e.message)
     }
-  }
 
-  return NextResponse.json({
-    ok:           errors.length === 0,
-    codesFound:   codeToUniqueId.size,
-    namesWritten,
-    errors:       errors.length > 0 ? errors : undefined,
-  })
+    if (codeToUniqueId.size === 0) {
+      return NextResponse.json({ ok: true, codesFound: 0, namesWritten: 0, message: "All names already stored" })
+    }
+
+    const entries    = [...codeToUniqueId.entries()]
+    const BATCH      = 30
+    let namesWritten = 0
+    const errors: string[] = []
+
+    for (let i = 0; i < entries.length; i += BATCH) {
+      const batch  = entries.slice(i, i + BATCH)
+      const filter = batch.map(([, id]) => `EVA_UniqueID eq '${id}'`).join(" or ")
+
+      try {
+        const bcRows = await bcPage(token, "Auction_Lines_Excel", {
+          $filter: filter,
+          $top:    batch.length + 5,
+        })
+
+        const updates: Promise<any>[] = []
+        for (const r of bcRows) {
+          const uid  = String(r.EVA_UniqueID    ?? "").trim()
+          const name = String(r.EVA_AuctionName ?? "").trim()
+          if (!uid || !name) continue
+
+          const code = batch.find(([, id]) => id === uid)?.[0]
+          if (!code) continue
+
+          updates.push(
+            prisma.warehouseItem.updateMany({
+              where: { auctionCode: code },
+              data:  { auctionName: name },
+            }).then(res => { namesWritten += res.count }),
+          )
+        }
+        await Promise.all(updates)
+      } catch (e: any) {
+        errors.push(e.message)
+      }
+    }
+
+    return NextResponse.json({
+      ok:           errors.length === 0,
+      codesFound:   codeToUniqueId.size,
+      namesWritten,
+      errors:       errors.length > 0 ? errors : undefined,
+    })
+  } catch (e: any) {
+    console.error("auction-names sync error:", e)
+    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 })
+  }
 }

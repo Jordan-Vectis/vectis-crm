@@ -299,13 +299,23 @@ If this tab genuinely needs to change, discuss it first and update this rule.
 
 ## API Route Patterns
 
-Every auction-AI route must auth-check first:
+**Every route handler must be wrapped in try/catch.** Unhandled exceptions produce HTML error
+pages which break any client doing `res.json()`. The pattern for every route:
+
 ```typescript
-const session = await auth()
-if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+export async function GET(req: NextRequest) {
+  try {
+    const session = await auth()
+    if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+    // ... logic ...
+  } catch (e: any) {
+    console.error("route-name error:", e)
+    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 })
+  }
+}
 ```
 
-Error response shape: `{ error: string }` always.
+Error response shape: `{ error: string }` always — never let an exception escape as HTML.
 
 HTTP status codes used:
 - 401: Missing/invalid session

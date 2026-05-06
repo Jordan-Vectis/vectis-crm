@@ -47,65 +47,67 @@ function isExactAisle(location: string | null, aisle: string): boolean {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  try {
+    const session = await auth()
+    if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  // Accept either ?q= or legacy ?location=
-  const raw  = (req.nextUrl.searchParams.get("q") ?? req.nextUrl.searchParams.get("location") ?? "").trim()
-  const mode = req.nextUrl.searchParams.get("mode") ?? "exact"
-  if (!raw) return NextResponse.json({ items: [], totes: [], total: 0 })
+    const raw  = (req.nextUrl.searchParams.get("q") ?? req.nextUrl.searchParams.get("location") ?? "").trim()
+    const mode = req.nextUrl.searchParams.get("mode") ?? "exact"
+    if (!raw) return NextResponse.json({ items: [], totes: [], total: 0 })
 
-  const q = raw.toUpperCase()
+    const q = raw.toUpperCase()
 
-  // ── Aisle mode ───────────────────────────────────────────────────────────────
-  if (mode === "aisle") {
-    const locationWhere = { startsWith: q, mode: "insensitive" as const }
+    // ── Aisle mode ───────────────────────────────────────────────────────────────
+    if (mode === "aisle") {
+      const locationWhere = { startsWith: q, mode: "insensitive" as const }
+      const [rawItems, rawTotes] = await Promise.all([
+        prisma.warehouseItem.findMany({
+          where: { location: locationWhere },
+          select: ITEM_SELECT,
+          orderBy: { location: "asc" },
+          take: 5000,
+        }),
+        prisma.warehouseTote.findMany({
+          where: { location: locationWhere },
+          select: TOTE_SELECT,
+          orderBy: { toteNo: "asc" },
+          take: 5000,
+        }),
+      ])
+      const items = rawItems.filter(i => isExactAisle(i.location, q)).slice(0, 500)
+      const totes = rawTotes.filter(t => isExactAisle(t.location, q)).slice(0, 500)
+      return NextResponse.json({ items, totes, total: items.length + totes.length })
+    }
+
+    // ── Specific mode ────────────────────────────────────────────────────────────
     const [rawItems, rawTotes] = await Promise.all([
       prisma.warehouseItem.findMany({
-        where: { location: locationWhere },
+        where: {
+          OR: [
+            { location: { equals: q, mode: "insensitive" } },
+            { barcode:  { equals: q, mode: "insensitive" } },
+          ],
+        },
         select: ITEM_SELECT,
         orderBy: { location: "asc" },
-        take: 5000,
+        take: 500,
       }),
       prisma.warehouseTote.findMany({
-        where: { location: locationWhere },
+        where: {
+          OR: [
+            { location: { equals: q, mode: "insensitive" } },
+            { toteNo:   { equals: q, mode: "insensitive" } },
+          ],
+        },
         select: TOTE_SELECT,
         orderBy: { toteNo: "asc" },
-        take: 5000,
+        take: 500,
       }),
     ])
-    const items = rawItems.filter(i => isExactAisle(i.location, q)).slice(0, 500)
-    const totes = rawTotes.filter(t => isExactAisle(t.location, q)).slice(0, 500)
-    return NextResponse.json({ items, totes, total: items.length + totes.length })
+
+    return NextResponse.json({ items: rawItems, totes: rawTotes, total: rawItems.length + rawTotes.length })
+  } catch (e: any) {
+    console.error("warehouse search error:", e)
+    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 })
   }
-
-  // ── Specific mode: search location, barcode, and tote number simultaneously ──
-  // Items: match on location OR barcode
-  // Totes: match on location OR toteNo
-  const [rawItems, rawTotes] = await Promise.all([
-    prisma.warehouseItem.findMany({
-      where: {
-        OR: [
-          { location: { equals: q, mode: "insensitive" } },
-          { barcode:  { equals: q, mode: "insensitive" } },
-        ],
-      },
-      select: ITEM_SELECT,
-      orderBy: { location: "asc" },
-      take: 500,
-    }),
-    prisma.warehouseTote.findMany({
-      where: {
-        OR: [
-          { location: { equals: q, mode: "insensitive" } },
-          { toteNo:   { equals: q, mode: "insensitive" } },
-        ],
-      },
-      select: TOTE_SELECT,
-      orderBy: { toteNo: "asc" },
-      take: 500,
-    }),
-  ])
-
-  return NextResponse.json({ items: rawItems, totes: rawTotes, total: rawItems.length + rawTotes.length })
 }
