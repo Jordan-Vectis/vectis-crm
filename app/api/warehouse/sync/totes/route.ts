@@ -57,10 +57,10 @@ export async function POST(req: NextRequest) {
       urlOrEndpoint = nextLink
       initialParams = undefined
     } else {
-      // Only sync active (uncatalogued) totes — completed ones are filtered out.
       // Receipt_Totes_Excel has no SystemModifiedAt field so we always pull the full set.
+      // $orderby is required for BC to emit consistent @odata.nextLink across pages.
       urlOrEndpoint = "Receipt_Totes_Excel"
-      initialParams = { $filter: "EVA_TOT_Catalogued eq false" }
+      initialParams = { $orderby: "SystemCreatedAt asc" }
     }
 
     let currentLink: string | null = null
