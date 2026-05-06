@@ -3,29 +3,31 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 
 // GET /api/warehouse/tote/report
+// Category breakdown uses active totes only (WarehouseTote.catalogued = false,
+// i.e. the ones synced from Receipt_Totes_Excel).
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
   const [toteStats, byLocation, recentTotes, totesPerCategory] = await Promise.all([
-    // Overall tote counts from WarehouseTote
+    // Overall tote counts
     prisma.warehouseTote.groupBy({
       by: ["catalogued"],
       _count: { _all: true },
     }),
 
-    // Totes grouped by location (top 20)
+    // Active totes grouped by location (top 20)
     prisma.warehouseTote.groupBy({
       by: ["location"],
-      where: { location: { not: null } },
+      where: { catalogued: false, location: { not: null } },
       _count: { _all: true },
       orderBy: { _count: { location: "desc" } },
       take: 20,
     }),
 
-    // Active totes list (not catalogued)
+    // Active totes list
     prisma.warehouseTote.findMany({
-      where: { catalogued: { not: true } },
+      where: { catalogued: false },
       select: {
         toteNo:     true,
         location:   true,
@@ -39,32 +41,32 @@ export async function GET() {
       take: 500,
     }),
 
-    // Distinct tote count per category, sourced directly from WarehouseItem.
-    // We count distinct toteNo values per category — no join with WarehouseTote
-    // needed, which avoids the match rate problem when the two tables don't align.
+    // Active totes per category: join WarehouseTote (active only) → WarehouseItem
+    // to count how many active totes contain items of each category.
     prisma.$queryRaw<{ category: string | null; toteCount: bigint; itemCount: bigint }[]>`
       SELECT
-        category,
-        COUNT(DISTINCT "toteNo") AS "toteCount",
-        COUNT(*)                 AS "itemCount"
-      FROM "WarehouseItem"
-      WHERE "toteNo" IS NOT NULL
-      GROUP BY category
+        wi.category,
+        COUNT(DISTINCT wt."toteNo") AS "toteCount",
+        COUNT(wi."uniqueId")        AS "itemCount"
+      FROM "WarehouseTote" wt
+      INNER JOIN "WarehouseItem" wi ON wi."toteNo" = wt."toteNo"
+      WHERE wt.catalogued = false
+      GROUP BY wi.category
       ORDER BY "toteCount" DESC
     `,
   ])
 
-  const totalTotes  = toteStats.reduce((s, g) => s + g._count._all, 0)
-  const activeTotes = toteStats.find(g => g.catalogued === false)?._count._all ?? 0
-  const doneTotes   = toteStats.find(g => g.catalogued === true)?._count._all  ?? 0
-  const unknownTotes = toteStats.find(g => g.catalogued === null)?._count._all ?? 0
+  const totalTotes   = toteStats.reduce((s, g) => s + g._count._all, 0)
+  const activeTotes  = toteStats.find(g => g.catalogued === false)?._count._all ?? 0
+  const doneTotes    = toteStats.find(g => g.catalogued === true)?._count._all  ?? 0
+  const unknownTotes = toteStats.find(g => g.catalogued === null)?._count._all  ?? 0
 
   return NextResponse.json({
     stats: { total: totalTotes, active: activeTotes, catalogued: doneTotes, unknown: unknownTotes },
     byCategory: totesPerCategory.map(r => ({
       category:    r.category ?? "Unknown",
       itemCount:   Number(r.itemCount),
-      activeTotes: Number(r.toteCount),   // kept as activeTotes so the frontend type stays the same
+      activeTotes: Number(r.toteCount),
     })),
     byLocation: byLocation.map(g => ({ location: g.location, toteCount: g._count._all })),
     totes: recentTotes,
