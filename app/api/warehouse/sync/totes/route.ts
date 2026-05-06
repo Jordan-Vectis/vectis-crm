@@ -49,9 +49,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const urlOrEndpoint = nextLink ?? "Totes_Excel"
+    // No $orderby — BC skiptoken pagination doesn't require explicit ordering
+    // and sorting adds overhead on this table slowing each page response
     const initialParams = nextLink ? undefined : {
       $filter: "startswith(EVA_No,'T') or startswith(EVA_No,'P')",
-      $orderby: "EVA_No asc",
     }
 
     let currentLink: string | null = null
