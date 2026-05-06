@@ -290,8 +290,8 @@ If this tab genuinely needs to change, discuss it first and update this rule.
 | `Receipt_Lines_Excel` | `EVA_SalesAllocation` | _(no name field)_ | Item-level — `EVA_SalesAllocation` matches `WarehouseItem.auctionCode` |
 | `Auction_Receipt_Lines_Excel` | `EVA_SalesAllocation` | _(no name field)_ | Item-level auction receipt lines |
 
-**To resolve auction names:** fetch `Auction_Lines_Excel`, match `EVA_SalesAllocation` (F-codes) against `WarehouseItem.auctionCode`, name is `EVA_AuctionName`.
-Note: `EVA_AuctionNo` on `Auction_Lines_Excel` holds A/B-style auction numbers — NOT the F-codes.
+**To resolve auction names:** fetch `Auction_Lines_Excel` using `$apply=groupby((EVA_AuctionNo,EVA_AuctionName))` to get one row per auction code. Match `EVA_AuctionNo` against `WarehouseItem.auctionCode`. Name is `EVA_AuctionName`.
+**Important:** `Auction_Lines_Excel` is item-level (one row per lot) — never use `$top` alone to get auction names as you'll miss most codes. Always use `$apply=groupby`.
 
 **Do not** use `CatalogueAuction` for names in any BC warehouse view — it is the local cataloguing system and will have stale/wrong names for BC auction codes.
 
