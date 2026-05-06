@@ -638,8 +638,7 @@ function WarehouseHeatmapTab() {
                           </div>
                         )}
                         {item.barcode     && <div><span className="text-gray-600">Barcode </span><span className="font-mono">{item.barcode}</span></div>}
-                        {item.lotNo       && <div><span className="text-gray-600">Lot </span>{item.lotNo}</div>}
-                        {item.currentLotNo && item.currentLotNo !== item.lotNo && <div><span className="text-gray-600">Current lot </span>{item.currentLotNo}</div>}
+                        {(() => { const lot = item.currentLotNo ?? item.lotNo; return lot && lot !== "0" ? <div><span className="text-gray-600">Lot </span>{lot}</div> : null })()}
                         {item.toteNo      && <div><span className="text-gray-600">Tote </span>{item.toteNo}</div>}
                         {item.binCode     && <div><span className="text-gray-600">Bin </span>{item.binCode}</div>}
                         {item.category    && <div><span className="text-gray-600">Category </span>{item.category}</div>}
