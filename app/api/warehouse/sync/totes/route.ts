@@ -5,27 +5,7 @@ import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 300
 
-function parseDate(v: any): Date | null {
-  if (!v) return null
-  const d = new Date(v)
-  return isNaN(d.getTime()) ? null : d
-}
-
-// Pull a tote number from the row defensively — BC field names vary by tenant
-function pickToteNo(r: any): string | null {
-  const candidates = [
-    r.EVA_ToteNo, r.EVA_ArticleToteNo, r.EVA_TOT_ToteNo,
-    r.EVA_TOT_No, r.ToteNo, r.No, r.EVA_TOT_RecordNo,
-  ]
-  for (const c of candidates) {
-    if (c == null) continue
-    const s = String(c).trim()
-    if (s) return s
-  }
-  return null
-}
-
-// GET /api/warehouse/sync/totes — probe: returns the raw field names from the first BC row
+// GET /api/warehouse/sync/totes — probe: returns raw field names + first 2 rows from BC
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
@@ -37,9 +17,9 @@ export async function GET() {
 }
 
 // POST /api/warehouse/sync/totes
-// Same nextLink-based pattern as receipt-lines. Pulls Receipt_Totes_Excel and
-// upserts into WarehouseTote so totes can be counted on the heatmap even when
-// no individual items are scanned in yet.
+// Pulls Receipt_Totes_Excel (only uncatalogued / active totes) and upserts into
+// WarehouseTote so totes appear on the heatmap even before items are scanned in.
+// On full re-sync the table is cleared first so stale completed totes don't linger.
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
@@ -57,6 +37,11 @@ export async function POST(req: NextRequest) {
     if (body?.maxItems) maxItems = body.maxItems
   } catch {}
 
+  // On the first batch of a full re-sync, clear the table so completed totes don't linger
+  if (full && !nextLink) {
+    await prisma.warehouseTote.deleteMany({})
+  }
+
   const syncLog = await prisma.warehouseSyncLog.create({
     data: { source: "totes", status: "running" },
   })
@@ -66,15 +51,16 @@ export async function POST(req: NextRequest) {
 
   try {
     let urlOrEndpoint: string
-    let initialParams: Record<string, string | number> | undefined
+    let initialParams: Record<string, string> | undefined
 
     if (nextLink) {
       urlOrEndpoint = nextLink
       initialParams = undefined
     } else {
-      // Receipt_Totes_Excel has no SystemModifiedAt field — always pull the full set
+      // Only sync active (uncatalogued) totes — completed ones are filtered out.
+      // Receipt_Totes_Excel has no SystemModifiedAt field so we always pull the full set.
       urlOrEndpoint = "Receipt_Totes_Excel"
-      initialParams = {}
+      initialParams = { $filter: "EVA_TOT_Catalogued eq false" }
     }
 
     let currentLink: string | null = null
@@ -97,30 +83,30 @@ export async function POST(req: NextRequest) {
 
       const CHUNK = 20
       const upserts: Promise<any>[] = []
-      const validRows = rows.filter(r => pickToteNo(r))
-      for (const r of validRows) {
-        const toteNo = pickToteNo(r)!
+
+      for (const r of rows) {
+        const toteNo = String(r.EVA_TOT_ToteNo ?? "").trim()
+        if (!toteNo) continue
+
         upserts.push(prisma.warehouseTote.upsert({
           where:  { toteNo },
           update: {
-            location:     r.EVA_ArticleLocationCode ?? r.EVA_TOT_Location ?? r.Location ?? null,
-            binCode:      r.EVA_ArticleBinCode      ?? r.EVA_TOT_BinCode  ?? null,
-            receiptNo:    r.EVA_ReceiptNo           ?? null,
-            vendorNo:     r.EVA_VendorNo            ?? null,
-            vendorName:   r.EVA_VendorName          ?? null,
-            status:       r.EVA_Status ?? r.Status ?? null,
-            bcModifiedAt: parseDate(r.EVA_SystemModifiedAt),
-            syncedAt:     new Date(),
+            location:   (r.EVA_TOT_ToteLocation  != null ? String(r.EVA_TOT_ToteLocation).trim()  : null) || null,
+            receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
+            vendorNo:   r.EVA_TOT_VendorNo   ?? null,
+            vendorName: r.EVA_TOT_VendorName ?? null,
+            status:     r.EVA_TOT_ReserveStatus ?? null,
+            catalogued: r.EVA_TOT_Catalogued === true || r.EVA_TOT_Catalogued === 1,
+            syncedAt:   new Date(),
           },
           create: {
             toteNo,
-            location:     r.EVA_ArticleLocationCode ?? r.EVA_TOT_Location ?? r.Location ?? null,
-            binCode:      r.EVA_ArticleBinCode      ?? r.EVA_TOT_BinCode  ?? null,
-            receiptNo:    r.EVA_ReceiptNo           ?? null,
-            vendorNo:     r.EVA_VendorNo            ?? null,
-            vendorName:   r.EVA_VendorName          ?? null,
-            status:       r.EVA_Status ?? r.Status ?? null,
-            bcModifiedAt: parseDate(r.EVA_SystemModifiedAt),
+            location:   (r.EVA_TOT_ToteLocation  != null ? String(r.EVA_TOT_ToteLocation).trim()  : null) || null,
+            receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
+            vendorNo:   r.EVA_TOT_VendorNo   ?? null,
+            vendorName: r.EVA_TOT_VendorName ?? null,
+            status:     r.EVA_TOT_ReserveStatus ?? null,
+            catalogued: r.EVA_TOT_Catalogued === true || r.EVA_TOT_Catalogued === 1,
           },
         }))
       }
@@ -128,7 +114,7 @@ export async function POST(req: NextRequest) {
       for (let i = 0; i < upserts.length; i += CHUNK) {
         await Promise.all(upserts.slice(i, i + CHUNK))
       }
-      itemsProcessed += validRows.length
+      itemsProcessed += upserts.length
 
       if (!nl) break
     }
@@ -137,22 +123,10 @@ export async function POST(req: NextRequest) {
 
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },
-      data: {
-        status:         "complete",
-        completedAt:    new Date(),
-        itemsProcessed,
-      },
+      data: { status: "complete", completedAt: new Date(), itemsProcessed },
     })
 
-    return NextResponse.json({
-      ok:           true,
-      itemsProcessed,
-      incremental:  false,
-      more,
-      nextLink:     currentLink,
-      full,
-      pages:        pageCount,
-    })
+    return NextResponse.json({ ok: true, itemsProcessed, incremental: false, more, nextLink: currentLink, full, pages: pageCount })
   } catch (e: any) {
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },
