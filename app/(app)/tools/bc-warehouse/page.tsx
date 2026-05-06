@@ -259,7 +259,7 @@ function parseLocation(code: string): { aisle: string; bay: string; shelf: strin
 const HEAT_FILTER_LABELS: Record<HeatFilter, string> = {
   all:                "All",
   active:             "Active",
-  catalogued_located: "Catalogued + Located",
+  catalogued_located: "Catalogued totes (located)",
   barcodes:           "Barcodes only",
   totes_only:         "Totes only",
 }

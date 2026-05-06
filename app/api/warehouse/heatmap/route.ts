@@ -28,10 +28,11 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Tote filter predicate ───────────────────────────────────────────────────
-  // Totes excluded when: barcodes filter (totes have no barcode),
-  //                      totes_only mode still shows totes,
-  //                      auction filter (totes have no auction code).
-  const showItems = filter !== "totes_only"
+  // catalogued_located = totes that are done but still have a location (totes only, not items)
+  // totes_only         = all totes, no items
+  // barcodes           = items with a barcode, no totes
+  // auction            = items in that auction, no totes (totes have no auction code)
+  const showItems = filter !== "totes_only" && filter !== "catalogued_located"
   const showTotes = filter !== "barcodes" && !auction
 
   const toteFilter: Record<string, any> = {}
