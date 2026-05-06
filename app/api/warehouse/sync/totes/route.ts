@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 300
 
-// GET /api/warehouse/sync/totes — probe: returns raw field names + first 2 rows from BC
+// GET /api/warehouse/sync/totes — probe: returns raw field names + count from Totes_Excel
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
@@ -17,9 +17,21 @@ export async function GET() {
 }
 
 // POST /api/warehouse/sync/totes
-// Pulls Receipt_Totes_Excel (only uncatalogued / active totes) and upserts into
-// WarehouseTote so totes appear on the heatmap even before items are scanned in.
-// On full re-sync the table is cleared first so stale completed totes don't linger.
+//
+// Two-pass sync — the client loop drives both passes via nextLink:
+//
+//   Pass 1 — Totes_Excel:
+//     All totes (catalogued + uncatalogued) with basic location data.
+//     Uses EVA_No as the tote identifier.
+//     When BC has no more pages, server returns nextLink="PASS2" and more=true.
+//
+//   Pass 2 — Receipt_Totes_Excel:
+//     Active (uncatalogued) totes only with richer data (vendor, reserve status).
+//     Uses EVA_TOT_ToteNo as the tote identifier.
+//     Upserts enrich/overwrite Pass 1 data for any matching totes.
+//     When complete, returns more=false.
+//
+// On full re-sync the table is cleared before Pass 1 begins.
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
@@ -37,7 +49,13 @@ export async function POST(req: NextRequest) {
     if (body?.maxItems) maxItems = body.maxItems
   } catch {}
 
-  // On the first batch of a full re-sync, clear the table so completed totes don't linger
+  // Determine which pass we're in from the nextLink sentinel
+  const isPass2 = nextLink === "PASS2" || nextLink?.startsWith("PASS2:")
+  const pass2NextLink = isPass2
+    ? (nextLink === "PASS2" ? null : nextLink!.slice(6))
+    : null
+
+  // Clear the table at the start of a full re-sync (before Pass 1 only)
   if (full && !nextLink) {
     await prisma.warehouseTote.deleteMany({})
   }
@@ -53,14 +71,18 @@ export async function POST(req: NextRequest) {
     let urlOrEndpoint: string
     let initialParams: Record<string, string> | undefined
 
-    if (nextLink) {
+    if (isPass2) {
+      // Pass 2: Receipt_Totes_Excel — active totes with richer detail
+      urlOrEndpoint = pass2NextLink ?? "Receipt_Totes_Excel"
+      initialParams = pass2NextLink ? undefined : { $orderby: "SystemCreatedAt asc" }
+    } else if (nextLink) {
+      // Pass 1 continuation via BC nextLink
       urlOrEndpoint = nextLink
       initialParams = undefined
     } else {
-      // Receipt_Totes_Excel has no SystemModifiedAt field so we always pull the full set.
-      // $orderby is required for BC to emit consistent @odata.nextLink across pages.
-      urlOrEndpoint = "Receipt_Totes_Excel"
-      initialParams = { $orderby: "SystemCreatedAt asc" }
+      // Pass 1 start: all totes from Totes_Excel
+      urlOrEndpoint = "Totes_Excel"
+      initialParams = { $orderby: "EVA_No asc" }
     }
 
     let currentLink: string | null = null
@@ -84,31 +106,50 @@ export async function POST(req: NextRequest) {
       const CHUNK = 20
       const upserts: Promise<any>[] = []
 
-      for (const r of rows) {
-        const toteNo = String(r.EVA_TOT_ToteNo ?? "").trim()
-        if (!toteNo) continue
-
-        upserts.push(prisma.warehouseTote.upsert({
-          where:  { toteNo },
-          update: {
-            location:   (r.EVA_TOT_ToteLocation  != null ? String(r.EVA_TOT_ToteLocation).trim()  : null) || null,
-            receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
-            vendorNo:   r.EVA_TOT_VendorNo   ?? null,
-            vendorName: r.EVA_TOT_VendorName ?? null,
-            status:     r.EVA_TOT_ReserveStatus ?? null,
-            catalogued: r.EVA_TOT_Catalogued === true || r.EVA_TOT_Catalogued === 1,
-            syncedAt:   new Date(),
-          },
-          create: {
-            toteNo,
-            location:   (r.EVA_TOT_ToteLocation  != null ? String(r.EVA_TOT_ToteLocation).trim()  : null) || null,
-            receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
-            vendorNo:   r.EVA_TOT_VendorNo   ?? null,
-            vendorName: r.EVA_TOT_VendorName ?? null,
-            status:     r.EVA_TOT_ReserveStatus ?? null,
-            catalogued: r.EVA_TOT_Catalogued === true || r.EVA_TOT_Catalogued === 1,
-          },
-        }))
+      if (isPass2) {
+        // Pass 2: Receipt_Totes_Excel fields
+        for (const r of rows) {
+          const toteNo = String(r.EVA_TOT_ToteNo ?? "").trim()
+          if (!toteNo) continue
+          upserts.push(prisma.warehouseTote.upsert({
+            where:  { toteNo },
+            update: {
+              location:   String(r.EVA_TOT_ToteLocation ?? "").trim() || null,
+              receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
+              vendorNo:   r.EVA_TOT_VendorNo   ?? null,
+              vendorName: r.EVA_TOT_VendorName ?? null,
+              status:     r.EVA_TOT_ReserveStatus ?? null,
+              catalogued: r.EVA_TOT_Catalogued === true || r.EVA_TOT_Catalogued === 1,
+              syncedAt:   new Date(),
+            },
+            create: {
+              toteNo,
+              location:   String(r.EVA_TOT_ToteLocation ?? "").trim() || null,
+              receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
+              vendorNo:   r.EVA_TOT_VendorNo   ?? null,
+              vendorName: r.EVA_TOT_VendorName ?? null,
+              status:     r.EVA_TOT_ReserveStatus ?? null,
+              catalogued: r.EVA_TOT_Catalogued === true || r.EVA_TOT_Catalogued === 1,
+            },
+          }))
+        }
+      } else {
+        // Pass 1: Totes_Excel fields
+        for (const r of rows) {
+          const toteNo = String(r.EVA_No ?? "").trim()
+          if (!toteNo) continue
+          upserts.push(prisma.warehouseTote.upsert({
+            where:  { toteNo },
+            update: {
+              location: String(r.EVA_Location ?? "").trim() || null,
+              syncedAt: new Date(),
+            },
+            create: {
+              toteNo,
+              location: String(r.EVA_Location ?? "").trim() || null,
+            },
+          }))
+        }
       }
 
       for (let i = 0; i < upserts.length; i += CHUNK) {
@@ -119,14 +160,48 @@ export async function POST(req: NextRequest) {
       if (!nl) break
     }
 
-    const more = !!currentLink
+    // Pass 1 finished — signal client to start Pass 2
+    if (!isPass2 && !currentLink) {
+      await prisma.warehouseSyncLog.update({
+        where: { id: syncLog.id },
+        data: { status: "complete", completedAt: new Date(), itemsProcessed },
+      })
+      return NextResponse.json({
+        ok: true, itemsProcessed, more: true, nextLink: "PASS2", full, pages: pageCount,
+      })
+    }
 
+    // Pass 1 timed out / hit maxItems — continue with BC nextLink
+    if (!isPass2 && currentLink) {
+      await prisma.warehouseSyncLog.update({
+        where: { id: syncLog.id },
+        data: { status: "complete", completedAt: new Date(), itemsProcessed },
+      })
+      return NextResponse.json({
+        ok: true, itemsProcessed, more: true, nextLink: currentLink, full, pages: pageCount,
+      })
+    }
+
+    // Pass 2 timed out / hit maxItems — continue with Pass 2 nextLink
+    if (isPass2 && currentLink) {
+      await prisma.warehouseSyncLog.update({
+        where: { id: syncLog.id },
+        data: { status: "complete", completedAt: new Date(), itemsProcessed },
+      })
+      return NextResponse.json({
+        ok: true, itemsProcessed, more: true, nextLink: `PASS2:${currentLink}`, full, pages: pageCount,
+      })
+    }
+
+    // Pass 2 complete — all done
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },
       data: { status: "complete", completedAt: new Date(), itemsProcessed },
     })
+    return NextResponse.json({
+      ok: true, itemsProcessed, more: false, nextLink: null, full, pages: pageCount,
+    })
 
-    return NextResponse.json({ ok: true, itemsProcessed, incremental: false, more, nextLink: currentLink, full, pages: pageCount })
   } catch (e: any) {
     await prisma.warehouseSyncLog.update({
       where: { id: syncLog.id },
