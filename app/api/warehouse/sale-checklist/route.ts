@@ -8,8 +8,6 @@ import { getBCTokenAny, bcPage } from "@/lib/bc"
 // Auction names are resolved live from Auction_Receipt_Lines_Excel.
 // CatalogueAuction (the app's cataloguing system) is intentionally not used here.
 
-const ARL_CODE_CANDIDATES = ["EVA_AuctionNo", "EVA_ARL_AuctionCode", "EVA_SalesAllocation", "Auction_Code"]
-const ARL_NAME_CANDIDATES = ["EVA_AuctionName", "EVA_ARL_AuctionName", "Auction_Name", "AuctionName"]
 
 async function fetchBCAuctionNames(): Promise<Map<string, string>> {
   const nameByCode = new Map<string, string>()
@@ -17,32 +15,17 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
     const token = await getBCTokenAny()
     if (!token) return nameByCode
 
-    // Try Auction_Lines_Excel first (has Auction Name column), fall back to Auction_Receipt_Lines_Excel
-    let sample = await bcPage(token, "Auction_Lines_Excel", { $top: 5 }).catch(() => [])
-    let endpoint = "Auction_Lines_Excel"
-    if (!sample.length) {
-      sample = await bcPage(token, "Auction_Receipt_Lines_Excel", { $top: 5 }).catch(() => [])
-      endpoint = "Auction_Receipt_Lines_Excel"
-    }
-    if (!sample.length) return nameByCode
-
-    const firstRow = sample[0]
-    const codeField = ARL_CODE_CANDIDATES.find(f => f in firstRow)
-    // Check key exists across all sample rows — don't require a non-null value in row 0
-    const allKeys = new Set(sample.flatMap(r => Object.keys(r)))
-    const nameField = ARL_NAME_CANDIDATES.find(f => allKeys.has(f))
-    if (!codeField || !nameField) return nameByCode
-
-    // Fetch a broad sample and deduplicate by code
-    const rows = await bcPage(token, endpoint, {
+    // Auction_Lines_Excel has EVA_SalesAllocation (the F-code that matches
+    // WarehouseItem.auctionCode) and EVA_AuctionName (the human-readable name).
+    const rows = await bcPage(token, "Auction_Lines_Excel", {
       $top:    2000,
-      $select: `${codeField},${nameField}`,
-      $orderby: `${codeField} asc`,
+      $select: "EVA_SalesAllocation,EVA_AuctionName",
+      $orderby: "EVA_SalesAllocation asc",
     })
 
     for (const r of rows) {
-      const code = String(r[codeField] ?? "").trim()
-      const name = String(r[nameField] ?? "").trim()
+      const code = String(r.EVA_SalesAllocation ?? "").trim()
+      const name = String(r.EVA_AuctionName     ?? "").trim()
       if (code && name && !nameByCode.has(code.toUpperCase())) {
         nameByCode.set(code.toUpperCase(), name)
       }
