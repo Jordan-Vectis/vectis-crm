@@ -36,16 +36,17 @@ const STATUS_TEXT: Record<Status, string> = {
 }
 
 export default function AvatarPage() {
-  const videoRef   = useRef<HTMLVideoElement>(null)
-  const pcRef      = useRef<RTCPeerConnection | null>(null)
-  const streamRef  = useRef<{ id: string; session_id: string } | null>(null)
-  const speakTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const videoRef    = useRef<HTMLVideoElement>(null)
+  const pcRef       = useRef<RTCPeerConnection | null>(null)
+  const streamRef   = useRef<{ id: string; session_id: string } | null>(null)
+  const speakTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const connectTimer= useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const [status,      setStatus]      = useState<Status>("idle")
-  const [error,       setError]       = useState<string | null>(null)
-  const [script,      setScript]      = useState("")
-  const [presenters,  setPresenters]  = useState<Presenter[]>([])
-  const [selectedId,  setSelectedId]  = useState<string | null>(null)
+  const [status,     setStatus]     = useState<Status>("idle")
+  const [error,      setError]      = useState<string | null>(null)
+  const [script,     setScript]     = useState("")
+  const [presenters, setPresenters] = useState<Presenter[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loadingPresenters, setLoadingPresenters] = useState(true)
 
   useEffect(() => {
@@ -66,7 +67,8 @@ export default function AvatarPage() {
   const selectedPresenter = presenters.find((p) => p.id === selectedId)
 
   const cleanup = useCallback(async (silent = false) => {
-    if (speakTimer.current) clearTimeout(speakTimer.current)
+    if (speakTimer.current)   clearTimeout(speakTimer.current)
+    if (connectTimer.current) clearTimeout(connectTimer.current)
 
     if (streamRef.current) {
       const { id, session_id } = streamRef.current
@@ -81,6 +83,10 @@ export default function AvatarPage() {
     }
 
     if (pcRef.current) {
+      pcRef.current.ontrack                  = null
+      pcRef.current.onicecandidate           = null
+      pcRef.current.oniceconnectionstatechange = null
+      pcRef.current.onconnectionstatechange  = null
       pcRef.current.close()
       pcRef.current = null
     }
@@ -90,16 +96,28 @@ export default function AvatarPage() {
 
   useEffect(() => () => { cleanup(true) }, [cleanup])
 
-  const connect = useCallback(async () => {
-    if (!selectedPresenter) return
+  const markConnected = useCallback(() => {
+    if (connectTimer.current) clearTimeout(connectTimer.current)
+    setStatus("connected")
+  }, [])
+
+  const connect = useCallback(async (presenterUrl: string) => {
+    await cleanup(true)
     setStatus("connecting")
     setError(null)
+
+    // Timeout: if not connected within 30s, surface an error
+    connectTimer.current = setTimeout(() => {
+      setStatus("error")
+      setError("Connection timed out — please try again")
+      cleanup(true)
+    }, 30_000)
 
     try {
       const createRes = await fetch("/api/avatar", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ action: "create", presenterUrl: selectedPresenter.image_url }),
+        body:    JSON.stringify({ action: "create", presenterUrl }),
       })
 
       if (!createRes.ok) {
@@ -107,24 +125,39 @@ export default function AvatarPage() {
         throw new Error(msg ?? `HTTP ${createRes.status}`)
       }
 
-      const { id, session_id, offer, ice_servers } = await createRes.json()
+      const data = await createRes.json()
+      const { id, session_id, offer } = data
+      // D-ID may return ice_servers or iceServers
+      const iceServers = data.ice_servers ?? data.iceServers ?? []
       streamRef.current = { id, session_id }
 
-      const pc = new RTCPeerConnection({ iceServers: ice_servers })
+      const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
 
+      // Mark connected via any of three reliable signals
       pc.ontrack = (event) => {
         if (videoRef.current && event.streams[0]) {
           videoRef.current.srcObject = event.streams[0]
+        }
+        markConnected()
+      }
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected")                         markConnected()
+        if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+          setStatus("error")
+          setError("WebRTC connection failed")
+          cleanup(true)
         }
       }
 
       pc.oniceconnectionstatechange = () => {
         const s = pc.iceConnectionState
-        if (s === "connected" || s === "completed") setStatus("connected")
-        if (s === "failed" || s === "closed") {
+        if (s === "connected" || s === "completed")                     markConnected()
+        if (s === "failed") {
           setStatus("error")
-          setError("WebRTC connection lost")
+          setError("ICE connection failed — try again")
+          cleanup(true)
         }
       }
 
@@ -150,11 +183,20 @@ export default function AvatarPage() {
       if (!sdpRes.ok) throw new Error("SDP exchange failed")
 
     } catch (err) {
+      if (connectTimer.current) clearTimeout(connectTimer.current)
       setStatus("error")
       setError(err instanceof Error ? err.message : "Connection failed")
       cleanup(true)
     }
-  }, [selectedPresenter, cleanup])
+  }, [cleanup, markConnected])
+
+  const handleSelectPresenter = useCallback((p: Presenter) => {
+    setSelectedId(p.id)
+    // If currently live, disconnect so user can reconnect with new presenter
+    if (status === "connected" || status === "speaking" || status === "connecting") {
+      cleanup().then(() => setStatus("idle"))
+    }
+  }, [status, cleanup])
 
   const disconnect = useCallback(async () => {
     await cleanup()
@@ -179,13 +221,11 @@ export default function AvatarPage() {
         throw new Error(msg ?? "Speak request failed")
       }
 
-      // Estimate duration from word count (~140 wpm) + 2 s buffer
       const words = script.trim().split(/\s+/).length
       speakTimer.current = setTimeout(
         () => setStatus("connected"),
         Math.ceil((words / 140) * 60_000) + 2_000,
       )
-
     } catch (err) {
       setStatus("error")
       setError(err instanceof Error ? err.message : "Failed to speak")
@@ -226,31 +266,28 @@ export default function AvatarPage() {
               className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${isLive ? "opacity-100" : "opacity-0"}`}
             />
 
-            {/* Idle / connecting overlay */}
             {!isLive && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-[#0D0D0F]">
                 {selectedPresenter && status === "idle" ? (
                   <img
                     src={selectedPresenter.thumbnail_url}
                     alt={selectedPresenter.name}
-                    className="w-32 h-32 rounded-full object-cover border-2 border-gray-700 opacity-50"
+                    className="w-32 h-32 rounded-full object-cover border-2 border-gray-700 opacity-40"
                   />
                 ) : (
-                  <div className={`w-28 h-28 rounded-full border-2 flex items-center justify-center transition-colors duration-500 ${
-                    status === "connecting" ? "border-yellow-500/50 bg-yellow-500/5 animate-pulse"
-                    : status === "error"    ? "border-red-500/50 bg-red-500/5"
+                  <div className={`w-28 h-28 rounded-full border-2 flex items-center justify-center ${
+                    status === "connecting" ? "border-yellow-500/40 bg-yellow-500/5 animate-pulse"
+                    : status === "error"    ? "border-red-500/40 bg-red-500/5"
                     : "border-gray-700 bg-gray-800/30"
                   }`}>
-                    <span className="text-5xl select-none">
-                      {status === "error" ? "⚠️" : "🎙️"}
-                    </span>
+                    <span className="text-5xl">{status === "error" ? "⚠️" : "🎙️"}</span>
                   </div>
                 )}
-                <div className="text-center">
+                <div className="text-center px-8">
                   {status === "error" && error ? (
                     <>
                       <p className="text-red-400 text-sm font-medium">Connection error</p>
-                      <p className="text-gray-500 text-xs mt-1 max-w-xs">{error}</p>
+                      <p className="text-gray-500 text-xs mt-1">{error}</p>
                     </>
                   ) : status === "connecting" ? (
                     <p className="text-yellow-400/80 text-sm">Establishing stream…</p>
@@ -263,17 +300,13 @@ export default function AvatarPage() {
               </div>
             )}
 
-            {/* Speaking waveform */}
             {status === "speaking" && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-black/70 backdrop-blur-sm rounded-full px-4 py-1.5">
                 {[1, 2, 3, 4].map((i) => (
                   <div
                     key={i}
                     className="w-1 rounded-full bg-[#2AB4A6]"
-                    style={{
-                      height:    `${8 + i * 4}px`,
-                      animation: `wavebar 0.6s ease-in-out ${i * 0.1}s infinite alternate`,
-                    }}
+                    style={{ height: `${8 + i * 4}px`, animation: `wavebar 0.6s ease-in-out ${i * 0.1}s infinite alternate` }}
                   />
                 ))}
                 <span className="text-[#2AB4A6] text-xs font-medium ml-1.5">Speaking</span>
@@ -285,7 +318,7 @@ export default function AvatarPage() {
         {/* Controls panel */}
         <div className="w-80 flex-shrink-0 border-l border-gray-800 bg-[#1C1C1E] flex flex-col p-5 gap-4 overflow-y-auto">
 
-          {/* Presenter picker */}
+          {/* Presenter picker — always interactive */}
           <div className="bg-[#2C2C2E] rounded-xl p-4 border border-gray-800">
             <h2 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">Presenter</h2>
 
@@ -298,14 +331,13 @@ export default function AvatarPage() {
                 {presenters.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => { if (status === "idle" || status === "error") setSelectedId(p.id) }}
-                    disabled={isLive || status === "connecting"}
+                    onClick={() => handleSelectPresenter(p)}
                     title={p.name}
                     className={`relative rounded-lg overflow-hidden aspect-square transition-all ${
                       selectedId === p.id
-                        ? "ring-2 ring-[#2AB4A6] ring-offset-1 ring-offset-[#2C2C2E]"
-                        : "ring-1 ring-gray-700 hover:ring-gray-500 opacity-70 hover:opacity-100"
-                    } disabled:cursor-not-allowed`}
+                        ? "ring-2 ring-[#2AB4A6] ring-offset-1 ring-offset-[#2C2C2E] opacity-100"
+                        : "ring-1 ring-gray-700 hover:ring-gray-500 opacity-50 hover:opacity-80"
+                    }`}
                   >
                     <img src={p.thumbnail_url} alt={p.name} className="w-full h-full object-cover" />
                     {selectedId === p.id && (
@@ -326,7 +358,7 @@ export default function AvatarPage() {
             <h2 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">Connection</h2>
             {status === "idle" || status === "error" ? (
               <button
-                onClick={connect}
+                onClick={() => selectedPresenter && connect(selectedPresenter.image_url)}
                 disabled={!selectedPresenter || loadingPresenters}
                 className="w-full py-2.5 bg-[#2AB4A6] hover:bg-[#22a090] active:bg-[#1a8078] text-black font-semibold rounded-lg transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -335,14 +367,13 @@ export default function AvatarPage() {
             ) : (
               <button
                 onClick={disconnect}
-                disabled={status === "connecting"}
-                className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors text-sm disabled:opacity-40"
+                className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors text-sm"
               >
-                Disconnect
+                {status === "connecting" ? "Cancel" : "Disconnect"}
               </button>
             )}
             {status === "connecting" && (
-              <p className="text-yellow-400/70 text-xs text-center mt-2">This may take a few seconds…</p>
+              <p className="text-yellow-400/70 text-xs text-center mt-2">Takes a few seconds…</p>
             )}
           </div>
 
@@ -350,9 +381,7 @@ export default function AvatarPage() {
           <div className="bg-[#2C2C2E] rounded-xl p-4 border border-gray-800 flex-1 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-gray-400 text-xs font-semibold uppercase tracking-widest">Script</h2>
-              <span className={`text-xs ${script.length > 3000 ? "text-red-400" : "text-gray-600"}`}>
-                {script.length}
-              </span>
+              <span className={`text-xs ${script.length > 3000 ? "text-red-400" : "text-gray-600"}`}>{script.length}</span>
             </div>
 
             <textarea
@@ -374,29 +403,23 @@ export default function AvatarPage() {
                     <span className="inline-block w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
                     Speaking…
                   </>
-                ) : (
-                  "▶  Speak"
-                )}
+                ) : "▶  Speak"}
               </button>
               {script && (
-                <button
-                  onClick={() => setScript("")}
-                  className="w-full py-1.5 text-gray-600 hover:text-gray-400 text-xs transition-colors"
-                >
+                <button onClick={() => setScript("")} className="w-full py-1.5 text-gray-600 hover:text-gray-400 text-xs transition-colors">
                   Clear
                 </button>
               )}
             </div>
           </div>
 
-          {/* Tips */}
           <div className="bg-[#2C2C2E] rounded-xl p-4 border border-gray-800">
             <h2 className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-2">Tips</h2>
             <ul className="text-gray-600 text-xs space-y-1.5 leading-relaxed">
-              <li>• Pick a presenter, then connect</li>
+              <li>• Pick a presenter, then click Connect</li>
+              <li>• Switching presenter auto-disconnects</li>
               <li>• Paste a lot description and click Speak</li>
               <li>• Short sentences sound more natural</li>
-              <li>• Reconnect to switch presenters</li>
             </ul>
           </div>
         </div>
