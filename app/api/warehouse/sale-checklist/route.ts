@@ -19,7 +19,6 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
     // EVA_AuctionName = human-readable sale name. Both confirmed by user.
     const rows = await bcPage(token, "Auction_Lines_Excel", {
       $top:    2000,
-      $select: "EVA_AuctionNo,EVA_AuctionName",
       $orderby: "EVA_AuctionNo asc",
     })
 
