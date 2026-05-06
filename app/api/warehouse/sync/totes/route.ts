@@ -46,18 +46,11 @@ export async function POST(req: NextRequest) {
     if (body?.maxItems) maxItems = body.maxItems
   } catch {}
 
-  const lastSync = (full || nextLink) ? null : await prisma.warehouseSyncLog.findFirst({
-    where: { source: "totes", status: "complete" },
-    orderBy: { completedAt: "desc" },
-  })
-  const lastTimestamp = lastSync?.lastTimestamp ?? null
-
   const syncLog = await prisma.warehouseSyncLog.create({
     data: { source: "totes", status: "running" },
   })
 
   let itemsProcessed = 0
-  let newestTimestamp = lastTimestamp
   const startMs = Date.now()
 
   try {
@@ -68,11 +61,9 @@ export async function POST(req: NextRequest) {
       urlOrEndpoint = nextLink
       initialParams = undefined
     } else {
+      // Receipt_Totes_Excel has no SystemModifiedAt field — always pull the full set
       urlOrEndpoint = "Receipt_Totes_Excel"
-      initialParams = { $orderby: "EVA_SystemModifiedAt asc" }
-      if (lastTimestamp) {
-        initialParams.$filter = `EVA_SystemModifiedAt ge ${lastTimestamp}`
-      }
+      initialParams = {}
     }
 
     let currentLink: string | null = null
@@ -121,7 +112,6 @@ export async function POST(req: NextRequest) {
             bcModifiedAt: parseDate(r.EVA_SystemModifiedAt),
           },
         }))
-        if (r.EVA_SystemModifiedAt) newestTimestamp = r.EVA_SystemModifiedAt
       }
 
       for (let i = 0; i < upserts.length; i += CHUNK) {
@@ -140,14 +130,13 @@ export async function POST(req: NextRequest) {
         status:         "complete",
         completedAt:    new Date(),
         itemsProcessed,
-        lastTimestamp:  newestTimestamp,
       },
     })
 
     return NextResponse.json({
       ok:           true,
       itemsProcessed,
-      incremental:  !full && !!lastTimestamp,
+      incremental:  false,
       more,
       nextLink:     currentLink,
       full,
