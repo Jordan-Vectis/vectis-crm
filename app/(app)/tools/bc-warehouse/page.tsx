@@ -82,7 +82,7 @@ type SearchTote = {
   syncedAt: string | null
 }
 
-type Tab = "heatmap" | "sale-checklist" | "search" | "location-history" | "tote-data" | "data-sync"
+type Tab = "heatmap" | "sale-checklist" | "search" | "location-history" | "tote-data" | "data-sync" | "db-explorer"
 
 const STALE_MS = 15 * 60 * 1000 // 15 minutes
 
@@ -1328,6 +1328,117 @@ function ToteDataTab() {
   )
 }
 
+// ─── DbExplorerTab ────────────────────────────────────────────────────────────
+
+const ITEM_FIELDS = [
+  { value: "auctionCode",  label: "Auction Code" },
+  { value: "uniqueId",     label: "Unique ID" },
+  { value: "barcode",      label: "Barcode" },
+  { value: "location",     label: "Location" },
+  { value: "toteNo",       label: "Tote No" },
+  { value: "vendorNo",     label: "Vendor No" },
+  { value: "category",     label: "Category" },
+  { value: "description",  label: "Description" },
+]
+
+const TOTE_FIELDS = [
+  { value: "toteNo",     label: "Tote No" },
+  { value: "location",   label: "Location" },
+  { value: "receiptNo",  label: "Receipt No" },
+  { value: "vendorNo",   label: "Vendor No" },
+  { value: "vendorName", label: "Vendor Name" },
+]
+
+function DbExplorerTab() {
+  const [table,   setTable]   = useState<"items"|"totes">("items")
+  const [field,   setField]   = useState("auctionCode")
+  const [q,       setQ]       = useState("")
+  const [rows,    setRows]    = useState<any[]>([])
+  const [count,   setCount]   = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const fields = table === "items" ? ITEM_FIELDS : TOTE_FIELDS
+
+  async function search() {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ table, field, limit: "200" })
+      if (q) params.set("q", q)
+      const res = await fetch(`/api/warehouse/db-explorer?${params}`)
+      const j   = await res.json()
+      setRows(j.rows ?? [])
+      setCount(j.count ?? 0)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const columns = rows.length > 0 ? Object.keys(rows[0]) : []
+
+  return (
+    <div className="p-4 space-y-4 h-full overflow-auto">
+      <div>
+        <h2 className="text-lg font-semibold text-white">DB Explorer</h2>
+        <p className="text-sm text-gray-400">Inspect raw data stored in the database</p>
+      </div>
+
+      {/* Controls */}
+      <div className="flex gap-2 flex-wrap">
+        <div className="flex rounded overflow-hidden border border-gray-700">
+          {(["items","totes"] as const).map(t => (
+            <button key={t} onClick={() => { setTable(t); setField(t === "items" ? "auctionCode" : "toteNo"); setRows([]); setCount(null) }}
+              className={`px-4 py-2 text-sm transition-colors ${table === t ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>
+              {t === "items" ? "Warehouse Items" : "Warehouse Totes"}
+            </button>
+          ))}
+        </div>
+        <select value={field} onChange={e => setField(e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500">
+          {fields.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+        </select>
+        <input value={q} onChange={e => setQ(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && search()}
+          placeholder="Search value (blank = all)"
+          className="flex-1 min-w-48 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 placeholder:text-gray-600" />
+        <button onClick={search} disabled={loading}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-semibold rounded transition-colors">
+          {loading ? "Loading…" : "Search"}
+        </button>
+      </div>
+
+      {count !== null && (
+        <p className="text-sm text-gray-400">{count} row{count !== 1 ? "s" : ""} returned {count === 200 && <span className="text-yellow-500">(capped at 200)</span>}</p>
+      )}
+
+      {/* Table */}
+      {rows.length > 0 && (
+        <div className="overflow-auto border border-gray-700 rounded-lg">
+          <table className="text-xs w-full">
+            <thead className="bg-gray-800 sticky top-0">
+              <tr>
+                {columns.map(c => (
+                  <th key={c} className="px-3 py-2 text-left text-gray-300 font-mono whitespace-nowrap border-r border-gray-700 last:border-0">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i} className={i % 2 === 0 ? "bg-gray-900" : "bg-gray-850"}>
+                  {columns.map(c => (
+                    <td key={c} className="px-3 py-1.5 text-gray-300 font-mono whitespace-nowrap border-r border-gray-800 last:border-0 max-w-xs truncate" title={String(row[c] ?? "")}>
+                      {row[c] === null || row[c] === undefined ? <span className="text-gray-600">null</span> : String(row[c])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── DataSyncTab ──────────────────────────────────────────────────────────────
 
 type LogEntry = { time: number; level: "info" | "ok" | "warn" | "error"; text: string }
@@ -1901,6 +2012,7 @@ export default function BCWarehousePage() {
     { id: "location-history", label: "Location History" },
     { id: "tote-data",        label: "Tote Data" },
     { id: "data-sync",        label: "Data Sync" },
+    { id: "db-explorer",     label: "DB Explorer" },
   ]
 
   return (
@@ -1934,6 +2046,7 @@ export default function BCWarehousePage() {
             {tab === "location-history" && <LocationHistoryTab />}
             {tab === "tote-data"        && <ToteDataTab />}
             {tab === "data-sync"        && <DataSyncTab status={status} onComplete={fetchStatus} />}
+            {tab === "db-explorer"     && <DbExplorerTab />}
           </>
         )}
       </div>
