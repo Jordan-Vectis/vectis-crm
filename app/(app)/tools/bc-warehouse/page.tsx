@@ -2013,6 +2013,9 @@ export default function BCWarehousePage() {
       }
       await fetch("/api/warehouse/sync/auction-lines", { method: "POST" })
       await fetch("/api/warehouse/sync/changelog", { method: "POST" })
+      await fetch("/api/warehouse/sync/totes", { method: "POST" })
+      await fetch("/api/warehouse/sync/totes-active", { method: "POST" })
+      await fetch("/api/warehouse/sync/auction-names", { method: "POST" })
       await fetchStatus()
     } finally {
       syncingRef.current = false
