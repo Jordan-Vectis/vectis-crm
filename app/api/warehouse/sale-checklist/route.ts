@@ -15,36 +15,19 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
     const token = await getBCTokenAny()
     if (!token) return nameByCode
 
-    // Fetch all fields so we can detect the correct code field name
-    const sample = await bcPage(token, "Auction_Lines_Excel", { $top: 10 })
-    if (!sample.length) return nameByCode
+    // EVA_AuctionLine is used by receipt-monthly with EVA_AuctionNo as the auction code.
+    // EVA_AuctionName confirmed by user as the name field.
+    const rows = await bcPage(token, "EVA_AuctionLine", {
+      $top:    2000,
+      $select: "EVA_AuctionNo,EVA_AuctionName",
+      $orderby: "EVA_AuctionNo asc",
+    })
 
-    // EVA_AuctionName confirmed by user. Find the field that holds the F-code
-    // (e.g. F069) — try known candidates against actual field names in response.
-    const CODE_CANDIDATES = ["EVA_SalesAllocation", "EVA_ARL_AuctionCode", "EVA_AuctionCode",
-                             "EVA_SaleCode", "EVA_Sale_Code", "Sale_Code", "AuctionCode"]
-    const firstRow = sample[0]
-    const codeField = CODE_CANDIDATES.find(f => f in firstRow)
-
-    if (!codeField || !("EVA_AuctionName" in firstRow)) return nameByCode
-
-    for (const r of sample) {
-      const code = String(r[codeField]      ?? "").trim()
+    for (const r of rows) {
+      const code = String(r.EVA_AuctionNo   ?? "").trim()
       const name = String(r.EVA_AuctionName ?? "").trim()
       if (code && name && !nameByCode.has(code.toUpperCase())) {
         nameByCode.set(code.toUpperCase(), name)
-      }
-    }
-
-    // If sample wasn't enough, fetch more
-    if (nameByCode.size < 5) {
-      const rows = await bcPage(token, "Auction_Lines_Excel", { $top: 2000 })
-      for (const r of rows) {
-        const code = String(r[codeField]      ?? "").trim()
-        const name = String(r.EVA_AuctionName ?? "").trim()
-        if (code && name && !nameByCode.has(code.toUpperCase())) {
-          nameByCode.set(code.toUpperCase(), name)
-        }
       }
     }
   } catch {
