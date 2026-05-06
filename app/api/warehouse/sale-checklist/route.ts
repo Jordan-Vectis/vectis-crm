@@ -7,53 +7,75 @@ import { getBCTokenAny, bcPage } from "@/lib/bc"
 // Returns all auction codes with their items and locations from WarehouseItem DB.
 // Auction names come from BC (Receipt_Lines_Excel) — not from local CatalogueAuction.
 
-// Auction_Receipt_Lines_Excel field candidates for code and name
 const ARL_CODE_CANDIDATES = ["EVA_ARL_AuctionCode", "EVA_SalesAllocation", "Auction_Code", "AuctionCode", "Sale_Code"]
-const ARL_NAME_CANDIDATES = ["EVA_ARL_AuctionName", "EVA_AuctionName", "Auction_Name", "AuctionName", "Sale_Name",
-                              "EVA_SalesAllocationDescription", "EVA_AuctionDescription"]
+const ARL_NAME_CANDIDATES = [
+  "EVA_ARL_AuctionName", "EVA_ARL_AuctionDescription", "EVA_ARL_SaleDescription",
+  "EVA_AuctionName", "EVA_AuctionDescription", "EVA_SalesAllocationDescription",
+  "Auction_Name", "AuctionName", "Sale_Name", "SaleName", "Description",
+]
+// Keywords that hint a field is a human-readable name/description (not a code or date)
+const NAME_HINT = /name|description|desc|title/i
 
-async function fetchBCAuctionNames(): Promise<Map<string, string>> {
+async function tryEndpointForNames(
+  token: string,
+  endpoint: string,
+  codeCandidates: string[],
+): Promise<Map<string, string>> {
   const nameByCode = new Map<string, string>()
-  try {
-    const token = await getBCTokenAny()
-    if (!token) return nameByCode
+  const sample = await bcPage(token, endpoint, { $top: 5 })
+  if (!sample.length) return nameByCode
 
-    // Fetch a small sample from Auction_Receipt_Lines_Excel to discover field names
-    const sample = await bcPage(token, "Auction_Receipt_Lines_Excel", { $top: 5 })
-    if (!sample.length) return nameByCode
+  const firstRow = sample[0]
+  const codeField = codeCandidates.find(f => f in firstRow)
+  if (!codeField) return nameByCode
 
-    const firstRow = sample[0]
-    const codeField = ARL_CODE_CANDIDATES.find(f => f in firstRow)
-    const nameField = ARL_NAME_CANDIDATES.find(f => f in firstRow && firstRow[f])
+  // 1. Try known candidates first
+  let nameField = ARL_NAME_CANDIDATES.find(f => f in firstRow && firstRow[f])
+  // 2. Fall back: scan all string fields whose name hints at a description
+  if (!nameField) {
+    nameField = Object.keys(firstRow).find(
+      f => f !== codeField && NAME_HINT.test(f) && typeof firstRow[f] === "string" && firstRow[f],
+    )
+  }
+  if (!nameField) return nameByCode
 
-    if (!codeField || !nameField) return nameByCode
+  const rows = await bcPage(token, endpoint, {
+    $top:    2000,
+    $select: `${codeField},${nameField}`,
+    $orderby: `${codeField} asc`,
+  })
 
-    // Fetch a broad sample — one row per distinct code is all we need,
-    // but OData has no DISTINCT so we take 2000 and deduplicate in JS
-    const rows = await bcPage(token, "Auction_Receipt_Lines_Excel", {
-      $top:    2000,
-      $select: `${codeField},${nameField}`,
-      $orderby: `${codeField} asc`,
-    })
-
-    for (const r of rows) {
-      const code = String(r[codeField] ?? "").trim()
-      const name = String(r[nameField] ?? "").trim()
-      if (code && name && !nameByCode.has(code.toUpperCase())) {
-        nameByCode.set(code.toUpperCase(), name)
-      }
+  for (const r of rows) {
+    const code = String(r[codeField] ?? "").trim()
+    const name = String(r[nameField] ?? "").trim()
+    if (code && name && !nameByCode.has(code.toUpperCase())) {
+      nameByCode.set(code.toUpperCase(), name)
     }
-  } catch {
-    // BC unavailable — fall back to code-only names silently
   }
   return nameByCode
+}
+
+async function fetchBCAuctionNames(): Promise<Map<string, string>> {
+  try {
+    const token = await getBCTokenAny()
+    if (!token) return new Map()
+
+    // Try Auction_Receipt_Lines_Excel first (EVA_ARL_* fields), then Receipt_Lines_Excel
+    for (const endpoint of ["Auction_Receipt_Lines_Excel", "Receipt_Lines_Excel"]) {
+      const map = await tryEndpointForNames(token, endpoint, ARL_CODE_CANDIDATES)
+      if (map.size > 0) return map
+    }
+  } catch {
+    // BC unavailable — caller will fall back to local table
+  }
+  return new Map()
 }
 
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  const [rows, nameByCode] = await Promise.all([
+  const [rows, bcNames, catalogueAuctions] = await Promise.all([
     prisma.warehouseItem.findMany({
       where: { auctionCode: { not: null } },
       select: {
@@ -76,7 +98,13 @@ export async function GET() {
       orderBy: [{ auctionCode: "asc" }, { currentLotNo: "asc" }],
     }),
     fetchBCAuctionNames(),
+    prisma.catalogueAuction.findMany({ select: { code: true, name: true } }),
   ])
+
+  // BC names take priority; local CatalogueAuction is a fallback so names always show
+  const nameByCode = new Map<string, string>()
+  for (const a of catalogueAuctions) nameByCode.set(a.code.trim().toUpperCase(), a.name)
+  for (const [k, v] of bcNames)       nameByCode.set(k, v) // BC overwrites local
 
   // Group by auction code
   const auctionMap = new Map<string, { code: string; name: string | null; date: string | null; items: typeof rows }>()
