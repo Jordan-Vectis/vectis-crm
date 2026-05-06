@@ -18,10 +18,12 @@ type SyncStatus = {
 }
 
 type HeatLocation = { code: string; name: string; items: number; totes: number; total: number; known: boolean; cataloguingBench: boolean }
+type HeatFilter = "all" | "active" | "catalogued_located" | "barcodes" | "totes_only"
 type HeatData = {
   locations: HeatLocation[]
   unlocated: number
   unlocatedBreakdown?: { items: number; totes: number }
+  auctions: string[]
   meta: { total: number; totalItems: number; totalTotes: number; knownLocations: number; unknownLocations: number; occupiedLocations: number; emptyLocations: number }
 }
 
@@ -254,22 +256,39 @@ function parseLocation(code: string): { aisle: string; bay: string; shelf: strin
   return { aisle: m[1], bay: m[2], shelf: m[3] }
 }
 
-function WarehouseHeatmapTab() {
-  const [data, setData] = useState<HeatData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [items, setItems] = useState<SearchItem[]>([])
-  const [totes, setTotes] = useState<SearchTote[]>([])
-  const [itemsLoading, setItemsLoading] = useState(false)
-  const [aisleFilter, setAisleFilter] = useState<string>("ALL")
-  const [showEmpty, setShowEmpty] = useState(true)
+const HEAT_FILTER_LABELS: Record<HeatFilter, string> = {
+  all:                "All",
+  active:             "Active",
+  catalogued_located: "Catalogued + Located",
+  barcodes:           "Barcodes only",
+  totes_only:         "Totes only",
+}
 
-  useEffect(() => {
-    fetch("/api/warehouse/heatmap")
+function WarehouseHeatmapTab() {
+  const [data, setData]           = useState<HeatData | null>(null)
+  const [loading, setLoading]     = useState(true)
+  const [selected, setSelected]   = useState<string | null>(null)
+  const [items, setItems]         = useState<SearchItem[]>([])
+  const [totes, setTotes]         = useState<SearchTote[]>([])
+  const [itemsLoading, setItemsLoading] = useState(false)
+  const [aisleFilter, setAisleFilter]   = useState<string>("ALL")
+  const [showEmpty, setShowEmpty] = useState(true)
+  const [heatFilter, setHeatFilter]     = useState<HeatFilter>("all")
+  const [auctionFilter, setAuctionFilter] = useState<string>("")
+
+  const fetchHeatmap = useCallback((filter: HeatFilter, auction: string) => {
+    setLoading(true)
+    const qs = new URLSearchParams()
+    if (filter  !== "all") qs.set("filter",  filter)
+    if (auction !== "")    qs.set("auction", auction)
+    const url = `/api/warehouse/heatmap${qs.toString() ? `?${qs}` : ""}`
+    fetch(url)
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
+
+  useEffect(() => { fetchHeatmap(heatFilter, auctionFilter) }, [heatFilter, auctionFilter, fetchHeatmap])
 
   async function selectLocation(code: string) {
     setSelected(code)
@@ -283,7 +302,7 @@ function WarehouseHeatmapTab() {
     setItemsLoading(false)
   }
 
-  if (loading) return <div className="p-6 text-gray-400 text-sm">Loading heatmap…</div>
+  if (loading && !data) return <div className="p-6 text-gray-400 text-sm">Loading heatmap…</div>
   if (!data) return <div className="p-6 text-red-400 text-sm">Failed to load heatmap</div>
 
   // Group locations by aisle, then by bay
@@ -320,39 +339,86 @@ function WarehouseHeatmapTab() {
       <div className="flex-1 overflow-y-auto p-4 min-w-0">
 
         {/* Header bar */}
-        <div className="flex flex-wrap items-center gap-3 mb-4 pb-3 border-b border-gray-800">
-          <div className="text-sm">
-            <span className="text-white font-semibold">{data.locations.length.toLocaleString()}</span>
-            <span className="text-gray-500"> locations · </span>
-            <span className="text-emerald-400 font-medium">{occupied.toLocaleString()}</span>
-            <span className="text-gray-500"> occupied · </span>
-            <span className="text-gray-500 font-medium">{empty.toLocaleString()} empty · </span>
-            <span className="text-gray-300 font-medium">{data.meta.totalItems?.toLocaleString() ?? 0}</span>
-            <span className="text-gray-500"> items · </span>
-            <span className="text-cyan-300 font-medium">{data.meta.totalTotes?.toLocaleString() ?? 0}</span>
-            <span className="text-gray-500"> totes</span>
+        <div className="mb-4 pb-3 border-b border-gray-800 space-y-2">
+          {/* Stats row */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-sm">
+              {loading ? (
+                <span className="text-gray-500 text-xs animate-pulse">Refreshing…</span>
+              ) : (
+                <>
+                  <span className="text-white font-semibold">{data.locations.length.toLocaleString()}</span>
+                  <span className="text-gray-500"> locations · </span>
+                  <span className="text-emerald-400 font-medium">{occupied.toLocaleString()}</span>
+                  <span className="text-gray-500"> occupied · </span>
+                  <span className="text-gray-500 font-medium">{empty.toLocaleString()} empty · </span>
+                  <span className="text-gray-300 font-medium">{data.meta.totalItems?.toLocaleString() ?? 0}</span>
+                  <span className="text-gray-500"> items · </span>
+                  <span className="text-cyan-300 font-medium">{data.meta.totalTotes?.toLocaleString() ?? 0}</span>
+                  <span className="text-gray-500"> totes</span>
+                </>
+              )}
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              {/* Aisle filter */}
+              <select
+                value={aisleFilter}
+                onChange={e => setAisleFilter(e.target.value)}
+                className="bg-gray-800 border border-gray-700 text-gray-200 rounded text-xs px-2 py-1.5 focus:outline-none focus:border-blue-500"
+              >
+                <option value="ALL">All aisles ({aisleNames.length})</option>
+                {aisleNames.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+
+              <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showEmpty}
+                  onChange={e => setShowEmpty(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                Show empty
+              </label>
+            </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
-            {/* Aisle filter */}
+          {/* Filter pills row */}
+          <div className="flex flex-wrap items-center gap-2">
+            {(["all", "active", "catalogued_located", "barcodes", "totes_only"] as HeatFilter[]).map(f => (
+              <button
+                key={f}
+                onClick={() => { setHeatFilter(f); setSelected(null) }}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  heatFilter === f
+                    ? "bg-blue-600 border-blue-500 text-white"
+                    : "bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200"
+                }`}
+              >
+                {HEAT_FILTER_LABELS[f]}
+              </button>
+            ))}
+
+            <div className="h-4 w-px bg-gray-700 mx-1" />
+
+            {/* Auction filter */}
             <select
-              value={aisleFilter}
-              onChange={e => setAisleFilter(e.target.value)}
-              className="bg-gray-800 border border-gray-700 text-gray-200 rounded text-xs px-2 py-1.5 focus:outline-none focus:border-blue-500"
+              value={auctionFilter}
+              onChange={e => { setAuctionFilter(e.target.value); setSelected(null) }}
+              className="bg-gray-900 border border-gray-700 text-gray-300 rounded-full text-xs px-3 py-1 focus:outline-none focus:border-blue-500"
             >
-              <option value="ALL">All aisles ({aisleNames.length})</option>
-              {aisleNames.map(a => <option key={a} value={a}>{a}</option>)}
+              <option value="">All auctions</option>
+              {(data.auctions ?? []).map(a => <option key={a} value={a}>{a}</option>)}
             </select>
 
-            <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showEmpty}
-                onChange={e => setShowEmpty(e.target.checked)}
-                className="accent-blue-500"
-              />
-              Show empty
-            </label>
+            {(heatFilter !== "all" || auctionFilter !== "") && (
+              <button
+                onClick={() => { setHeatFilter("all"); setAuctionFilter(""); setSelected(null) }}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                ✕ Clear filters
+              </button>
+            )}
           </div>
         </div>
 
@@ -727,75 +793,189 @@ function SaleChecklistTab() {
 // ─── SearchByLocationTab ──────────────────────────────────────────────────────
 
 function SearchByLocationTab() {
-  const [query, setQuery] = useState("")
-  const [items, setItems] = useState<SearchItem[]>([])
-  const [loading, setLoading] = useState(false)
+  const [query, setQuery]       = useState("")
+  const [mode, setMode]         = useState<"exact" | "aisle">("exact")
+  const [items, setItems]       = useState<SearchItem[]>([])
+  const [totes, setTotes]       = useState<SearchTote[]>([])
+  const [loading, setLoading]   = useState(false)
   const [searched, setSearched] = useState(false)
+  const [searchedFor, setSearchedFor] = useState("")
 
   async function doSearch(e?: React.FormEvent) {
     e?.preventDefault()
-    if (!query.trim()) return
+    const q = query.trim().toUpperCase()
+    if (!q) return
     setLoading(true)
     setSearched(true)
+    setSearchedFor(q)
     try {
-      const r = await fetch(`/api/warehouse/search?location=${encodeURIComponent(query.trim())}`)
+      const r = await fetch(`/api/warehouse/search?location=${encodeURIComponent(q)}&mode=${mode}`)
       const d = await r.json()
       setItems(d.items ?? [])
-    } catch { setItems([]) }
+      setTotes(d.totes ?? [])
+    } catch { setItems([]); setTotes([]) }
     setLoading(false)
   }
 
-  return (
-    <div className="h-full flex flex-col p-4 gap-4">
-      <form onSubmit={doSearch} className="flex gap-2">
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder="Location code e.g. A21…"
-          className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded text-sm"
-        >
-          Search
-        </button>
-      </form>
+  const total = items.length + totes.length
 
-      {loading && <div className="text-gray-400 text-sm">Searching…</div>}
-      {!loading && searched && items.length === 0 && (
-        <div className="text-gray-500 text-sm">No items found for "{query}"</div>
-      )}
-      {!loading && items.length > 0 && (
-        <div className="flex-1 overflow-y-auto space-y-2">
-          <div className="text-xs text-gray-500">{items.length} items</div>
-          {items.map(item => (
-            <div key={item.uniqueId} className="bg-gray-800 rounded-lg px-4 py-3 text-sm">
-              <div className="flex justify-between items-start">
-                <div className="flex gap-2 items-center">
-                  <span className="font-mono text-xs text-gray-400">{item.uniqueId}</span>
-                  {item.auctionCode && (
-                    <span className="text-xs bg-blue-900 text-blue-200 px-2 py-0.5 rounded">{item.auctionCode}</span>
-                  )}
-                  {item.category && (
-                    <span className="text-xs text-gray-500">{item.category}</span>
-                  )}
-                </div>
-                <span className="text-xs font-mono text-gray-500">
-                  {[item.location, item.binCode, item.toteNo].filter(Boolean).join(" / ")}
-                </span>
-              </div>
-              {(item.description || item.artist) && (
-                <div className="mt-1 text-xs text-gray-300">
-                  {item.artist ? <span className="text-yellow-400">{item.artist} — </span> : null}
-                  {item.description}
-                </div>
-              )}
-            </div>
+  return (
+    <div className="h-full flex flex-col">
+      {/* Search bar */}
+      <div className="p-4 border-b border-gray-800 space-y-3">
+        {/* Mode toggle */}
+        <div className="flex gap-2">
+          {([
+            { id: "exact", label: "Specific location", hint: "e.g. A2A1, BENCH3" },
+            { id: "aisle", label: "Whole aisle",       hint: "e.g. A2 → all shelves in aisle A2" },
+          ] as const).map(m => (
+            <button
+              key={m.id}
+              onClick={() => { setMode(m.id); setSearched(false) }}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                mode === m.id
+                  ? "border-blue-500 bg-blue-500/20 text-blue-300"
+                  : "border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300"
+              }`}
+            >
+              {m.label}
+            </button>
           ))}
         </div>
-      )}
+
+        <form onSubmit={doSearch} className="flex gap-2 max-w-lg">
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value.toUpperCase())}
+            placeholder={mode === "exact" ? "Location code e.g. A2A1, BENCH3…" : "Aisle e.g. A2, A10, BENCH…"}
+            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 font-mono"
+            autoFocus
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            {loading ? "Searching…" : "Search"}
+          </button>
+        </form>
+
+        {searched && !loading && (
+          <div className="text-xs text-gray-500">
+            {total === 0
+              ? `Nothing found ${mode === "aisle" ? `in aisle` : `at`} "${searchedFor}"`
+              : `${total.toLocaleString()} result${total === 1 ? "" : "s"} ${mode === "aisle" ? `in aisle` : `at`} ${searchedFor}${items.length ? ` · ${items.length.toLocaleString()} item${items.length === 1 ? "" : "s"}` : ""}${totes.length ? ` · ${totes.length.toLocaleString()} tote${totes.length === 1 ? "" : "s"}` : ""}`}
+          </div>
+        )}
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto">
+        {!searched && (
+          <div className="flex flex-col items-center justify-center h-full text-center text-gray-600 gap-2">
+            <div className="text-4xl">📍</div>
+            <div className="text-sm">
+              {mode === "exact"
+                ? "Enter an exact location code to see everything stored there"
+                : "Enter an aisle code to see every shelf in that aisle"}
+            </div>
+            <div className="text-xs text-gray-700">
+              {mode === "exact" ? "e.g. A2A1, A10C3, BENCH3" : "e.g. A2 shows A2A1, A2B2, A2C3 …"}
+            </div>
+          </div>
+        )}
+
+        {searched && !loading && total === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center text-gray-600 gap-2">
+            <div className="text-4xl">🔍</div>
+            <div className="text-sm">Nothing found {mode === "aisle" ? "in aisle" : "at"} <span className="font-mono text-gray-400">"{searchedFor}"</span></div>
+            {mode === "exact" && <div className="text-xs text-gray-700">Switch to "Whole aisle" to search all shelves in an aisle</div>}
+          </div>
+        )}
+
+        {/* Totes section */}
+        {totes.length > 0 && (
+          <div className="border-b border-gray-800">
+            <div className="px-4 py-2 bg-gray-900/50 text-xs font-medium text-cyan-500 uppercase tracking-wider">
+              Totes · {totes.length.toLocaleString()}
+            </div>
+            <table className="w-full text-xs">
+              <thead className="bg-gray-900 text-gray-500 sticky top-0">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Tote No</th>
+                  {mode === "aisle" && <th className="px-4 py-2 text-left font-medium">Location</th>}
+                  <th className="px-4 py-2 text-left font-medium">Receipt</th>
+                  <th className="px-4 py-2 text-left font-medium">Vendor</th>
+                  <th className="px-4 py-2 text-left font-medium">Status</th>
+                  <th className="px-4 py-2 text-left font-medium">State</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/60">
+                {totes.map(t => (
+                  <tr key={t.toteNo} className="hover:bg-gray-800/40 transition-colors">
+                    <td className="px-4 py-2.5 font-mono text-cyan-300 font-semibold">{t.toteNo}</td>
+                    {mode === "aisle" && <td className="px-4 py-2.5 font-mono text-gray-500">{t.location ?? "—"}</td>}
+                    <td className="px-4 py-2.5 font-mono text-gray-400">{t.receiptNo ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-gray-300">{t.vendorName ?? t.vendorNo ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-gray-400">{t.status && t.status !== "No Reserve" ? t.status : "—"}</td>
+                    <td className="px-4 py-2.5">
+                      {t.catalogued != null
+                        ? <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${t.catalogued ? "bg-green-900/50 text-green-300" : "bg-amber-900/50 text-amber-300"}`}>
+                            {t.catalogued ? "Catalogued" : "Active"}
+                          </span>
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Items section */}
+        {items.length > 0 && (
+          <div>
+            <div className="px-4 py-2 bg-gray-900/50 text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Items · {items.length.toLocaleString()}
+            </div>
+            <table className="w-full text-xs">
+              <thead className="bg-gray-900 text-gray-500 sticky top-0">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Unique ID</th>
+                  <th className="px-4 py-2 text-left font-medium">Barcode</th>
+                  {mode === "aisle" && <th className="px-4 py-2 text-left font-medium">Location</th>}
+                  <th className="px-4 py-2 text-left font-medium">Description</th>
+                  <th className="px-4 py-2 text-left font-medium">Auction</th>
+                  <th className="px-4 py-2 text-left font-medium">Lot</th>
+                  <th className="px-4 py-2 text-left font-medium">Category</th>
+                  <th className="px-4 py-2 text-left font-medium">Tote / Bin</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/60">
+                {items.map(item => (
+                  <tr key={item.uniqueId} className="hover:bg-gray-800/40 transition-colors">
+                    <td className="px-4 py-2.5 font-mono text-gray-300">{item.uniqueId}</td>
+                    <td className="px-4 py-2.5 font-mono text-gray-500">{item.barcode ?? "—"}</td>
+                    {mode === "aisle" && <td className="px-4 py-2.5 font-mono text-gray-400">{item.location ?? "—"}</td>}
+                    <td className="px-4 py-2.5 text-gray-200 max-w-xs">
+                      {item.artist && <span className="text-yellow-400">{item.artist} — </span>}
+                      {item.description ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {item.auctionCode
+                        ? <span className="bg-blue-900/60 text-blue-300 px-2 py-0.5 rounded font-mono">{item.auctionCode}</span>
+                        : <span className="text-gray-600">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-400">{item.currentLotNo ?? item.lotNo ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{item.category ?? "—"}</td>
+                    <td className="px-4 py-2.5 font-mono text-gray-500">{[item.toteNo, item.binCode].filter(Boolean).join(" / ") || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -927,68 +1107,176 @@ function LocationHistoryTab() {
   )
 }
 
-// ─── ToteDataTab (unchanged — still uses BC directly) ─────────────────────────
+// ─── ToteDataTab ─────────────────────────────────────────────────────────────
+
+type ToteReport = {
+  stats: { total: number; active: number; catalogued: number; unknown: number }
+  byCategory: { category: string; itemCount: number }[]
+  byLocation: { location: string | null; toteCount: number }[]
+  totes: SearchTote[]
+}
 
 function ToteDataTab() {
-  const [toteNo, setToteNo]   = useState("")
-  const [rows, setRows]       = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
+  const [data, setData]       = useState<ToteReport | null>(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
+  const [showAll, setShowAll] = useState(false)
 
-  async function lookup(e: React.FormEvent) {
-    e.preventDefault()
-    if (!toteNo.trim()) return
-    setLoading(true); setError(null); setRows([])
+  async function load() {
+    setLoading(true); setError(null)
     try {
-      const r = await fetch(`/api/warehouse/tote?toteNo=${encodeURIComponent(toteNo.trim())}`)
+      const r = await fetch("/api/warehouse/tote/report")
       const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? "Failed")
-      setRows(d.rows ?? [])
+      if (!r.ok) throw new Error(d.error ?? "Failed to load report")
+      setData(d)
     } catch (e: any) { setError(e.message) }
     setLoading(false)
   }
 
+  useEffect(() => { load() }, [])
+
+  if (loading) return <div className="p-6 text-gray-400 text-sm">Loading tote report…</div>
+  if (error)   return (
+    <div className="p-6 space-y-3">
+      <p className="text-red-400 text-sm">{error}</p>
+      <button onClick={load} className="px-4 py-2 bg-red-900 hover:bg-red-800 text-white rounded text-sm">Retry</button>
+    </div>
+  )
+  if (!data) return null
+
+  const { stats, byCategory, byLocation, totes } = data
+  const visibleTotes = showAll ? totes : totes.slice(0, 100)
+
   return (
-    <div className="h-full flex flex-col p-4 gap-4">
-      <form onSubmit={lookup} className="flex gap-2">
-        <input
-          value={toteNo}
-          onChange={e => setToteNo(e.target.value)}
-          placeholder="Tote number…"
-          className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded text-sm"
-        >
-          Look up
-        </button>
-      </form>
-      {error && <p className="text-red-400 text-sm">{error}</p>}
-      {loading && <p className="text-gray-400 text-sm">Loading…</p>}
-      {rows.length > 0 && (
-        <div className="flex-1 overflow-y-auto space-y-2">
-          <div className="text-xs text-gray-500">{rows.length} items in tote {toteNo}</div>
-          {rows.map((r: any, i: number) => (
-            <div key={i} className="bg-gray-800 rounded-lg px-4 py-3 text-sm">
-              <div className="flex justify-between items-start">
-                <span className="font-mono text-xs text-gray-400">{r.uniqueId ?? "—"}</span>
-                <span className="text-xs font-mono text-gray-500">{[r.location, r.binCode, r.toteNo].filter(Boolean).join(" / ") || "—"}</span>
-              </div>
-              {(r.artist || r.description) && (
-                <div className="mt-1 text-xs text-gray-300">
-                  {r.artist ? <span className="text-yellow-400">{r.artist} — </span> : null}
-                  {r.description}
-                </div>
-              )}
-              {r.auctionCode && (
-                <span className="text-xs bg-blue-900 text-blue-200 px-2 py-0.5 rounded mt-1 inline-block">{r.auctionCode}</span>
-              )}
+    <div className="h-full overflow-y-auto p-5 space-y-6 max-w-5xl mx-auto">
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Total Totes",  value: stats.total,      color: "text-white" },
+          { label: "Active",       value: stats.active,     color: "text-amber-300" },
+          { label: "Catalogued",   value: stats.catalogued, color: "text-green-400" },
+          { label: "Unknown",      value: stats.unknown,    color: "text-gray-400" },
+        ].map(s => (
+          <div key={s.label} className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">{s.label}</div>
+            <div className={`text-3xl font-mono font-semibold ${s.color}`}>{s.value.toLocaleString()}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-5">
+        {/* Items in totes by category */}
+        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-800">
+            <h3 className="text-sm font-semibold text-white">Items in Totes by Category</h3>
+            <p className="text-xs text-gray-500 mt-0.5">How many items currently assigned to a tote, per category</p>
+          </div>
+          {byCategory.length === 0 ? (
+            <div className="p-4 text-sm text-gray-600">No data</div>
+          ) : (
+            <div className="overflow-y-auto max-h-72">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-950 text-gray-500 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">Category</th>
+                    <th className="px-4 py-2 text-right font-medium">Items</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/60">
+                  {byCategory.map(row => (
+                    <tr key={row.category} className="hover:bg-gray-800/30">
+                      <td className="px-4 py-2 text-gray-200">{row.category}</td>
+                      <td className="px-4 py-2 text-right font-mono text-gray-300">{row.itemCount.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
+          )}
         </div>
-      )}
+
+        {/* Top locations by tote count */}
+        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-800">
+            <h3 className="text-sm font-semibold text-white">Top Locations by Tote Count</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Locations with the most totes assigned to them</p>
+          </div>
+          {byLocation.length === 0 ? (
+            <div className="p-4 text-sm text-gray-600">No data</div>
+          ) : (
+            <div className="overflow-y-auto max-h-72">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-950 text-gray-500 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">Location</th>
+                    <th className="px-4 py-2 text-right font-medium">Totes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/60">
+                  {byLocation.map(row => (
+                    <tr key={row.location} className="hover:bg-gray-800/30">
+                      <td className="px-4 py-2 font-mono text-gray-200">{row.location ?? "—"}</td>
+                      <td className="px-4 py-2 text-right font-mono text-gray-300">{row.toteCount.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Active totes list */}
+      <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Active Totes</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{totes.length.toLocaleString()} totes not yet catalogued</p>
+          </div>
+          <button onClick={load} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">⟳ Refresh</button>
+        </div>
+        {totes.length === 0 ? (
+          <div className="p-6 text-center text-gray-600 text-sm">No active totes found</div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-950 text-gray-500">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">Tote No</th>
+                    <th className="px-4 py-2 text-left font-medium">Location</th>
+                    <th className="px-4 py-2 text-left font-medium">Receipt</th>
+                    <th className="px-4 py-2 text-left font-medium">Vendor</th>
+                    <th className="px-4 py-2 text-left font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/60">
+                  {visibleTotes.map(t => (
+                    <tr key={t.toteNo} className="hover:bg-gray-800/30 transition-colors">
+                      <td className="px-4 py-2.5 font-mono text-cyan-300 font-semibold">{t.toteNo}</td>
+                      <td className="px-4 py-2.5 font-mono text-gray-400">{t.location ?? <span className="text-gray-700">—</span>}</td>
+                      <td className="px-4 py-2.5 text-gray-400">{t.receiptNo ?? <span className="text-gray-700">—</span>}</td>
+                      <td className="px-4 py-2.5 text-gray-300">{t.vendorName ?? t.vendorNo ?? <span className="text-gray-700">—</span>}</td>
+                      <td className="px-4 py-2.5 text-gray-500">{t.status && t.status !== "No Reserve" ? t.status : <span className="text-gray-700">—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {totes.length > 100 && (
+              <div className="px-4 py-3 border-t border-gray-800 text-center">
+                <button
+                  onClick={() => setShowAll(v => !v)}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  {showAll ? `Show fewer` : `Show all ${totes.length.toLocaleString()} totes`}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
