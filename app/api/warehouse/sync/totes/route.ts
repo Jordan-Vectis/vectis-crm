@@ -25,6 +25,17 @@ function pickToteNo(r: any): string | null {
   return null
 }
 
+// GET /api/warehouse/sync/totes — probe: returns the raw field names from the first BC row
+export async function GET() {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  const token = await getBCToken()
+  if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
+  const { rows } = await bcPageWithNext(token, "Receipt_Totes_Excel", { $top: 2 })
+  if (!rows.length) return NextResponse.json({ fields: [], sample: null })
+  return NextResponse.json({ fields: Object.keys(rows[0]), sample: rows[0], sample2: rows[1] ?? null })
+}
+
 // POST /api/warehouse/sync/totes
 // Same nextLink-based pattern as receipt-lines. Pulls Receipt_Totes_Excel and
 // upserts into WarehouseTote so totes can be counted on the heatmap even when
