@@ -7,15 +7,10 @@ import { getBCTokenAny, bcPage } from "@/lib/bc"
 // Returns all auction codes with their items and locations from WarehouseItem DB.
 // Auction names come from BC (Receipt_Lines_Excel) — not from local CatalogueAuction.
 
-// Candidate field names for the auction description in Receipt_Lines_Excel
-const AUCTION_NAME_CANDIDATES = [
-  "EVA_SalesAllocationDescription",
-  "EVA_AuctionDescription",
-  "EVA_AuctionName",
-  "EVA_SaleAllocationName",
-  "EVA_SalesAllocationDesc",
-  "EVA_SaleDescription",
-]
+// Auction_Receipt_Lines_Excel field candidates for code and name
+const ARL_CODE_CANDIDATES = ["EVA_ARL_AuctionCode", "EVA_SalesAllocation", "Auction_Code", "AuctionCode", "Sale_Code"]
+const ARL_NAME_CANDIDATES = ["EVA_ARL_AuctionName", "EVA_AuctionName", "Auction_Name", "AuctionName", "Sale_Name",
+                              "EVA_SalesAllocationDescription", "EVA_AuctionDescription"]
 
 async function fetchBCAuctionNames(): Promise<Map<string, string>> {
   const nameByCode = new Map<string, string>()
@@ -23,26 +18,27 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
     const token = await getBCTokenAny()
     if (!token) return nameByCode
 
-    // Fetch a small sample to discover which field holds the auction description
-    const sample = await bcPage(token, "Receipt_Lines_Excel", { $top: 5 })
+    // Fetch a small sample from Auction_Receipt_Lines_Excel to discover field names
+    const sample = await bcPage(token, "Auction_Receipt_Lines_Excel", { $top: 5 })
     if (!sample.length) return nameByCode
 
     const firstRow = sample[0]
-    const nameField = AUCTION_NAME_CANDIDATES.find(f => f in firstRow && firstRow[f])
+    const codeField = ARL_CODE_CANDIDATES.find(f => f in firstRow)
+    const nameField = ARL_NAME_CANDIDATES.find(f => f in firstRow && firstRow[f])
 
-    if (!nameField) return nameByCode
+    if (!codeField || !nameField) return nameByCode
 
-    // Fetch enough rows to cover all auction codes (codes are repeated per item,
-    // so we take a broad sample and deduplicate by code)
-    const rows = await bcPage(token, "Receipt_Lines_Excel", {
+    // Fetch a broad sample — one row per distinct code is all we need,
+    // but OData has no DISTINCT so we take 2000 and deduplicate in JS
+    const rows = await bcPage(token, "Auction_Receipt_Lines_Excel", {
       $top:    2000,
-      $select: `EVA_SalesAllocation,${nameField}`,
-      $orderby: "EVA_SalesAllocation asc",
+      $select: `${codeField},${nameField}`,
+      $orderby: `${codeField} asc`,
     })
 
     for (const r of rows) {
-      const code = String(r.EVA_SalesAllocation ?? "").trim()
-      const name = String(r[nameField]           ?? "").trim()
+      const code = String(r[codeField] ?? "").trim()
+      const name = String(r[nameField] ?? "").trim()
       if (code && name && !nameByCode.has(code.toUpperCase())) {
         nameByCode.set(code.toUpperCase(), name)
       }
