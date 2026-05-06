@@ -1,15 +1,60 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { getBCTokenAny, bcPage } from "@/lib/bc"
 
 // GET /api/warehouse/sale-checklist
-// Returns all auction codes with their items and locations from WarehouseItem DB,
-// plus the human-readable auction name from CatalogueAuction (matched by code).
+// BC-data only. Items come from WarehouseItem (synced from BC).
+// Auction names are resolved live from Auction_Receipt_Lines_Excel.
+// CatalogueAuction (the app's cataloguing system) is intentionally not used here.
+
+const ARL_CODE_CANDIDATES = ["EVA_ARL_AuctionCode", "EVA_SalesAllocation", "Auction_Code", "AuctionCode"]
+const ARL_NAME_CANDIDATES = [
+  "EVA_ARL_AuctionName", "EVA_ARL_AuctionDescription", "EVA_ARL_SaleDescription",
+  "EVA_AuctionName", "EVA_AuctionDescription", "EVA_SalesAllocationDescription",
+  "Auction_Name", "AuctionName", "Sale_Name",
+]
+
+async function fetchBCAuctionNames(): Promise<Map<string, string>> {
+  const nameByCode = new Map<string, string>()
+  try {
+    const token = await getBCTokenAny()
+    if (!token) return nameByCode
+
+    // Sample a few rows to discover which fields hold the code and name
+    const sample = await bcPage(token, "Auction_Receipt_Lines_Excel", { $top: 5 })
+    if (!sample.length) return nameByCode
+
+    const firstRow = sample[0]
+    const codeField = ARL_CODE_CANDIDATES.find(f => f in firstRow)
+    const nameField = ARL_NAME_CANDIDATES.find(f => f in firstRow && firstRow[f])
+    if (!codeField || !nameField) return nameByCode
+
+    // Fetch a broad sample and deduplicate by code
+    const rows = await bcPage(token, "Auction_Receipt_Lines_Excel", {
+      $top:    2000,
+      $select: `${codeField},${nameField}`,
+      $orderby: `${codeField} asc`,
+    })
+
+    for (const r of rows) {
+      const code = String(r[codeField] ?? "").trim()
+      const name = String(r[nameField] ?? "").trim()
+      if (code && name && !nameByCode.has(code.toUpperCase())) {
+        nameByCode.set(code.toUpperCase(), name)
+      }
+    }
+  } catch {
+    // BC unavailable — names will be null, codes still show
+  }
+  return nameByCode
+}
+
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-  const [rows, catalogueAuctions] = await Promise.all([
+  const [rows, nameByCode] = await Promise.all([
     prisma.warehouseItem.findMany({
       where: { auctionCode: { not: null } },
       select: {
@@ -31,16 +76,8 @@ export async function GET() {
       },
       orderBy: [{ auctionCode: "asc" }, { currentLotNo: "asc" }],
     }),
-    prisma.catalogueAuction.findMany({
-      select: { code: true, name: true },
-    }),
+    fetchBCAuctionNames(),
   ])
-
-  // Code → auction name lookup (case-insensitive)
-  const nameByCode = new Map<string, string>()
-  for (const a of catalogueAuctions) {
-    nameByCode.set(a.code.trim().toUpperCase(), a.name)
-  }
 
   // Group by auction code
   const auctionMap = new Map<string, { code: string; name: string | null; date: string | null; items: typeof rows }>()
