@@ -176,6 +176,13 @@ function FirstSyncPanel({ onComplete }: { onComplete: () => void }) {
       } catch { /* changelog failure is non-fatal */ }
     }
 
+    // Step 4: auction names — populate auctionName for all codes in DB
+    if (!abortRef.current) {
+      try {
+        await fetch("/api/warehouse/sync/auction-names", { method: "POST" })
+      } catch { /* non-fatal — names will be fetched on demand */ }
+    }
+
     setPhase("done")
     onComplete()
   }
