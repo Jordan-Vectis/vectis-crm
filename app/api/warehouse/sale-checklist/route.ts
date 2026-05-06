@@ -27,7 +27,9 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
 
     const firstRow = sample[0]
     const codeField = ARL_CODE_CANDIDATES.find(f => f in firstRow)
-    const nameField = ARL_NAME_CANDIDATES.find(f => f in firstRow && firstRow[f])
+    // Check key exists across all sample rows — don't require a non-null value in row 0
+    const allKeys = new Set(sample.flatMap(r => Object.keys(r)))
+    const nameField = ARL_NAME_CANDIDATES.find(f => allKeys.has(f))
     if (!codeField || !nameField) return nameByCode
 
     // Fetch a broad sample and deduplicate by code
