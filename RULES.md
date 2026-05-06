@@ -286,11 +286,12 @@ If this tab genuinely needs to change, discuss it first and update this rule.
 
 | Endpoint | Code field | Name field | Notes |
 |---|---|---|---|
-| `Auction_Lines_Excel` | `EVA_AuctionNo` | `EVA_AuctionName` | Auction-level lookup — use this to resolve auction names |
+| `Auction_Lines_Excel` | `EVA_SalesAllocation` | `EVA_AuctionName` | Auction-level lookup — use this to resolve auction names |
 | `Receipt_Lines_Excel` | `EVA_SalesAllocation` | _(no name field)_ | Item-level — `EVA_SalesAllocation` matches `WarehouseItem.auctionCode` |
 | `Auction_Receipt_Lines_Excel` | `EVA_SalesAllocation` | _(no name field)_ | Item-level auction receipt lines |
 
-**To resolve auction names:** look up `EVA_AuctionNo` + `EVA_AuctionName` from `Auction_Lines_Excel`. `EVA_AuctionNo` matches `EVA_SalesAllocation` / `WarehouseItem.auctionCode`.
+**To resolve auction names:** fetch `Auction_Lines_Excel`, match `EVA_SalesAllocation` (F-codes) against `WarehouseItem.auctionCode`, name is `EVA_AuctionName`.
+Note: `EVA_AuctionNo` on `Auction_Lines_Excel` holds A/B-style auction numbers — NOT the F-codes.
 
 **Do not** use `CatalogueAuction` for names in any BC warehouse view — it is the local cataloguing system and will have stale/wrong names for BC auction codes.
 
