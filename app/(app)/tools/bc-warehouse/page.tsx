@@ -826,8 +826,8 @@ function SearchByLocationTab() {
         {/* Mode toggle */}
         <div className="flex gap-2">
           {([
-            { id: "exact", label: "Specific location", hint: "e.g. A2A1, BENCH3" },
-            { id: "aisle", label: "Whole aisle",       hint: "e.g. A2 → all shelves in aisle A2" },
+            { id: "exact", label: "Specific search",  hint: "location, barcode, or tote number" },
+            { id: "aisle", label: "Whole aisle",      hint: "e.g. A2 → all shelves in aisle A2" },
           ] as const).map(m => (
             <button
               key={m.id}
@@ -847,7 +847,7 @@ function SearchByLocationTab() {
           <input
             value={query}
             onChange={e => setQuery(e.target.value.toUpperCase())}
-            placeholder={mode === "exact" ? "Location code e.g. A2A1, BENCH3…" : "Aisle e.g. A2, A10, BENCH…"}
+            placeholder={mode === "exact" ? "Location e.g. A2A1, barcode e.g. F066001, tote e.g. T001234…" : "Aisle e.g. A2, A10, BENCH…"}
             className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 font-mono"
             autoFocus
           />
@@ -876,11 +876,11 @@ function SearchByLocationTab() {
             <div className="text-4xl">📍</div>
             <div className="text-sm">
               {mode === "exact"
-                ? "Enter an exact location code to see everything stored there"
+                ? "Search by location code, barcode, or tote number"
                 : "Enter an aisle code to see every shelf in that aisle"}
             </div>
             <div className="text-xs text-gray-700">
-              {mode === "exact" ? "e.g. A2A1, A10C3, BENCH3" : "e.g. A2 shows A2A1, A2B2, A2C3 …"}
+              {mode === "exact" ? "e.g. A2A1 · F066001 · T001234" : "e.g. A2 shows A2A1, A2B2, A2C3 …"}
             </div>
           </div>
         )}
