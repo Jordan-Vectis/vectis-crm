@@ -1111,7 +1111,7 @@ function LocationHistoryTab() {
 
 type ToteReport = {
   stats: { total: number; active: number; catalogued: number; unknown: number }
-  byCategory: { category: string; itemCount: number }[]
+  byCategory: { category: string; itemCount: number; activeTotes: number }[]
   byLocation: { location: string | null; toteCount: number }[]
   totes: SearchTote[]
 }
@@ -1169,8 +1169,8 @@ function ToteDataTab() {
         {/* Items in totes by category */}
         <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-800">
-            <h3 className="text-sm font-semibold text-white">Items in Totes by Category</h3>
-            <p className="text-xs text-gray-500 mt-0.5">How many items currently assigned to a tote, per category</p>
+            <h3 className="text-sm font-semibold text-white">Totes by Category</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Items in totes and active tote count per category</p>
           </div>
           {byCategory.length === 0 ? (
             <div className="p-4 text-sm text-gray-600">No data</div>
@@ -1180,7 +1180,8 @@ function ToteDataTab() {
                 <thead className="bg-gray-950 text-gray-500 sticky top-0">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium">Category</th>
-                    <th className="px-4 py-2 text-right font-medium">Items</th>
+                    <th className="px-4 py-2 text-right font-medium">Items in totes</th>
+                    <th className="px-4 py-2 text-right font-medium">Active totes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/60">
@@ -1188,6 +1189,11 @@ function ToteDataTab() {
                     <tr key={row.category} className="hover:bg-gray-800/30">
                       <td className="px-4 py-2 text-gray-200">{row.category}</td>
                       <td className="px-4 py-2 text-right font-mono text-gray-300">{row.itemCount.toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right font-mono">
+                        {row.activeTotes > 0
+                          ? <span className="text-amber-300">{row.activeTotes.toLocaleString()}</span>
+                          : <span className="text-gray-600">—</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
