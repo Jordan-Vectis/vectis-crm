@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     } else {
       // Pass 1 start: totes from Totes_Excel (T-prefixed numbers only — other records are bins/containers)
       urlOrEndpoint = "Totes_Excel"
-      initialParams = { $filter: "startswith(EVA_No,'T')", $orderby: "EVA_No asc" }
+      initialParams = { $filter: "startswith(EVA_No,'T') or startswith(EVA_No,'P')", $orderby: "EVA_No asc" }
     }
 
     let currentLink: string | null = null
