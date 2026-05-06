@@ -5,20 +5,11 @@ import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 300
 
-// GET — probe: field names + count from Totes_Excel
-export async function GET() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
-  const token = await getBCToken()
-  if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
-  const { rows, count } = await bcPageWithNext(token, "Totes_Excel", { $top: 2, "$count": "true" })
-  if (!rows.length) return NextResponse.json({ bcCount: count ?? null, fields: [], sample: null })
-  return NextResponse.json({ bcCount: count ?? null, fields: Object.keys(rows[0]), sample: rows[0], sample2: rows[1] ?? null })
-}
-
-// POST /api/warehouse/sync/totes
-// Syncs Totes_Excel — all T/P-prefixed totes (catalogued + uncatalogued) with basic location data.
-// On full re-sync the table is cleared first.
+// POST /api/warehouse/sync/totes-active
+// Syncs Receipt_Totes_Excel — active (uncatalogued) totes only, with richer data:
+// precise location, vendor info, reserve status, catalogued flag.
+// Upserts into WarehouseTote so records created by the totes sync get enriched,
+// and any active totes not yet in the DB are created.
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
@@ -36,23 +27,17 @@ export async function POST(req: NextRequest) {
     if (body?.maxItems) maxItems = body.maxItems
   } catch {}
 
-  if (full && !nextLink) {
-    await prisma.warehouseTote.deleteMany({})
-  }
-
   const syncLog = await prisma.warehouseSyncLog.create({
-    data: { source: "totes", status: "running" },
+    data: { source: "totes-active", status: "running" },
   })
 
   let itemsProcessed = 0
   const startMs = Date.now()
 
   try {
-    const urlOrEndpoint = nextLink ?? "Totes_Excel"
-    const initialParams = nextLink ? undefined : {
-      $filter: "startswith(EVA_No,'T') or startswith(EVA_No,'P')",
-      $orderby: "EVA_No asc",
-    }
+    const urlOrEndpoint = nextLink ?? "Receipt_Totes_Excel"
+    // No $orderby — Receipt_Totes_Excel has no sortable timestamp field
+    const initialParams = nextLink ? undefined : undefined
 
     let currentLink: string | null = null
     let pageCount = 0
@@ -73,12 +58,28 @@ export async function POST(req: NextRequest) {
 
       const upserts: Promise<any>[] = []
       for (const r of rows) {
-        const toteNo = String(r.EVA_No ?? "").trim()
+        const toteNo = String(r.EVA_TOT_ToteNo ?? "").trim()
         if (!toteNo) continue
         upserts.push(prisma.warehouseTote.upsert({
           where:  { toteNo },
-          update: { location: String(r.EVA_Location ?? "").trim() || null, syncedAt: new Date() },
-          create: { toteNo, location: String(r.EVA_Location ?? "").trim() || null },
+          update: {
+            location:   String(r.EVA_TOT_ToteLocation  ?? "").trim() || null,
+            receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
+            vendorNo:   r.EVA_TOT_VendorNo   ?? null,
+            vendorName: r.EVA_TOT_VendorName ?? null,
+            status:     r.EVA_TOT_ReserveStatus ?? null,
+            catalogued: r.EVA_TOT_Catalogued === true || r.EVA_TOT_Catalogued === 1,
+            syncedAt:   new Date(),
+          },
+          create: {
+            toteNo,
+            location:   String(r.EVA_TOT_ToteLocation  ?? "").trim() || null,
+            receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
+            vendorNo:   r.EVA_TOT_VendorNo   ?? null,
+            vendorName: r.EVA_TOT_VendorName ?? null,
+            status:     r.EVA_TOT_ReserveStatus ?? null,
+            catalogued: r.EVA_TOT_Catalogued === true || r.EVA_TOT_Catalogued === 1,
+          },
         }))
       }
 

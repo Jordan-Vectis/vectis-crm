@@ -13,6 +13,7 @@ type SyncStatus = {
     auction_lines:  { completedAt: string; itemsProcessed: number } | null
     changelog:      { completedAt: string; itemsProcessed: number } | null
     totes:          { completedAt: string; itemsProcessed: number } | null
+    "totes-active": { completedAt: string; itemsProcessed: number } | null
   }
 }
 
@@ -980,7 +981,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
   // Each returns { items, batches } and logs both human-readable and raw BC info
 
   async function runStage(
-    endpoint: "receipt-lines" | "auction-lines" | "changelog" | "totes",
+    endpoint: "receipt-lines" | "auction-lines" | "changelog" | "totes" | "totes-active",
     label: string,
     full: boolean,
   ): Promise<{ items: number; batches: number }> {
@@ -1026,7 +1027,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
   }
 
   async function runOneStage(
-    endpoint: "receipt-lines" | "auction-lines" | "changelog" | "totes",
+    endpoint: "receipt-lines" | "auction-lines" | "changelog" | "totes" | "totes-active",
     label: string,
     full: boolean,
   ) {
@@ -1104,15 +1105,27 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
         }
       }
 
-      // ── Stage 4: Totes ──────────────────────────────────────────────────────
+      // ── Stage 4: Totes (all) ────────────────────────────────────────────────
       if (!cancelRef.current) {
         setPhase("Totes")
-        addLog("info", `Stage 4/4 · Totes (Receipt_Totes_Excel — physical tote locations)${full ? " — FULL re-sync" : " — incremental"}`)
+        addLog("info", `Stage 4/5 · Totes — all T/P-prefixed totes from Totes_Excel${full ? " — FULL re-sync" : ""}`)
         try {
           const r4 = await runStage("totes", "Totes", full)
           addLog("ok", `Stage 4 complete — ${r4.items.toLocaleString()} totes processed`)
         } catch (e: any) {
           addLog("warn", `Stage 4 failed (non-fatal): ${e.message ?? e}`)
+        }
+      }
+
+      // ── Stage 5: Active Totes (enrichment) ─────────────────────────────────
+      if (!cancelRef.current) {
+        setPhase("Active Totes")
+        addLog("info", "Stage 5/5 · Active Totes — enriching from Receipt_Totes_Excel (vendor, location, status)")
+        try {
+          const r5 = await runStage("totes-active", "Active Totes", false)
+          addLog("ok", `Stage 5 complete — ${r5.items.toLocaleString()} active totes enriched`)
+        } catch (e: any) {
+          addLog("warn", `Stage 5 failed (non-fatal): ${e.message ?? e}`)
         }
       }
 
@@ -1157,7 +1170,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
       </p>
 
       {/* Stats grid — each table card has its own re-sync buttons */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Items in DB</div>
           <div className="text-2xl font-mono text-white">{liveCount.toLocaleString()}</div>
@@ -1244,7 +1257,7 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
           </div>
         </div>
 
-        {/* Totes (Receipt_Totes_Excel) */}
+        {/* Totes — Totes_Excel (all) */}
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex flex-col">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Totes</div>
           <div className="text-sm text-gray-200">{fmtAge(status?.sources.totes?.completedAt)}</div>
@@ -1254,18 +1267,36 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
               disabled={running}
               onClick={() => runOneStage("totes", "Totes", false)}
               className="flex-1 text-[11px] px-2 py-1 rounded bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 disabled:opacity-30 transition-colors"
+              title="Sync all T/P-prefixed totes from Totes_Excel"
             >
               ⟳ Sync
             </button>
             <button
               disabled={running}
               onClick={() => {
-                if (!confirm("Full re-sync of Totes?")) return
+                if (!confirm("Full re-sync of Totes? This clears and re-fetches all totes.")) return
                 runOneStage("totes", "Totes", true)
               }}
               className="flex-1 text-[11px] px-2 py-1 rounded bg-amber-900/40 hover:bg-amber-800/60 text-amber-300 disabled:opacity-30 transition-colors"
             >
               ⤓ Full
+            </button>
+          </div>
+        </div>
+
+        {/* Active Totes — Receipt_Totes_Excel (enrichment) */}
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex flex-col">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Active Totes</div>
+          <div className="text-sm text-gray-200">{fmtAge(status?.sources["totes-active"]?.completedAt)}</div>
+          <div className="text-xs text-gray-500">{status?.sources["totes-active"]?.itemsProcessed?.toLocaleString() ?? 0} last run</div>
+          <div className="mt-2 flex gap-1">
+            <button
+              disabled={running}
+              onClick={() => runOneStage("totes-active", "Active Totes", false)}
+              className="flex-1 text-[11px] px-2 py-1 rounded bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 disabled:opacity-30 transition-colors"
+              title="Enrich active totes with location and vendor data from Receipt_Totes_Excel"
+            >
+              ⟳ Sync
             </button>
           </div>
         </div>
