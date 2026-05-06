@@ -8,7 +8,7 @@ import { getBCTokenAny, bcPage } from "@/lib/bc"
 // Auction names are resolved live from Auction_Receipt_Lines_Excel.
 // CatalogueAuction (the app's cataloguing system) is intentionally not used here.
 
-const ARL_CODE_CANDIDATES = ["EVA_ARL_AuctionCode", "EVA_SalesAllocation", "Auction_Code", "AuctionCode"]
+const ARL_CODE_CANDIDATES = ["EVA_AuctionNo", "EVA_ARL_AuctionCode", "EVA_SalesAllocation", "Auction_Code"]
 const ARL_NAME_CANDIDATES = ["EVA_AuctionName", "EVA_ARL_AuctionName", "Auction_Name", "AuctionName"]
 
 async function fetchBCAuctionNames(): Promise<Map<string, string>> {
