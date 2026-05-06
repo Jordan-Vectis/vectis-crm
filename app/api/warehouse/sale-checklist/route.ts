@@ -21,8 +21,13 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
     const token = await getBCTokenAny()
     if (!token) return nameByCode
 
-    // Sample a few rows to discover which fields hold the code and name
-    const sample = await bcPage(token, "Auction_Receipt_Lines_Excel", { $top: 5 })
+    // Try Auction_Lines_Excel first (has Auction Name column), fall back to Auction_Receipt_Lines_Excel
+    let sample = await bcPage(token, "Auction_Lines_Excel", { $top: 5 }).catch(() => [])
+    let endpoint = "Auction_Lines_Excel"
+    if (!sample.length) {
+      sample = await bcPage(token, "Auction_Receipt_Lines_Excel", { $top: 5 }).catch(() => [])
+      endpoint = "Auction_Receipt_Lines_Excel"
+    }
     if (!sample.length) return nameByCode
 
     const firstRow = sample[0]
@@ -33,7 +38,7 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
     if (!codeField || !nameField) return nameByCode
 
     // Fetch a broad sample and deduplicate by code
-    const rows = await bcPage(token, "Auction_Receipt_Lines_Excel", {
+    const rows = await bcPage(token, endpoint, {
       $top:    2000,
       $select: `${codeField},${nameField}`,
       $orderby: `${codeField} asc`,
