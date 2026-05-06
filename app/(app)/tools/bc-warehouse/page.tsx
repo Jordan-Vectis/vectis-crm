@@ -60,9 +60,24 @@ type SearchItem = {
   location: string | null
   binCode: string | null
   toteNo: string | null
+  barcode: string | null
   auctionCode: string | null
   lotNo: string | null
+  currentLotNo: string | null
   category: string | null
+  catalogued: boolean | null
+  locationScannedAt: string | null
+}
+
+type SearchTote = {
+  toteNo: string
+  location: string | null
+  receiptNo: string | null
+  vendorNo: string | null
+  vendorName: string | null
+  status: string | null
+  catalogued: boolean | null
+  syncedAt: string | null
 }
 
 type Tab = "heatmap" | "sale-checklist" | "search" | "location-history" | "tote-data" | "data-sync"
@@ -244,6 +259,7 @@ function WarehouseHeatmapTab() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
   const [items, setItems] = useState<SearchItem[]>([])
+  const [totes, setTotes] = useState<SearchTote[]>([])
   const [itemsLoading, setItemsLoading] = useState(false)
   const [aisleFilter, setAisleFilter] = useState<string>("ALL")
   const [showEmpty, setShowEmpty] = useState(true)
@@ -262,7 +278,8 @@ function WarehouseHeatmapTab() {
       const r = await fetch(`/api/warehouse/search?location=${encodeURIComponent(code)}`)
       const d = await r.json()
       setItems(d.items ?? [])
-    } catch { setItems([]) }
+      setTotes(d.totes ?? [])
+    } catch { setItems([]); setTotes([]) }
     setItemsLoading(false)
   }
 
@@ -483,41 +500,90 @@ function WarehouseHeatmapTab() {
         </div>
       </div>
 
-      {/* Items panel */}
+      {/* Details panel */}
       <div className="w-96 flex-shrink-0 border-l border-gray-800 overflow-y-auto p-4 bg-gray-950">
         {!selected && selected !== "" ? (
-          <div className="text-gray-500 text-sm mt-8 text-center">Click a shelf to see its items</div>
+          <div className="text-gray-500 text-sm mt-8 text-center">Click a shelf to see its contents</div>
         ) : itemsLoading ? (
           <div className="text-gray-400 text-sm">Loading…</div>
-        ) : items.length === 0 ? (
-          <div className="text-gray-500 text-sm">No items found</div>
+        ) : items.length === 0 && totes.length === 0 ? (
+          <div className="text-gray-500 text-sm">No items or totes found</div>
         ) : (
-          <div className="space-y-2">
-            <div className="mb-3 pb-2 border-b border-gray-800">
+          <div className="space-y-3">
+            {/* Header */}
+            <div className="pb-2 border-b border-gray-800">
               <div className="font-mono text-base text-blue-400 font-semibold">{selected || "Unlocated"}</div>
-              <div className="text-xs text-gray-500">{items.length} item{items.length === 1 ? "" : "s"}</div>
-            </div>
-            {items.map(item => (
-              <div key={item.uniqueId} className="bg-gray-800 rounded-lg px-4 py-3 text-sm">
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <span className="font-mono text-xs text-gray-400">{item.uniqueId}</span>
-                    {item.auctionCode && (
-                      <span className="ml-2 text-xs bg-blue-900 text-blue-200 px-2 py-0.5 rounded">{item.auctionCode}</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500 text-right shrink-0">
-                    {[item.location, item.binCode, item.toteNo].filter(Boolean).join(" / ")}
-                  </div>
-                </div>
-                {(item.description || item.artist) && (
-                  <div className="mt-1 text-gray-200 text-xs">
-                    {item.artist ? <span className="text-yellow-400">{item.artist} — </span> : null}
-                    {item.description}
-                  </div>
-                )}
+              <div className="text-xs text-gray-500">
+                {items.length > 0 && `${items.length} item${items.length === 1 ? "" : "s"}`}
+                {items.length > 0 && totes.length > 0 && " · "}
+                {totes.length > 0 && <span className="text-cyan-400">{totes.length} tote{totes.length === 1 ? "" : "s"}</span>}
               </div>
-            ))}
+            </div>
+
+            {/* Totes */}
+            {totes.length > 0 && (
+              <div>
+                <div className="text-xs text-cyan-500 uppercase tracking-wider mb-1.5">Totes</div>
+                <div className="space-y-1.5">
+                  {totes.map(tote => (
+                    <div key={tote.toteNo} className="bg-gray-800/80 rounded-lg px-3 py-2.5 text-xs border border-cyan-900/30">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-mono text-cyan-300 font-semibold">{tote.toteNo}</span>
+                        {tote.catalogued != null && (
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${tote.catalogued ? "bg-green-900/60 text-green-300" : "bg-amber-900/60 text-amber-300"}`}>
+                            {tote.catalogued ? "Catalogued" : "Active"}
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-0.5 text-gray-400">
+                        {tote.receiptNo   && <div><span className="text-gray-600">Receipt </span>{tote.receiptNo}</div>}
+                        {tote.vendorName  && <div><span className="text-gray-600">Vendor </span>{tote.vendorName}{tote.vendorNo ? ` (${tote.vendorNo})` : ""}</div>}
+                        {tote.status && tote.status !== "No Reserve" && <div><span className="text-gray-600">Status </span>{tote.status}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Items */}
+            {items.length > 0 && (
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">Items</div>
+                <div className="space-y-1.5">
+                  {items.map(item => (
+                    <div key={item.uniqueId} className="bg-gray-800 rounded-lg px-3 py-2.5 text-xs">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="font-mono text-gray-300">{item.uniqueId}</span>
+                          {item.auctionCode && (
+                            <span className="bg-blue-900 text-blue-200 px-1.5 py-0.5 rounded text-[10px]">{item.auctionCode}</span>
+                          )}
+                          {item.catalogued && (
+                            <span className="bg-green-900/60 text-green-300 px-1.5 py-0.5 rounded text-[10px]">Catalogued</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-0.5 text-gray-400">
+                        {(item.artist || item.description) && (
+                          <div className="text-gray-200">
+                            {item.artist && <span className="text-yellow-400">{item.artist} — </span>}
+                            {item.description}
+                          </div>
+                        )}
+                        {item.barcode     && <div><span className="text-gray-600">Barcode </span><span className="font-mono">{item.barcode}</span></div>}
+                        {item.lotNo       && <div><span className="text-gray-600">Lot </span>{item.lotNo}</div>}
+                        {item.currentLotNo && item.currentLotNo !== item.lotNo && <div><span className="text-gray-600">Current lot </span>{item.currentLotNo}</div>}
+                        {item.toteNo      && <div><span className="text-gray-600">Tote </span>{item.toteNo}</div>}
+                        {item.binCode     && <div><span className="text-gray-600">Bin </span>{item.binCode}</div>}
+                        {item.category    && <div><span className="text-gray-600">Category </span>{item.category}</div>}
+                        {item.locationScannedAt && <div><span className="text-gray-600">Scanned </span>{new Date(item.locationScannedAt).toLocaleDateString("en-GB")}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
