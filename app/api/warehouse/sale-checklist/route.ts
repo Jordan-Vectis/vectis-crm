@@ -5,12 +5,13 @@ import { getBCTokenAny, bcPage } from "@/lib/bc"
 
 // GET /api/warehouse/sale-checklist
 // BC-data only. Items come from WarehouseItem (synced from BC).
-// Auction names resolved from Auction_Lines_Excel via EVA_UniqueID → EVA_AuctionName.
-// CatalogueAuction is intentionally not used here.
+// Auction names stored in WarehouseItem.auctionName. Any missing names are
+// fetched live from Auction_Lines_Excel via EVA_UniqueID → EVA_AuctionName
+// and written back to the DB so they're cached for next time.
 
-// codeToUniqueId: one representative uniqueId per auction code from our DB.
-// We filter Auction_Lines_Excel by those UniqueIDs to get EVA_AuctionName.
-async function fetchBCAuctionNames(codeToUniqueId: Map<string, string>): Promise<Map<string, string>> {
+async function fetchAndCacheAuctionNames(
+  codeToUniqueId: Map<string, string>,
+): Promise<Map<string, string>> {
   const nameByCode = new Map<string, string>()
   if (codeToUniqueId.size === 0) return nameByCode
   try {
@@ -34,6 +35,20 @@ async function fetchBCAuctionNames(codeToUniqueId: Map<string, string>): Promise
         if (code) nameByCode.set(code.toUpperCase(), name)
       }
     }
+
+    // Write discovered names back to DB for all items with that auction code
+    if (nameByCode.size > 0) {
+      const updates: Promise<any>[] = []
+      for (const [code, name] of nameByCode) {
+        updates.push(
+          prisma.warehouseItem.updateMany({
+            where: { auctionCode: code, auctionName: null },
+            data:  { auctionName: name },
+          }),
+        )
+      }
+      await Promise.all(updates)
+    }
   } catch {
     // BC unavailable — names will be null, codes still show
   }
@@ -50,6 +65,7 @@ export async function GET() {
       uniqueId:     true,
       barcode:      true,
       auctionCode:  true,
+      auctionName:  true,
       auctionDate:  true,
       lotNo:        true,
       currentLotNo: true,
@@ -66,24 +82,33 @@ export async function GET() {
     orderBy: [{ auctionCode: "asc" }, { currentLotNo: "asc" }],
   })
 
-  // Build one representative uniqueId per auction code
+  // Find codes that have no stored name — need a BC lookup
   const codeToUniqueId = new Map<string, string>()
   for (const item of rows) {
-    if (!codeToUniqueId.has(item.auctionCode!)) {
-      codeToUniqueId.set(item.auctionCode!, item.uniqueId)
+    const code = item.auctionCode!
+    if (!item.auctionName && !codeToUniqueId.has(code)) {
+      codeToUniqueId.set(code, item.uniqueId)
     }
   }
 
-  const nameByCode = await fetchBCAuctionNames(codeToUniqueId)
+  // Fetch missing names from BC and cache them in DB
+  const fetchedNames = await fetchAndCacheAuctionNames(codeToUniqueId)
 
   // Group by auction code
-  const auctionMap = new Map<string, { code: string; name: string | null; date: string | null; items: typeof rows }>()
+  const auctionMap = new Map<
+    string,
+    { code: string; name: string | null; date: string | null; items: typeof rows }
+  >()
   for (const item of rows) {
     const code = item.auctionCode!
     if (!auctionMap.has(code)) {
+      const name =
+        item.auctionName ??
+        fetchedNames.get(code.trim().toUpperCase()) ??
+        null
       auctionMap.set(code, {
         code,
-        name: nameByCode.get(code.trim().toUpperCase()) ?? null,
+        name,
         date: item.auctionDate ?? null,
         items: [],
       })
@@ -91,8 +116,9 @@ export async function GET() {
     auctionMap.get(code)!.items.push(item)
   }
 
-  const auctions = [...auctionMap.values()]
-    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+  const auctions = [...auctionMap.values()].sort(
+    (a, b) => (b.date ?? "").localeCompare(a.date ?? ""),
+  )
 
   return NextResponse.json({ auctions, total: rows.length })
 }

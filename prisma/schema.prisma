@@ -567,6 +567,7 @@ model WarehouseItem {
 
   // Sale / Auction
   auctionCode  String?           // EVA_SalesAllocation
+  auctionName  String?           // EVA_AuctionName (from Auction_Lines_Excel)
   auctionDate  String?           // EVA_AuctionDate
   lotNo        String?           // EVA_LotNo
   currentLotNo String?           // EVA_CurrentLotNo (auction lines)
