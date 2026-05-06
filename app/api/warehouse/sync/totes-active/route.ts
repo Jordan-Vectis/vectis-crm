@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     let pageCount = 0
 
     while (true) {
-      if (Date.now() - startMs > 35_000) break
+      if (Date.now() - startMs > 25_000) break
       if (itemsProcessed >= maxItems) break
 
       const { rows, nextLink: nl } = await bcPageWithNext(

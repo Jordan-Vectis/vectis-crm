@@ -992,35 +992,44 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
     while (more) {
       if (cancelRef.current) { addLog("warn", "Cancelled by user"); break }
       batch++
-      const t0 = Date.now()
+      let t0 = Date.now()
       addLog("info", `  Batch ${batch} · fetching up to 5,000…`)
-      try {
-        const res: Response = await fetch(`/api/warehouse/sync/${endpoint}`, {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ full: batch === 1 ? full : false, nextLink, maxItems: 5000 }),
-        })
-        const data: any = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-        const ms = Date.now() - t0
-        items += data.itemsProcessed ?? 0
-        setItemTotal(t => t + (data.itemsProcessed ?? 0))
-        setBatchTotal(b => b + 1)
-        addLog("ok", `  Batch ${batch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
-
-        // Raw BC diagnostic feed
-        addBcLog(
-          data.more ? "info" : "warn",
-          `[${label}] batch ${batch} → BC pages: ${data.pages ?? "?"}, items processed: ${data.itemsProcessed ?? "?"}, more: ${data.more}, nextLink: ${data.nextLink ? data.nextLink.slice(-80) : "(none)"}`,
-        )
-
-        more = data.more === true
-        nextLink = data.nextLink ?? null
-        if (batch >= 500) { addLog("warn", "  Safety cap (500 batches) reached — stopping"); break }
-      } catch (e: any) {
-        addLog("error", `  Batch ${batch} failed: ${e.message ?? e}`)
-        addBcLog("error", `[${label}] batch ${batch} → ${e.message ?? e}`)
-        throw e
+      let retries = 0
+      while (true) {
+        try {
+          const res: Response = await fetch(`/api/warehouse/sync/${endpoint}`, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ full: batch === 1 ? full : false, nextLink, maxItems: 5000 }),
+          })
+          const data: any = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+          const ms = Date.now() - t0
+          items += data.itemsProcessed ?? 0
+          setItemTotal(t => t + (data.itemsProcessed ?? 0))
+          setBatchTotal(b => b + 1)
+          addLog("ok", `  Batch ${batch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
+          addBcLog(
+            data.more ? "info" : "warn",
+            `[${label}] batch ${batch} → BC pages: ${data.pages ?? "?"}, items processed: ${data.itemsProcessed ?? "?"}, more: ${data.more}, nextLink: ${data.nextLink ? data.nextLink.slice(-80) : "(none)"}`,
+          )
+          more = data.more === true
+          nextLink = data.nextLink ?? null
+          if (batch >= 500) { addLog("warn", "  Safety cap (500 batches) reached — stopping"); break }
+          break // success — exit retry loop
+        } catch (e: any) {
+          const isNetwork = e.message === "Failed to fetch" || e.message?.includes("network")
+          if (isNetwork && retries < 3) {
+            retries++
+            addLog("warn", `  Batch ${batch} network error — retrying (${retries}/3)…`)
+            await new Promise(r => setTimeout(r, 3000 * retries))
+            t0 = Date.now()
+            continue
+          }
+          addLog("error", `  Batch ${batch} failed: ${e.message ?? e}`)
+          addBcLog("error", `[${label}] batch ${batch} → ${e.message ?? e}`)
+          throw e
+        }
       }
     }
     return { items, batches: batch }
