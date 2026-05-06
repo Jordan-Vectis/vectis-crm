@@ -20,8 +20,8 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
     const rows = await bcPage(token, "Auction_Lines_Excel", { $top: 2000 })
 
     for (const r of rows) {
-      const code = String(r.EVA_AuctionNo   ?? "").trim()
-      const name = String(r.EVA_AuctionName ?? "").trim()
+      const code = String(r.EVA_SalesAllocation ?? "").trim()
+      const name = String(r.EVA_AuctionName     ?? "").trim()
       if (code && name && !nameByCode.has(code.toUpperCase())) {
         nameByCode.set(code.toUpperCase(), name)
       }
