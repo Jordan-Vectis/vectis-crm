@@ -4,10 +4,7 @@ import { prisma } from "@/lib/prisma"
 
 // GET /api/warehouse/sale-checklist
 // Returns all auction codes with their items and locations from WarehouseItem DB,
-// plus the human-readable auction name from CatalogueAuction — but only for entries
-// that have no local lots attached. If a code has lots in the cataloguing system
-// it may carry a placeholder name (e.g. "Mass Import Test") that would overwrite
-// the real BC auction name, so we skip those.
+// plus the human-readable auction name from CatalogueAuction (matched by code).
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
@@ -34,10 +31,7 @@ export async function GET() {
       },
       orderBy: [{ auctionCode: "asc" }, { currentLotNo: "asc" }],
     }),
-    // Only use names from catalogue entries that have no lots — those with lots
-    // may be test/placeholder auctions whose names shouldn't appear in the warehouse view.
     prisma.catalogueAuction.findMany({
-      where:  { lots: { none: {} } },
       select: { code: true, name: true },
     }),
   ])
