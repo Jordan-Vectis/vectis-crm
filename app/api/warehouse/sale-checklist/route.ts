@@ -15,9 +15,9 @@ async function fetchBCAuctionNames(): Promise<Map<string, string>> {
     const token = await getBCTokenAny()
     if (!token) return nameByCode
 
-    // EVA_AuctionLine is used by receipt-monthly with EVA_AuctionNo as the auction code.
-    // EVA_AuctionName confirmed by user as the name field.
-    const rows = await bcPage(token, "EVA_AuctionLine", {
+    // Auction_Lines_Excel: EVA_AuctionNo = auction code (matches WarehouseItem.auctionCode),
+    // EVA_AuctionName = human-readable sale name. Both confirmed by user.
+    const rows = await bcPage(token, "Auction_Lines_Excel", {
       $top:    2000,
       $select: "EVA_AuctionNo,EVA_AuctionName",
       $orderby: "EVA_AuctionNo asc",
