@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"324639002d1b1413f8ff61c25ef3fd2347fa9b46","author":"Jordan Orange","date":"2026-09-07T15:26:50+01:00","subject":"Migrations: stop recreating the old ArchiveLot sale+lot unique index"},
   {"sha":"0d1c331327582fc7c1b866bbcb6ba70e57d39886","author":"Jordan Orange","date":"2026-09-07T14:09:12+01:00","subject":"Lot Archive: type the photo-job filter (fixes the staging build)"},
   {"sha":"dd1d472b06f695807c22e6744c973a39a2f363d9","author":"Jordan Orange","date":"2026-09-07T14:05:58+01:00","subject":"Lot Archive: back up the full-size photo as well as the display copy"},
   {"sha":"207bce67751d7dccca68cfbbf5c994d51e3fb15a","author":"Jordan Orange","date":"2026-09-07T13:55:54+01:00","subject":"Lot Archive: summary box (lots, sold, photos in the Hub, where they came from)"},

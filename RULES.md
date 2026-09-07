@@ -1255,7 +1255,9 @@ read with **`getFallbackModel()`** from `lib/ai-models.ts`.
   (`lot_images/large/{LotID}/{LotID}.webp`); the number at the end of a lot URL is the site's own row id
   (`siteLotId`) — never confuse the two. Only FINISHED sales are written; matched rows get
   lotId/siteLotId/sitePhoto/siteHammerPrice (the sheet's figures are KEPT, only blanks filled, one raw
-  `UPDATE … FROM unnest` per sale, matched on lotId); lots the sheet never had are created with `source = "site"`.
+  `UPDATE … FROM unnest` per sale, matched on lotId, and `siteLink` = the site's exact lot address for the
+  "vectis.co.uk ↗" link). ⚠⚠ ANNOTATE ONLY — nothing is created or overwritten from the site (Jordan: "the
+  website has errors"); lots only on the site are just counted.
 - **Photo copy (job "photos")** copies each main photo (~23 KB) into R2 `archive-photos/{lotId}.webp`;
   a 404 nulls `sitePhoto`. The page shows our copy (signed) first, else the site's medium image.
 - Jobs survive the tab closing but NOT a redeploy — the button resumes from the cursor. 250 ms between

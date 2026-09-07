@@ -1408,6 +1408,7 @@ model ArchiveLot {
   // never had are created from the site with source "site".
   lotId           String?
   siteLotId       Int?
+  siteLink        String?   // the site's own lot address, e.g. bidding/724-doll-teddy-bear-sale-683/4656-a-boxed-kit-group-751438
   sitePhoto       String?   // the site's main photo path
   photoKey        String?   // our R2 copy for display (the site's "large", ~23 KB: archive-photos/{lotId}.webp)
   photoXlKey      String?   // our R2 backup of the best quality the site holds ("xlarge", ~250 KB: archive-photos/xl/{lotId}.webp)

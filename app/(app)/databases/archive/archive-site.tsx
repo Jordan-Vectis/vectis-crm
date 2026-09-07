@@ -43,7 +43,7 @@ export default function ArchiveSite() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-bold text-gray-900 dark:text-white">Pull from the website</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Walks every finished sale on vectis.co.uk (Feb 2006 onwards): each lot's LotID and photo are matched to the archive by AuctionID + lot number, and lots the spreadsheet never had are added from the site. One request every quarter-second, so a full first run takes a while — it carries on by itself.</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Walks every finished sale on vectis.co.uk (Feb 2006 onwards) and, for each lot already in the archive, fills in the site's link, its own lot number and its photo. Nothing is added or changed from the site — its hammer price is only shown beside ours where they differ. One request every quarter-second, so a full first run takes a few hours; it carries on by itself.</p>
         </div>
         <div className="flex gap-2">
           {site?.running
@@ -58,7 +58,7 @@ export default function ArchiveSite() {
             <span className="font-mono">site sale {site.cursor.toLocaleString()}</span>
           </div>
           <div className="h-2 rounded bg-gray-200 dark:bg-gray-800 overflow-hidden"><div className={`h-full bg-violet-500 ${site.running ? "animate-pulse" : ""}`} style={{ width: site.done ? "100%" : "60%" }} /></div>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Sales {site.sales.toLocaleString()} · lots matched {site.matched.toLocaleString()} · lots added from the site {site.added.toLocaleString()}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Sales {site.sales.toLocaleString()} · lots matched {site.matched.toLocaleString()} · lots only on the website (not added) {site.added.toLocaleString()}</p>
           {site.error && <p className="mt-1 text-xs text-red-700 dark:text-red-300">⚠ {site.error} — press Resume to carry on.</p>}
         </div>
       )}

@@ -9,10 +9,11 @@ import { uploadBufferToR2 } from "@/lib/r2"
 //   "site"   Walk the website's own sale ids upwards. Each sale's page gives its title
 //            and date; the site's lot feed (the same JSON its catalogue pages load)
 //            gives every lot with its lot number, the OLD SYSTEM'S LotID (the site
-//            calls it unique_id), the photo path, description, estimates and hammer.
+//            calls it unique_id), its own lot id + link, the photo path and hammer.
 //            Matched to the archive by AuctionID (the first number of the sale's URL,
 //            e.g. /bidding/724-doll-teddy-bear-sale-683 = AuctionID 724, site id 683)
-//            + lot number; rows the sheet never had are created from the site.
+//            + LotID. ⚠ ANNOTATE ONLY: the archive's rows come from the old system's
+//            export; the site's figures sit beside them, and nothing is created from it.
 //   "photos" Copy each lot's main photo into R2 so the pictures are ours whatever
 //            happens to the site. ~23 KB each at "large".
 //
@@ -88,38 +89,28 @@ const slugTitle = (sef: unknown) => {
 }
 
 /**
- * Writes one finished sale's lots: new rows created from the site, existing rows given
- * their photo/site hammer. ⚠ Matched on LotID (the site's unique_id) — sale + lot number
- * is not unique in the old data (multi-day sales re-used lot numbers).
+ * Annotates one finished sale's lots that are ALREADY in the archive: the site's own
+ * lot number and link, its photo path, and its hammer (kept beside ours, never over
+ * ours). ⚠ ANNOTATE ONLY — nothing is created from the site (Jordan, 2026-09-07: "I
+ * dont really want the website to pull it because the website has errors"); lots the
+ * site has and the archive doesn't are only counted. Matched on LotID (the site's
+ * unique_id) — sale + lot number is not unique in the old data.
  */
 async function writeSale(auctionId: number, title: string, date: Date | null, lots: FeedLot[]): Promise<{ matched: number; added: number }> {
   const existing = new Set((await prisma.archiveLot.findMany({ where: { auctionId }, select: { lotId: true } })).map(r => r.lotId).filter((x): x is string => !!x))
   const clean = lots.map(l => ({ l, lot: Math.round(Number(l.lot_number)), lotId: str(l.unique_id) })).filter(x => Number.isFinite(x.lot) && x.lotId)
   const seen = new Set<string>()
   const uniq = clean.filter(x => (seen.has(x.lotId!) ? false : (seen.add(x.lotId!), true)))
-  const toAdd = uniq.filter(x => !existing.has(x.lotId!)), toMatch = uniq.filter(x => existing.has(x.lotId!))
+  const toMatch = uniq.filter(x => existing.has(x.lotId!))
+  const siteOnly = uniq.length - toMatch.length
   const hammer = (l: FeedLot) => (Number(l.sold) ? num(l.hammer_price) : null)
 
-  let added = 0
-  if (toAdd.length) {
-    const res = await prisma.archiveLot.createMany({
-      data: toAdd.map(({ l, lot }) => ({
-        auctionId, lot, auctionDate: date, saleTitle: title,
-        description: String(l.description ?? "").trim(),
-        estimateLow: num(l.low_estimate), estimateHigh: num(l.high_estimate),
-        hammerPrice: hammer(l), siteHammerPrice: hammer(l),
-        lotId: str(l.unique_id), siteLotId: Number.isFinite(Number(l.id)) ? Math.round(Number(l.id)) : null,
-        sitePhoto: str(l.image), source: "site",
-      })),
-      skipDuplicates: true,
-    })
-    added = res.count
-  }
   if (toMatch.length) {
     // One statement per sale. Numbers travel as text and are cast in SQL so nulls are
     // never a driver question. The sheet's own figures are kept; only blanks are filled.
     const lotIds = toMatch.map(x => x.lotId!)
     const siteIds = toMatch.map(x => (Number.isFinite(Number(x.l.id)) ? String(Math.round(Number(x.l.id))) : ""))
+    const links = toMatch.map(x => (str(x.l.sef_link) ?? "").replace(/^\/+/, ""))
     const photos = toMatch.map(x => str(x.l.image) ?? "")
     const hammers = toMatch.map(x => { const h = hammer(x.l); return h == null ? "" : String(h) })
     const los = toMatch.map(x => { const n = num(x.l.low_estimate); return n == null ? "" : String(n) })
@@ -127,17 +118,18 @@ async function writeSale(auctionId: number, title: string, date: Date | null, lo
     await prisma.$executeRaw`
       UPDATE "ArchiveLot" a SET
         "siteLotId"       = NULLIF(v."siteLotId", '')::int,
+        "siteLink"        = NULLIF(v."link", ''),
         "sitePhoto"       = COALESCE(NULLIF(v."photo", ''), a."sitePhoto"),
         "siteHammerPrice" = NULLIF(v."hammer", '')::float8,
         "saleTitle"       = CASE WHEN a."saleTitle" = '' THEN ${title} ELSE a."saleTitle" END,
         "auctionDate"     = COALESCE(a."auctionDate", ${date}::timestamp),
         "estimateLow"     = COALESCE(a."estimateLow", NULLIF(v."lo", '')::float8),
         "estimateHigh"    = COALESCE(a."estimateHigh", NULLIF(v."hi", '')::float8)
-      FROM unnest(${lotIds}::text[], ${siteIds}::text[], ${photos}::text[], ${hammers}::text[], ${los}::text[], ${his}::text[])
-        AS v("lotId", "siteLotId", "photo", "hammer", "lo", "hi")
+      FROM unnest(${lotIds}::text[], ${siteIds}::text[], ${links}::text[], ${photos}::text[], ${hammers}::text[], ${los}::text[], ${his}::text[])
+        AS v("lotId", "siteLotId", "link", "photo", "hammer", "lo", "hi")
       WHERE a."auctionId" = ${auctionId} AND a."lotId" = v."lotId"`
   }
-  return { matched: toMatch.length, added }
+  return { matched: toMatch.length, added: siteOnly }
 }
 
 // ── "site" job ──────────────────────────────────────────────────────────────

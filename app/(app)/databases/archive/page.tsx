@@ -144,7 +144,11 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{fmtDate(r.auctionDate)}</td>
                       <td className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[220px]">{r.saleTitle || `Sale ${r.auctionId}`}<div className="text-xs text-gray-400">sale {r.auctionId}</div></td>
-                      <td className="px-3 py-2 text-right font-mono">{r.lot}{r.lotId && <div className="text-xs text-gray-400 font-mono" title="The old system's LotID">{r.lotId}</div>}</td>
+                      <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
+                        {r.lot}
+                        {r.lotId && <div className="text-xs text-gray-400 font-mono" title="The old system's LotID">{r.lotId}</div>}
+                        {r.siteLink && <a href={`https://www.vectis.co.uk/${r.siteLink}`} target="_blank" rel="noreferrer" className="block text-xs font-sans text-violet-600 dark:text-violet-400 hover:underline" title="Open this lot on vectis.co.uk">vectis.co.uk ↗</a>}
+                      </td>
                       <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{r.description}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap text-gray-600 dark:text-gray-400">{r.estimateLow == null && r.estimateHigh == null ? "—" : `${fmtGBP(r.estimateLow)} – ${fmtGBP(r.estimateHigh)}`}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap font-semibold">
