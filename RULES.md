@@ -1055,6 +1055,12 @@ with pen, highlighter, box, circle, arrow, text, numbered markers and ✓ ✗ �
 - **ONE canvas, drawn from an immutable list of shapes over the base image.** Undo is "drop the last
   shape", and ✂ Crop only has to translate the shapes it keeps (`shiftShape`) — mark-up moves with
   the picture rather than being thrown away. Don't move to a stateful drawing surface.
+- **Crop applies the moment you let go** (snipping-tool feel; a tap under 10×10 is ignored) and a new
+  picture opens in crop mode. **One undo history covers drawings AND crops** in the order they
+  happened — a crop entry keeps the picture it replaced (Jordan: *"undo doesnt work for cropping"*).
+- ⚠ **The canvas is sized inside `redraw()`, not where the picture loads.** It isn't mounted until
+  `hasImage` is true, so sizing it at load time did nothing and it stayed at the browser default of
+  300×150 — a full-screen capture showed as a tiny top-left corner.
 - **Pointer events + `touch-action: none` on the canvas** (design rule 5). The iPads can't capture a
   screen, but they can paste, upload and draw with a finger or pencil, and the tab says so.
 - ⚠ **Saved files are read back THROUGH the Hub** (`GET /api/it-tools/screenshots/[id]` streams the

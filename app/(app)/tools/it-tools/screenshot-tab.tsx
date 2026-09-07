@@ -39,7 +39,7 @@ type Sel = { x: number; y: number; w: number; h: number }
 type Phase = "idle" | "editing" | "saving" | "saved" | "error"
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
-  { id: "crop",    label: "✂ Crop",      hint: "Drag a box round the part you want, then press Crop to selection" },
+  { id: "crop",    label: "✂ Crop",      hint: "Drag a box round the part you want — it crops the moment you let go. Undo puts it back." },
   { id: "pen",     label: "✏ Pen",       hint: "Draw freehand" },
   { id: "hl",      label: "🖍 Highlight", hint: "See-through marker" },
   { id: "rect",    label: "▭ Box",       hint: "Drag a rectangle" },
@@ -161,6 +161,11 @@ export default function ScreenshotTab({ active = true }: { active?: boolean }) {
   const drawingRef  = useRef<Shape | null>(null)
   const cropRef     = useRef<Sel | null>(null)
   const cropStartRef = useRef<Pt | null>(null)
+  // ⚠ ONE undo list, in the order things happened. A crop is an entry alongside the
+  // shapes (Jordan: "undo doesnt work for cropping"), so ↶ Undo steps back through
+  // drawings and crops alike; a crop entry keeps the picture it replaced.
+  const opsRef = useRef<({ k: "shape" } | { k: "crop"; bmp: ImageBitmap; dx: number; dy: number })[]>([])
+  const [opCount, setOpCount] = useState(0)
   const nextNumberRef = useRef(1)
   const startingRef = useRef(false)
   const uploadedKeyRef = useRef<string | null>(null)
@@ -219,6 +224,11 @@ export default function ScreenshotTab({ active = true }: { active?: boolean }) {
   const redraw = useCallback(() => {
     const c = canvasRef.current, base = baseRef.current
     if (!c || !base) return
+    // Size the canvas from the picture HERE, not where the picture is loaded: at
+    // that moment the canvas may not be mounted yet (it renders once hasImage is
+    // true), and a canvas that is never sized is 300×150 — which painted only the
+    // top-left corner of a full-screen capture. Setting width also clears it.
+    if (c.width !== base.width || c.height !== base.height) { c.width = base.width; c.height = base.height; measure() }
     const ctx = c.getContext("2d")!
     ctx.clearRect(0, 0, c.width, c.height)
     ctx.drawImage(base, 0, 0)
@@ -233,14 +243,17 @@ export default function ScreenshotTab({ active = true }: { active?: boolean }) {
       ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.strokeRect(n.x, n.y, n.w, n.h)
       ctx.restore()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => { redraw() }, [shapes, cropSel, redraw])
+  // First paint once the canvas has actually mounted.
+  useEffect(() => { if (hasImage) { measure(); redraw() } }, [hasImage, redraw])
 
   function setBitmap(bmp: ImageBitmap) {
     baseRef.current = bmp
-    const c = canvasRef.current
-    if (c) { c.width = bmp.width; c.height = bmp.height }
     shapesRef.current = []; setShapes([])
+    opsRef.current = []; setOpCount(0)
+    setTool("crop")
     cropRef.current = null; setCropSel(null)
     drawingRef.current = null; setTextEdit(null)
     nextNumberRef.current = 1
@@ -302,6 +315,7 @@ export default function ScreenshotTab({ active = true }: { active?: boolean }) {
   }
   function commit(s: Shape) {
     shapesRef.current = [...shapesRef.current, s]; setShapes(shapesRef.current)
+    opsRef.current.push({ k: "shape" }); setOpCount(opsRef.current.length)
   }
   const stampSize = () => 14 + width * 3
   const textSize  = () => 16 + width * 3
@@ -353,8 +367,9 @@ export default function ScreenshotTab({ active = true }: { active?: boolean }) {
     if (tool === "crop" && cropStartRef.current) {
       cropStartRef.current = null
       const n = cropRef.current ? normSel(cropRef.current) : null
-      cropRef.current = n && n.w > 4 && n.h > 4 ? n : null
+      cropRef.current = n && n.w > 10 && n.h > 10 ? n : null
       setCropSel(cropRef.current)
+      if (cropRef.current) applyCrop()   // snipping-tool feel: let go and it's cropped
     }
   }
 
@@ -364,6 +379,18 @@ export default function ScreenshotTab({ active = true }: { active?: boolean }) {
   }
 
   function undo() {
+    const op = opsRef.current.pop()
+    if (!op) return
+    setOpCount(opsRef.current.length)
+    if (op.k === "crop") {
+      // Put the picture back and move the mark-up with it.
+      baseRef.current = op.bmp
+      shapesRef.current = shapesRef.current.map(s => shiftShape(s, -op.dx, -op.dy)); setShapes(shapesRef.current)
+      cropRef.current = null; setCropSel(null)
+      setTool("crop")
+      requestAnimationFrame(() => redraw())
+      return
+    }
     const last = shapesRef.current[shapesRef.current.length - 1]
     if (!last) return
     if (last.t === "stamp" && /^\d+$/.test(last.glyph)) nextNumberRef.current = Math.max(1, nextNumberRef.current - 1)
@@ -378,19 +405,19 @@ export default function ScreenshotTab({ active = true }: { active?: boolean }) {
     c.getContext("2d")!.drawImage(base, n.x, n.y, n.w, n.h, 0, 0, n.w, n.h)
     const bmp = await createImageBitmap(c)
     const kept = shapesRef.current.map(s => shiftShape(s, n.x, n.y))   // mark-up moves with the picture
+    opsRef.current.push({ k: "crop", bmp: base, dx: n.x, dy: n.y }); setOpCount(opsRef.current.length)
     baseRef.current = bmp
-    const cv = canvasRef.current; if (cv) { cv.width = bmp.width; cv.height = bmp.height }
     shapesRef.current = kept; setShapes(kept)
     cropRef.current = null; setCropSel(null)
     setTool("pen")
-    requestAnimationFrame(() => { measure(); redraw() })
+    requestAnimationFrame(() => redraw())
   }
 
   function discard() {
     if (!discardArmed) { setDiscardArmed(true); setTimeout(() => setDiscardArmed(false), 4000); return }
     baseRef.current = null; shapesRef.current = []; setShapes([]); cropRef.current = null; setCropSel(null)
     setTextEdit(null); setHasImage(false); setPhase("idle"); setDiscardArmed(false); setError(null)
-    uploadedKeyRef.current = null
+    uploadedKeyRef.current = null; opsRef.current = []; setOpCount(0)
   }
 
   // ── Output ─────────────────────────────────────────────────────────────────
@@ -532,13 +559,7 @@ export default function ScreenshotTab({ active = true }: { active?: boolean }) {
                 <button key={w} onClick={() => setWidth(w)} title={`${name} line`} className={toolBtn(width === w)}>{name}</button>
               ))}
               <span className="w-px bg-gray-300 dark:bg-gray-700 mx-1" aria-hidden />
-              <button onClick={undo} disabled={!shapes.length} className={plain}>↶ Undo</button>
-              {cropSel && tool === "crop" && (
-                <>
-                  <button onClick={applyCrop} className={primary}>✂ Crop to selection</button>
-                  <button onClick={() => { cropRef.current = null; setCropSel(null) }} className={plain}>✕ Clear selection</button>
-                </>
-              )}
+              <button onClick={undo} disabled={!opCount} className={plain} title="Step back — the last drawing, or the last crop">↶ Undo</button>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">{TOOLS.find(t => t.id === tool)?.hint}</p>
 
