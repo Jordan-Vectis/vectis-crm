@@ -1017,7 +1017,9 @@ file **straight to R2 on a presigned URL** (a recording is hundreds of MB; the s
 - **Play URLs are signed for 8 hours**, not the Documents route's one: a `<video>` fetches lazily in
   Range requests, each checked against the expiry, so an hour meant seeking or resuming an hour
   after pressing Play died with a 403. A failed Play/Delete on one row shows above the table
-  (`actionError`); only a failed *load* replaces it (`listError`).
+  (`actionError`); only a failed *load* replaces it (`listError`). **⬇ Download** signs the same
+  object with `ResponseContentDisposition: attachment` and the title as filename — `<a download>`
+  is ignored cross-origin, and R2 is a different origin, so the header is the only way that works.
 - ⚠⚠ **Fail at the free step, never after the upload.** `upload-url` touches the table
   (`findFirst`) *before* signing, so a missing migration or a down database fails before the
   browser spends minutes pushing a file the save could never register.

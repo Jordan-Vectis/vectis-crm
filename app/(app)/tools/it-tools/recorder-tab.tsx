@@ -403,6 +403,18 @@ export default function RecorderTab({ popout = false, active = true }: { popout?
     setBusyId(null)
   }
 
+  async function download(rec: Rec) {
+    setBusyId(rec.id); setActionError(null)
+    try {
+      const r = await fetch(`/api/it-tools/recordings/${rec.id}?download=1`)
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j?.error ?? "Couldn't get a download link")
+      // The link carries Content-Disposition: attachment, so this saves rather than navigates.
+      const a = document.createElement("a"); a.href = j.url; a.click()
+    } catch (e: any) { setActionError(`${rec.title}: ${e?.message ?? "couldn't download it"}`) }
+    setBusyId(null)
+  }
+
   async function remove(rec: Rec) {
     if (!confirm(`Delete "${rec.title}"? This removes the file too and can't be undone.`)) return
     setBusyId(rec.id); setActionError(null)
@@ -596,7 +608,7 @@ export default function RecorderTab({ popout = false, active = true }: { popout?
                 {list.map(rec => (
                   <RecordingRow key={rec.id} rec={rec} busy={busyId === rec.id}
                     playing={playing?.id === rec.id ? playing.url : null}
-                    onPlay={() => play(rec)} onDelete={() => remove(rec)} onMeta={onMeta} small={small} />
+                    onPlay={() => play(rec)} onDownload={() => download(rec)} onDelete={() => remove(rec)} onMeta={onMeta} small={small} />
                 ))}
               </tbody>
             </table>
@@ -607,9 +619,9 @@ export default function RecorderTab({ popout = false, active = true }: { popout?
   )
 }
 
-function RecordingRow({ rec, busy, playing, onPlay, onDelete, onMeta, small }: {
+function RecordingRow({ rec, busy, playing, onPlay, onDownload, onDelete, onMeta, small }: {
   rec: Rec; busy: boolean; playing: string | null
-  onPlay: () => void; onDelete: () => void
+  onPlay: () => void; onDownload: () => void; onDelete: () => void
   onMeta: (e: React.SyntheticEvent<HTMLVideoElement>) => void
   small: string
 }) {
@@ -625,6 +637,10 @@ function RecordingRow({ rec, busy, playing, onPlay, onDelete, onMeta, small }: {
           <button onClick={onPlay} disabled={busy}
             className={`${small} mr-2 border border-gray-300 dark:border-gray-700 hover:border-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400`}>
             {playing ? "✕ Close" : "▶ Play"}
+          </button>
+          <button onClick={onDownload} disabled={busy} title="Save the video file to this computer"
+            className={`${small} mr-2 border border-gray-300 dark:border-gray-700 hover:border-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400`}>
+            ⬇ Download
           </button>
           <button onClick={onDelete} disabled={busy}
             className={`${small} border border-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-500/10`}>
