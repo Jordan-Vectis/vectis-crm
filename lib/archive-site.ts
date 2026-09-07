@@ -86,13 +86,17 @@ const slugTitle = (sef: unknown) => {
   return m ? m[1].split("-").map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ") : ""
 }
 
-/** Writes one finished sale's lots: new rows created from the site, existing rows given their LotID/photo/site hammer. */
+/**
+ * Writes one finished sale's lots: new rows created from the site, existing rows given
+ * their photo/site hammer. ⚠ Matched on LotID (the site's unique_id) — sale + lot number
+ * is not unique in the old data (multi-day sales re-used lot numbers).
+ */
 async function writeSale(auctionId: number, title: string, date: Date | null, lots: FeedLot[]): Promise<{ matched: number; added: number }> {
-  const existing = new Set((await prisma.archiveLot.findMany({ where: { auctionId }, select: { lot: true } })).map(r => r.lot))
-  const clean = lots.map(l => ({ l, lot: Math.round(Number(l.lot_number)) })).filter(x => Number.isFinite(x.lot))
-  const seen = new Set<number>()
-  const uniq = clean.filter(x => (seen.has(x.lot) ? false : (seen.add(x.lot), true)))
-  const toAdd = uniq.filter(x => !existing.has(x.lot)), toMatch = uniq.filter(x => existing.has(x.lot))
+  const existing = new Set((await prisma.archiveLot.findMany({ where: { auctionId }, select: { lotId: true } })).map(r => r.lotId).filter((x): x is string => !!x))
+  const clean = lots.map(l => ({ l, lot: Math.round(Number(l.lot_number)), lotId: str(l.unique_id) })).filter(x => Number.isFinite(x.lot) && x.lotId)
+  const seen = new Set<string>()
+  const uniq = clean.filter(x => (seen.has(x.lotId!) ? false : (seen.add(x.lotId!), true)))
+  const toAdd = uniq.filter(x => !existing.has(x.lotId!)), toMatch = uniq.filter(x => existing.has(x.lotId!))
   const hammer = (l: FeedLot) => (Number(l.sold) ? num(l.hammer_price) : null)
 
   let added = 0
@@ -113,8 +117,7 @@ async function writeSale(auctionId: number, title: string, date: Date | null, lo
   if (toMatch.length) {
     // One statement per sale. Numbers travel as text and are cast in SQL so nulls are
     // never a driver question. The sheet's own figures are kept; only blanks are filled.
-    const lotNos = toMatch.map(x => x.lot)
-    const lotIds = toMatch.map(x => str(x.l.unique_id) ?? "")
+    const lotIds = toMatch.map(x => x.lotId!)
     const siteIds = toMatch.map(x => (Number.isFinite(Number(x.l.id)) ? String(Math.round(Number(x.l.id))) : ""))
     const photos = toMatch.map(x => str(x.l.image) ?? "")
     const hammers = toMatch.map(x => { const h = hammer(x.l); return h == null ? "" : String(h) })
@@ -122,17 +125,16 @@ async function writeSale(auctionId: number, title: string, date: Date | null, lo
     const his = toMatch.map(x => { const n = num(x.l.high_estimate); return n == null ? "" : String(n) })
     await prisma.$executeRaw`
       UPDATE "ArchiveLot" a SET
-        "lotId"           = NULLIF(v."lotId", ''),
         "siteLotId"       = NULLIF(v."siteLotId", '')::int,
-        "sitePhoto"       = NULLIF(v."photo", ''),
+        "sitePhoto"       = COALESCE(NULLIF(v."photo", ''), a."sitePhoto"),
         "siteHammerPrice" = NULLIF(v."hammer", '')::float8,
         "saleTitle"       = CASE WHEN a."saleTitle" = '' THEN ${title} ELSE a."saleTitle" END,
         "auctionDate"     = COALESCE(a."auctionDate", ${date}::timestamp),
         "estimateLow"     = COALESCE(a."estimateLow", NULLIF(v."lo", '')::float8),
         "estimateHigh"    = COALESCE(a."estimateHigh", NULLIF(v."hi", '')::float8)
-      FROM unnest(${lotNos}::int[], ${lotIds}::text[], ${siteIds}::text[], ${photos}::text[], ${hammers}::text[], ${los}::text[], ${his}::text[])
-        AS v("lot", "lotId", "siteLotId", "photo", "hammer", "lo", "hi")
-      WHERE a."auctionId" = ${auctionId} AND a."lot" = v."lot"`
+      FROM unnest(${lotIds}::text[], ${siteIds}::text[], ${photos}::text[], ${hammers}::text[], ${los}::text[], ${his}::text[])
+        AS v("lotId", "siteLotId", "photo", "hammer", "lo", "hi")
+      WHERE a."auctionId" = ${auctionId} AND a."lotId" = v."lotId"`
   }
   return { matched: toMatch.length, added }
 }

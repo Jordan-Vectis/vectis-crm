@@ -1414,10 +1414,14 @@ model ArchiveLot {
   source          String    @default("sheet")
   importedAt   DateTime  @default(now())
 
-  @@unique([auctionId, lot])
+  // ⚠ Identity is the LotID (the old system's key, unique across every sale). Sale +
+  // lot number is NOT unique — the report has 1,637 lot numbers repeated within a
+  // sale (multi-day sales re-used them) — so it is only an index, and createMany's
+  // skipDuplicates dedupes on lotId.
+  @@unique([lotId])
+  @@index([auctionId, lot])
   @@index([auctionDate])
   @@index([hammerPrice])
-  @@index([lotId])
 }
 
 // One sale as the website lists it: its own sequential id, the AuctionID it shares

@@ -1237,7 +1237,12 @@ read with **`getFallbackModel()`** from `lib/ai-models.ts`.
 ## Databases → Lot Archive (pre-BC lots, LotIDs + photos from the website)
 
 - `/databases/archive`: every lot sold before Business Central — tables `ArchiveLot` (unique on
-  `auctionId + lot`), `ArchiveImport`, `ArchiveSale`, `ArchiveJob`. Admin panels on top. NEEDS Run Migrations.
+  `lotId` — the old system's key; sale + lot number REPEATS in multi-day sales, so it is only an index),
+  `ArchiveImport`, `ArchiveSale`, `ArchiveJob`. Admin panels on top. NEEDS Run Migrations.
+- ⚠ The Crystal report is the trusted source, NOT "lot export.xlsx": measured 2026-09-07 the xlsx's 1,496,760 rows
+  are 946k real + 548,254 DUPLICATES + 1,637 hammerless 2008 rows. The report's 956,832 rows include 7,477 blank
+  placeholder lots and 849 unlotted entries the importer rejects as unreadable — expected, not a fault. AuctionID is
+  not printed by the report; the Hub-ready "Lot Export (Claude version).csv" was stamped from the xlsx by date/lot.
 - ⚠⚠ **The spreadsheet is STREAMED, never read whole.** The old system's export is 136 MB; SheetJS
   reading it into memory killed the request ("Couldn't read the spreadsheet"). `readArchiveStream`
   (lib/archive-import.ts: exceljs WorkbookReader for .xlsx, our own reader for .csv) feeds a
@@ -1250,7 +1255,7 @@ read with **`getFallbackModel()`** from `lib/ai-models.ts`.
   (`lot_images/large/{LotID}/{LotID}.webp`); the number at the end of a lot URL is the site's own row id
   (`siteLotId`) — never confuse the two. Only FINISHED sales are written; matched rows get
   lotId/siteLotId/sitePhoto/siteHammerPrice (the sheet's figures are KEPT, only blanks filled, one raw
-  `UPDATE … FROM unnest` per sale); lots the sheet never had are created with `source = "site"`.
+  `UPDATE … FROM unnest` per sale, matched on lotId); lots the sheet never had are created with `source = "site"`.
 - **Photo copy (job "photos")** copies each main photo (~23 KB) into R2 `archive-photos/{lotId}.webp`;
   a 404 nulls `sitePhoto`. The page shows our copy (signed) first, else the site's medium image.
 - Jobs survive the tab closing but NOT a redeploy — the button resumes from the cursor. 250 ms between
