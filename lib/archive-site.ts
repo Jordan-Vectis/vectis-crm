@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import type { Prisma } from "@/app/generated/prisma/client"
 import { uploadBufferToR2 } from "@/lib/r2"
 
 // Lot Archive ← vectis.co.uk. Two resumable server-side jobs, started from the
@@ -205,7 +206,7 @@ async function runSitePull() {
 // Two copies per lot: the site's "large" (~23 KB) for display, and its "xlarge"
 // (~250 KB, the best it holds — there are no originals) as the backup, so a future
 // move off the website has the full-quality pictures. ~260 GB for the whole archive.
-const PHOTO_TODO = { sitePhoto: { not: null }, OR: [{ photoKey: null }, { photoXlKey: null }] } as const
+const PHOTO_TODO: Prisma.ArchiveLotWhereInput = { sitePhoto: { not: null }, OR: [{ photoKey: null }, { photoXlKey: null }] }
 
 export async function startPhotoCopy(startedBy: string) {
   if (isActive("photos")) return getJob("photos")
