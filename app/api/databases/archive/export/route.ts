@@ -44,6 +44,6 @@ export async function GET() {
       if (rows.length < 5000) done = true
     },
   })
-  const name = `Lot Archive ${new Date().toISOString().slice(0, 10)}.csv`
+  const name = `ABC Database ${new Date().toISOString().slice(0, 10)}.csv`
   return new Response(stream, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${name}"`, "Cache-Control": "no-store" } })
 }

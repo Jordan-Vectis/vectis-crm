@@ -83,8 +83,8 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <Link href="/databases" className="text-sm text-gray-500 hover:text-gray-300">← Databases</Link>
-            <h1 className="text-xl font-bold mt-1">Lot Archive</h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Every lot sold before Business Central — descriptions, estimates and hammer prices from the old system's export, with LotIDs and photos matched from the website.</p>
+            <h1 className="text-xl font-bold mt-1">ABC Database</h1>
+            <p className="text-sm text-gray-600 dark:text-gray-400">Every lot sold through ABC, the system before Business Central — descriptions, estimates and hammer prices from its export, with LotIDs, photos and links matched from the website.</p>
           </div>
         </div>
 
@@ -96,7 +96,7 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
           const sub = "text-xs text-gray-500 dark:text-gray-400 mt-0.5"
           return (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className={tile}><div className={lbl}>Lots in the archive</div><div className={big}>{stats.n.toLocaleString()}</div>
+              <div className={tile}><div className={lbl}>Lots in the ABC database</div><div className={big}>{stats.n.toLocaleString()}</div>
                 <div className={sub}>{stats.sales.toLocaleString()} sales · {fmtDate(stats.from)} → {fmtDate(stats.to)}</div></div>
               <div className={tile}><div className={lbl}>Sold</div><div className={big}>{stats.sold.toLocaleString()}</div>
                 <div className={sub}>hammer total {fmtGBP(stats.hammer)} · {(stats.n - stats.sold).toLocaleString()} unsold or no result</div></div>

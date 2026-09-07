@@ -645,7 +645,7 @@ export default function DatabasesClient({ contacts: initialContacts, receipts: i
             </button>
           ))}
           {/* The pre-BC lot archive is its own page — twenty years of rows can't ride in this page's props. */}
-          <Link href="/databases/archive" className="px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-300 transition-colors">Lot Archive ↗</Link>
+          <Link href="/databases/archive" className="px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-300 transition-colors">ABC Database ↗</Link>
         </div>
 
         {/* ── Customers ── */}

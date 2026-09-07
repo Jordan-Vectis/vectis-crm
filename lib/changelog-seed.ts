@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"120880b4203631452d89078b294690b3ceea4623","author":"Jordan Orange","date":"2026-09-07T16:12:35+01:00","subject":"Lot Archive: export data (streamed CSV) + handover panel for a future website"},
   {"sha":"dadc7621924a22cb6140a1576b6c2f7e55727b08","author":"Jordan Orange","date":"2026-09-07T15:36:42+01:00","subject":"Lot Archive: link each lot to vectis.co.uk; the website pull is annotate-only"},
   {"sha":"324639002d1b1413f8ff61c25ef3fd2347fa9b46","author":"Jordan Orange","date":"2026-09-07T15:26:50+01:00","subject":"Migrations: stop recreating the old ArchiveLot sale+lot unique index"},
   {"sha":"0d1c331327582fc7c1b866bbcb6ba70e57d39886","author":"Jordan Orange","date":"2026-09-07T14:09:12+01:00","subject":"Lot Archive: type the photo-job filter (fixes the staging build)"},

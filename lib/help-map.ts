@@ -239,9 +239,9 @@ export const DESTINATIONS: Destination[] = [
   // ── Databases ───────────────────────────────────────────────────────────────
   {
     ask: "Where are the old sale results?",
-    name: "Databases → Lot Archive", href: "/databases/archive",   // no app key: Databases is gated on sign-in only
-    what: "Every lot sold before Business Central — the old system\u2019s export back to 1999 — with the description, estimate and hammer price. Search by words in the description, sale, year or price.",
-    also: ["archive", "old results", "what did it sell for", "past prices", "pre-BC", "old system", "historic lots", "sold prices"],
+    name: "Databases → ABC Database", href: "/databases/archive",   // no app key: Databases is gated on sign-in only
+    what: "Every lot sold through ABC, the system before Business Central — back to 1999 — with the description, estimate, hammer price, photo and a link to the lot on vectis.co.uk. Search by words in the description, sale, year or price.",
+    also: ["ABC", "abc database", "lot archive", "archive", "old results", "what did it sell for", "past prices", "pre-BC", "old system", "historic lots", "sold prices"],
   },
 ]
 
