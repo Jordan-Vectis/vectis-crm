@@ -230,6 +230,12 @@ export const DESTINATIONS: Destination[] = [
     what: "Record any screen, window or tab from the browser and keep the video in the Hub — for showing a fault, recording an Auto Clerk test, or a walk-through of the website. Computer only; the iPads can't do it.",
     also: ["screen recording", "record the screen", "screen capture", "video of my screen", "record a test", "recordings"],
   },
+  {
+    ask: "How do I take a screenshot?",
+    name: "IT Tools → Screenshots", href: "/tools/it-tools?tab=screenshots",
+    what: "A snipping tool that keeps the picture in the Hub: capture a screen, paste one in with Ctrl+V or upload it, crop it, draw arrows, boxes, numbers, ticks and text on it, then save it, copy it into an email, or download it.",
+    also: ["snip", "snipping tool", "screen grab", "screenshot", "annotate", "mark up a screenshot", "draw on a screenshot", "highlight a screenshot"],
+  },
 ]
 
 /** Every AppKey mentioned in the map really exists. Cheap guard against a typo'd key

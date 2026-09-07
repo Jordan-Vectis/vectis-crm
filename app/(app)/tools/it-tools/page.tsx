@@ -6,6 +6,7 @@ import Link from "next/link"
 import ModelPingTester from "@/components/model-ping-tester"
 import BcSourceTab from "./bc-source-tab"
 import RecorderTab from "./recorder-tab"
+import ScreenshotTab from "./screenshot-tab"
 
 const FALLBACK_MODEL = "gemini-3-flash-preview"
 
@@ -19,8 +20,12 @@ type Template = {
   sortOrder: number
 }
 
-type Tab = "reply" | "templates" | "bc-source" | "recorder"
-const TABS: Tab[] = ["reply", "templates", "bc-source", "recorder"]
+type Tab = "reply" | "templates" | "bc-source" | "recorder" | "screenshots"
+const TABS: Tab[] = ["reply", "templates", "bc-source", "recorder", "screenshots"]
+const TAB_LABEL: Record<Tab, string> = {
+  reply: "✍️ Draft Reply", templates: "📋 Templates", "bc-source": "🧩 BC Source",
+  recorder: "🎥 Screen Recorder", screenshots: "📸 Screenshots",
+}
 const isTab = (t: string | null): t is Tab => !!t && (TABS as string[]).includes(t)
 
 // useSearchParams needs a Suspense boundary on a client page, and it earns it: the
@@ -45,8 +50,11 @@ function ITToolsInner() {
   // Unmounting it mid-recording would stop the recording.
   const [recorderOpened, setRecorderOpened] = useState(tab === "recorder")
   useEffect(() => { if (tab === "recorder") setRecorderOpened(true) }, [tab])
+  // Same for Screenshots: an unsaved marked-up image would be lost on unmount.
+  const [shotsOpened, setShotsOpened] = useState(tab === "screenshots")
+  useEffect(() => { if (tab === "screenshots") setShotsOpened(true) }, [tab])
   // Data-bearing tabs get the width (RULES → design rule 1); the prose tabs keep the column.
-  const wide = tab === "bc-source" || tab === "recorder"
+  const wide = tab === "bc-source" || tab === "recorder" || tab === "screenshots"
 
   return (
     <div className={popout ? "p-4" : wide ? "p-8 max-w-[1700px] mx-auto" : "p-8 max-w-5xl mx-auto"}>
@@ -76,7 +84,7 @@ function ITToolsInner() {
                 : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 dark:text-gray-200"
             }`}
           >
-            {t === "reply" ? "✍️ Draft Reply" : t === "templates" ? "📋 Templates" : t === "bc-source" ? "🧩 BC Source" : "🎥 Screen Recorder"}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </div>
@@ -86,6 +94,7 @@ function ITToolsInner() {
       {tab === "templates" ? <TemplatesTab />  : null}
       {tab === "bc-source" ? <BcSourceTab />   : null}
       {recorderOpened && <div hidden={tab !== "recorder"}><RecorderTab popout={popout} active={tab === "recorder"} /></div>}
+      {shotsOpened && <div hidden={tab !== "screenshots"}><ScreenshotTab active={tab === "screenshots"} /></div>}
     </div>
   )
 }

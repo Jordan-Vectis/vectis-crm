@@ -1,4 +1,4 @@
-// The commit history from 1 July 2026 up to 2026-09-05, committed into the repo.
+// The commit history from 1 July 2026 up to 2026-09-07, committed into the repo.
 //
 // ⚠ THIS IS THE ONLY COMPLETE HISTORY THE RUNNING APP CAN SEE. Railway's build
 // has no .git, so scripts/capture-changelog.mjs falls back to the deploy
@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"2df18e8928a58bbbc3a2f29545a63ea57ac00b12","author":"Jordan Orange","date":"2026-09-07T10:06:37+01:00","subject":"Screen Recorder: download a recording"},
   {"sha":"e9d545035701497cd89503a2a0e7cd3e5fc179cf","author":"Jordan Orange","date":"2026-09-05T00:57:42+01:00","subject":"IT Tools: Screen Recorder"},
   {"sha":"0f19429898ffb5d0a72fa49fb04839d156b5fd72","author":"Jordan Orange","date":"2026-09-04T15:33:22+01:00","subject":"Archived instructions leave every dropdown at once"},
   {"sha":"69f70f846aaf59294fc6259212b22ef725c70834","author":"Jordan Orange","date":"2026-09-04T15:00:17+01:00","subject":"Instructions: archive an old one, and bring it back"},

@@ -1366,6 +1366,22 @@ model ScreenRecording {
   createdAt      DateTime @default(now())
 }
 
+// A screenshot from IT Tools → Screenshots (the snipping-tool stand-in): captured
+// or pasted in the browser, cropped and marked up on a canvas, then the PNG goes
+// straight to R2 (presigned PUT) and this row is written once it is confirmed there.
+model ScreenCapture {
+  id          String   @id @default(cuid())
+  title       String
+  key         String   // R2 object key, screenshots/…
+  contentType String   // always image/png
+  sizeBytes   Int
+  width       Int
+  height      Int
+  takenBy     String   // email
+  takenByName String
+  createdAt   DateTime @default(now())
+}
+
 // Pre-typed email reply snippets staff can copy into customer responses.
 // Lives behind the IT Tools "Templates" tab.
 model EmailTemplate {

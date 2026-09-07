@@ -1811,6 +1811,22 @@ const MIGRATIONS = [
     "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ScreenRecording_pkey" PRIMARY KEY ("id")
   )`,
+
+  // IT Tools → Screenshots: one row per saved, marked-up screenshot; the PNG
+  // is already in R2 before the row exists.
+  `CREATE TABLE IF NOT EXISTS "ScreenCapture" (
+    "id"          TEXT NOT NULL,
+    "title"       TEXT NOT NULL,
+    "key"         TEXT NOT NULL,
+    "contentType" TEXT NOT NULL,
+    "sizeBytes"   INTEGER NOT NULL,
+    "width"       INTEGER NOT NULL,
+    "height"      INTEGER NOT NULL,
+    "takenBy"     TEXT NOT NULL,
+    "takenByName" TEXT NOT NULL,
+    "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ScreenCapture_pkey" PRIMARY KEY ("id")
+  )`,
 ]
 
 // Fingerprint of every statement above. Changes the moment a migration is added,

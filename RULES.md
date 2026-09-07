@@ -1041,6 +1041,38 @@ file **straight to R2 on a presigned URL** (a recording is hundreds of MB; the s
 - Registered in `lib/help-map.ts` ("How do I record my screen?").
 
 ---
+## 📸 IT Tools → Screenshots (2026-09-07)
+
+Jordan: *"a snipping tool alternative as well that saves screenshots into the hub and lets me
+annotate and draw symbols on etc"*. Fifth IT Tools tab, beside the recorder.
+
+`app/(app)/tools/it-tools/screenshot-tab.tsx` + `app/api/it-tools/screenshots/*` + `ScreenCapture`
+(**NEEDS Run Migrations**). Three ways in — 📸 Capture (the recorder's picker; ONE frame is grabbed
+and the share stopped at once), **Ctrl+V** a screenshot, or upload a file — then ✂ crop and mark up
+with pen, highlighter, box, circle, arrow, text, numbered markers and ✓ ✗ ⚠ stamps; then 💾 Save,
+📋 Copy image (for pasting into an email) or ⬇ Download. Saved ones show as thumbnails with a viewer.
+
+- **ONE canvas, drawn from an immutable list of shapes over the base image.** Undo is "drop the last
+  shape", and ✂ Crop only has to translate the shapes it keeps (`shiftShape`) — mark-up moves with
+  the picture rather than being thrown away. Don't move to a stateful drawing surface.
+- **Pointer events + `touch-action: none` on the canvas** (design rule 5). The iPads can't capture a
+  screen, but they can paste, upload and draw with a finger or pencil, and the tab says so.
+- ⚠ **Saved files are read back THROUGH the Hub** (`GET /api/it-tools/screenshots/[id]` streams the
+  PNG, `?download=1` for an attachment). Same origin on purpose: thumbnails, the viewer, Copy image
+  (which must `fetch()` the bytes) and Download all work with **no CORS rule on the bucket**. A
+  screenshot is a few MB at most, so streaming it is fine; recordings are hundreds of MB and use
+  signed URLs instead. Uploads still go straight to R2 on a presigned PUT, then register after a
+  HEAD check, idempotent on key, exactly like the recorder.
+- **Copy uses `ClipboardItem` with a `Promise<Blob>`** so the write stays inside the click's
+  user-gesture window while the PNG is still being encoded. Where the browser has no
+  `ClipboardItem` the error says so.
+- Capture has the recorder's **in-flight guard**; the paste listener is attached **only while the
+  tab is the one showing** (`active`); the tab is kept **mounted once opened** so an unsaved marked-up
+  image survives a tab switch; `beforeunload` guards it.
+- Every tool button carries a text label (design rule 3), so the symbols need no separate key.
+- Cap 25 MB. Registered in `lib/help-map.ts` ("How do I take a screenshot?").
+
+---
 ## ⚠⚠ The edit lock is the CATALOGUED tick, not "Added to BC" (2026-09-02)
 
 `requireNotBCLocked` — the one gate, 28 call sites — reads **`CatalogueAuction.catalogued`**.
