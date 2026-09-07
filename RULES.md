@@ -1269,3 +1269,17 @@ read with **`getFallbackModel()`** from `lib/ai-models.ts`.
   deliberately NOT built — an object store keyed on LotID + a CSV is the handover format.
 - Where the site's hammer differs from the sheet's, the page shows "site £N" in amber under the hammer;
   the sheet's value stays. Oldest sale on the site is Feb 2006 — earlier rows stay text-only.
+
+## Databases → BC Database (Business Central lots, built like the ABC database)
+
+- `/databases/bc`: every BC lot that has been through a sale, same layout as the ABC database (tiles, search,
+  thumbnails, "vectis.co.uk ↗", amber "site £N", Export & handover, `GET /api/databases/bc/export`).
+- **Two sources, one raw LEFT JOIN:** `WarehouseItem` (BC sync: sale, lot, short description, estimates, hammer —
+  lot = `COALESCE(NULLIF(currentLotNo,'0'), lotNo)`, hammer 0 = unsold) ⟕ `BcLotWeb` on `upper(uniqueId)` (the
+  website's FULL description, siteLotId, siteLink, sitePhoto, photoKey `bc-photos/{UniqueID}.webp`, photoXlKey).
+- ⚠⚠ **BC's API has NO long description** (probed 2026-09-07: only `EVA_ShortDescription`, 250 chars) — the site's
+  lot feed is the only source; its `unique_id` "r008728-194" = WarehouseItem "R008728-194"; BC sale URLs start
+  with the sale CODE (`/bidding/D062-…`). `writeBcSale` in lib/archive-site.ts CREATES/updates BcLotWeb rows (one
+  INSERT … ON CONFLICT per finished sale) — allowed here because BcLotWeb is purely the site's view and never
+  touches WarehouseItem. The photos job does ABC lots first, then BC (`copyOne`, prefix `bc-photos`).
+- WarehouseItem is a sync CACHE (`reconcile-deleted` may delete rows); BcLotWeb has no FK and survives.

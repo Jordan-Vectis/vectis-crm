@@ -132,6 +132,45 @@ async function writeSale(auctionId: number, title: string, date: Date | null, lo
   return { matched: toMatch.length, added: siteOnly }
 }
 
+const isBcId = (u: string | null): u is string => !!u && /^r\d+-\d+$/i.test(u)
+
+/**
+ * BC-era lots (unique_id "r008728-194" = WarehouseItem "R008728-194"): the website is
+ * the ONLY source of the long description (BC's API exposes just the 250-char short
+ * one), so these rows are CREATED as well as updated — but only in BcLotWeb, never on
+ * WarehouseItem, whose figures stay BC's own. One INSERT … ON CONFLICT per sale.
+ */
+async function writeBcSale(auctionCode: string | null, lots: FeedLot[]): Promise<number> {
+  const seen = new Set<string>()
+  const rows = lots
+    .map(l => ({ l, id: str(l.unique_id)?.toUpperCase() ?? null }))
+    .filter((x): x is { l: FeedLot; id: string } => isBcId(x.id) && !seen.has(x.id!) && (seen.add(x.id!), true))
+  if (!rows.length) return 0
+  const hammer = (l: FeedLot) => (Number(l.sold) ? num(l.hammer_price) : null)
+  const ids = rows.map(x => x.id)
+  const lotNos = rows.map(x => (Number.isFinite(Number(x.l.lot_number)) ? String(Math.round(Number(x.l.lot_number))) : ""))
+  const descs = rows.map(x => String(x.l.description ?? "").trim())
+  const siteIds = rows.map(x => (Number.isFinite(Number(x.l.id)) ? String(Math.round(Number(x.l.id))) : ""))
+  const links = rows.map(x => (str(x.l.sef_link) ?? "").replace(/^\/+/, ""))
+  const photos = rows.map(x => str(x.l.image) ?? "")
+  const hammers = rows.map(x => { const h = hammer(x.l); return h == null ? "" : String(h) })
+  await prisma.$executeRaw`
+    INSERT INTO "BcLotWeb" ("uniqueId", "auctionCode", "lotNumber", "description", "siteLotId", "siteLink", "sitePhoto", "siteHammerPrice", "pulledAt")
+    SELECT v."id", ${auctionCode}, NULLIF(v."lot", '')::int, NULLIF(v."desc", ''), NULLIF(v."siteId", '')::int, NULLIF(v."link", ''), NULLIF(v."photo", ''), NULLIF(v."hammer", '')::float8, now()
+    FROM unnest(${ids}::text[], ${lotNos}::text[], ${descs}::text[], ${siteIds}::text[], ${links}::text[], ${photos}::text[], ${hammers}::text[])
+      AS v("id", "lot", "desc", "siteId", "link", "photo", "hammer")
+    ON CONFLICT ("uniqueId") DO UPDATE SET
+      "auctionCode" = COALESCE(EXCLUDED."auctionCode", "BcLotWeb"."auctionCode"),
+      "lotNumber" = COALESCE(EXCLUDED."lotNumber", "BcLotWeb"."lotNumber"),
+      "description" = COALESCE(EXCLUDED."description", "BcLotWeb"."description"),
+      "siteLotId" = COALESCE(EXCLUDED."siteLotId", "BcLotWeb"."siteLotId"),
+      "siteLink" = COALESCE(EXCLUDED."siteLink", "BcLotWeb"."siteLink"),
+      "sitePhoto" = COALESCE(EXCLUDED."sitePhoto", "BcLotWeb"."sitePhoto"),
+      "siteHammerPrice" = COALESCE(EXCLUDED."siteHammerPrice", "BcLotWeb"."siteHammerPrice"),
+      "pulledAt" = now()`
+  return rows.length
+}
+
 // ── "site" job ──────────────────────────────────────────────────────────────
 
 export async function startSitePull(startedBy: string) {
@@ -171,6 +210,8 @@ async function runSitePull() {
       misses = 0
       const m = String(lots[0]?.sef_link ?? "").match(/^bidding\/(\d+)-/)
       const auctionId = m ? +m[1] : null
+      const codeM = String(lots[0]?.sef_link ?? "").match(/^bidding\/([A-Za-z]\d+)-/)     // a BC sale's URL starts with its code: D062-…
+      const auctionCode = codeM ? codeM[1].toUpperCase() : null
       const finished = lots.length > 0 && lots.every(l => !!l.isFinished)
       const title = page.title || slugTitle(lots[0]?.sef_link) || `Sale ${siteId}`
       await prisma.archiveSale.upsert({
@@ -180,6 +221,7 @@ async function runSitePull() {
       })
       let matched = 0, added = 0
       if (finished && auctionId != null) ({ matched, added } = await writeSale(auctionId, title, page.date, lots))
+      if (finished && lots.some(l => isBcId(str(l.unique_id)))) matched += await writeBcSale(auctionCode, lots)   // BC-era lots → BcLotWeb
       cursor = siteId
       await prisma.archiveJob.update({
         where: { id: "site" },
@@ -199,10 +241,11 @@ async function runSitePull() {
 // (~250 KB, the best it holds — there are no originals) as the backup, so a future
 // move off the website has the full-quality pictures. ~260 GB for the whole archive.
 const PHOTO_TODO: Prisma.ArchiveLotWhereInput = { sitePhoto: { not: null }, OR: [{ photoKey: null }, { photoXlKey: null }] }
+const BC_PHOTO_TODO: Prisma.BcLotWebWhereInput = { sitePhoto: { not: null }, OR: [{ photoKey: null }, { photoXlKey: null }] }
 
 export async function startPhotoCopy(startedBy: string) {
   if (isActive("photos")) return getJob("photos")
-  const total = await prisma.archiveLot.count({ where: PHOTO_TODO })
+  const total = (await prisma.archiveLot.count({ where: PHOTO_TODO })) + (await prisma.bcLotWeb.count({ where: BC_PHOTO_TODO }))
   const job = await prisma.archiveJob.upsert({
     where: { id: "photos" },
     create: { id: "photos", startedBy, total },
@@ -215,35 +258,53 @@ export async function startPhotoCopy(startedBy: string) {
 async function runPhotoCopy() {
   const ctl: Ctl = { stop: false }; active.set("photos", ctl)
   try {
-    while (!ctl.stop) {
-      const batch = await prisma.archiveLot.findMany({ where: PHOTO_TODO, select: { id: true, lotId: true, sitePhoto: true, photoKey: true, photoXlKey: true }, take: 40, orderBy: { id: "asc" } })
-      if (!batch.length) { await prisma.archiveJob.update({ where: { id: "photos" }, data: { done: true, note: "Every photo the site has is in the Hub, display and full-size" } }); break }
-      let n = 0
-      const grab = async (path: string): Promise<Buffer | null> => {           // null = the site has no such file
-        const res = await fetch(SITE_IMAGES + path, { headers: { "User-Agent": UA } })
-        if (res.status === 404 || res.status === 403) return null
-        if (!res.ok) throw new Error(`Photo download answered ${res.status}`)
-        return Buffer.from(await res.arrayBuffer())
+    const grab = async (path: string): Promise<Buffer | null> => {             // null = the site has no such file
+      const res = await fetch(SITE_IMAGES + path, { headers: { "User-Agent": UA } })
+      if (res.status === 404 || res.status === 403) return null
+      if (!res.ok) throw new Error(`Photo download answered ${res.status}`)
+      return Buffer.from(await res.arrayBuffer())
+    }
+    // One lot, either database: display copy then full-size; returns the fields to save.
+    type PhotoRow = { sitePhoto: string; photoKey: string | null; photoXlKey: string | null }
+    const copyOne = async (l: PhotoRow, prefix: string, safe: string): Promise<{ photoKey?: string; photoXlKey?: string } | null> => {
+      const data: { photoKey?: string; photoXlKey?: string } = {}
+      if (!l.photoKey) {
+        const buf = await grab(l.sitePhoto)
+        if (!buf) return null                                                     // the site has no picture after all
+        data.photoKey = `${prefix}/${safe}.webp`
+        await uploadBufferToR2(buf, data.photoKey, "image/webp")
       }
-      for (let i = 0; i < batch.length && !ctl.stop; i += 5) {
-        await Promise.all(batch.slice(i, i + 5).map(async l => {
-          const safe = String(l.lotId || l.id).replace(/[^A-Za-z0-9_-]/g, "")
-          const data: { photoKey?: string; photoXlKey?: string; sitePhoto?: null } = {}
-          if (!l.photoKey) {
-            const buf = await grab(l.sitePhoto!)
-            if (!buf) { await prisma.archiveLot.update({ where: { id: l.id }, data: { sitePhoto: null } }); return }   // the site has no picture after all
-            data.photoKey = `archive-photos/${safe}.webp`
-            await uploadBufferToR2(buf, data.photoKey, "image/webp")
-          }
-          if (!l.photoXlKey) {
-            const buf = await grab(l.sitePhoto!.replace("/large/", "/xlarge/"))
-            if (buf) { data.photoXlKey = `archive-photos/xl/${safe}.webp`; await uploadBufferToR2(buf, data.photoXlKey, "image/webp") }
-            else data.photoXlKey = data.photoKey ?? l.photoKey ?? undefined                       // no full-size on the site: the display copy is the best there is
-          }
-          await prisma.archiveLot.update({ where: { id: l.id }, data })
-          n++
-        }))
-        await sleep(100)
+      if (!l.photoXlKey) {
+        const buf = await grab(l.sitePhoto.replace("/large/", "/xlarge/"))
+        if (buf) { data.photoXlKey = `${prefix}/xl/${safe}.webp`; await uploadBufferToR2(buf, data.photoXlKey, "image/webp") }
+        else data.photoXlKey = data.photoKey ?? l.photoKey ?? undefined            // no full-size on the site: the display copy is the best there is
+      }
+      return data
+    }
+    while (!ctl.stop) {
+      let n = 0
+      // ABC lots first, then BC lots — same treatment, different folders.
+      const batch = await prisma.archiveLot.findMany({ where: PHOTO_TODO, select: { id: true, lotId: true, sitePhoto: true, photoKey: true, photoXlKey: true }, take: 40, orderBy: { id: "asc" } })
+      if (batch.length) {
+        for (let i = 0; i < batch.length && !ctl.stop; i += 5) {
+          await Promise.all(batch.slice(i, i + 5).map(async l => {
+            const data = await copyOne(l as PhotoRow, "archive-photos", String(l.lotId || l.id).replace(/[^A-Za-z0-9_-]/g, ""))
+            await prisma.archiveLot.update({ where: { id: l.id }, data: data ?? { sitePhoto: null } })
+            if (data) n++
+          }))
+          await sleep(100)
+        }
+      } else {
+        const bc = await prisma.bcLotWeb.findMany({ where: BC_PHOTO_TODO, select: { uniqueId: true, sitePhoto: true, photoKey: true, photoXlKey: true }, take: 40, orderBy: { uniqueId: "asc" } })
+        if (!bc.length) { await prisma.archiveJob.update({ where: { id: "photos" }, data: { done: true, note: "Every photo the site has is in the Hub, display and full-size, for both databases" } }); break }
+        for (let i = 0; i < bc.length && !ctl.stop; i += 5) {
+          await Promise.all(bc.slice(i, i + 5).map(async l => {
+            const data = await copyOne(l as PhotoRow, "bc-photos", l.uniqueId.replace(/[^A-Za-z0-9_-]/g, ""))
+            await prisma.bcLotWeb.update({ where: { uniqueId: l.uniqueId }, data: data ?? { sitePhoto: null } })
+            if (data) n++
+          }))
+          await sleep(100)
+        }
       }
       await prisma.archiveJob.update({ where: { id: "photos" }, data: { added: { increment: n }, note: null } })
     }

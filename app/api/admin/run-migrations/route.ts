@@ -1873,6 +1873,24 @@ const MIGRATIONS = [
     ADD COLUMN IF NOT EXISTS "source" TEXT NOT NULL DEFAULT 'sheet'`,
   `ALTER TABLE "ArchiveLot" ADD COLUMN IF NOT EXISTS "photoXlKey" TEXT`,
   `ALTER TABLE "ArchiveLot" ADD COLUMN IF NOT EXISTS "siteLink" TEXT`,
+  // Databases → BC Database: the website's long description / link / photo per BC lot.
+  `CREATE TABLE IF NOT EXISTS "BcLotWeb" (
+    "uniqueId"        TEXT NOT NULL,
+    "auctionCode"     TEXT,
+    "lotNumber"       INTEGER,
+    "description"     TEXT,
+    "siteLotId"       INTEGER,
+    "siteLink"        TEXT,
+    "sitePhoto"       TEXT,
+    "photoKey"        TEXT,
+    "photoXlKey"      TEXT,
+    "siteHammerPrice" DOUBLE PRECISION,
+    "pulledAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "BcLotWeb_pkey" PRIMARY KEY ("uniqueId")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "BcLotWeb_auctionCode_idx" ON "BcLotWeb"("auctionCode")`,
+  `CREATE INDEX IF NOT EXISTS "WarehouseItem_auctionDate_idx" ON "WarehouseItem"("auctionDate")`,
+  `CREATE INDEX IF NOT EXISTS "WarehouseItem_hammerPrice_idx" ON "WarehouseItem"("hammerPrice")`,
   // Identity is the LotID: sale + lot number repeats within multi-day sales.
   `DROP INDEX IF EXISTS "ArchiveLot_auctionId_lot_key"`,
   `DROP INDEX IF EXISTS "ArchiveLot_lotId_idx"`,

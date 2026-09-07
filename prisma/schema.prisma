@@ -1426,6 +1426,27 @@ model ArchiveLot {
   @@index([hammerPrice])
 }
 
+// Databases → BC Database: what the WEBSITE holds for a Business Central lot that BC's
+// own API doesn't — the long description (BC exposes only the 250-char short one),
+// the site's link and its photo — keyed on BC's unique ID (site "r008728-194" =
+// BC "R008728-194"). Filled by the same website pull as the ABC database; the lot's
+// own figures (estimate, hammer, sale) stay on WarehouseItem from the BC sync.
+model BcLotWeb {
+  uniqueId        String    @id                    // upper-cased, as WarehouseItem.uniqueId
+  auctionCode     String?                          // the sale's code from the site URL (D062, F111…)
+  lotNumber       Int?
+  description     String?   @db.Text               // the site's full description
+  siteLotId       Int?
+  siteLink        String?
+  sitePhoto       String?
+  photoKey        String?                          // bc-photos/{uniqueId}.webp
+  photoXlKey      String?                          // bc-photos/xl/{uniqueId}.webp
+  siteHammerPrice Float?
+  pulledAt        DateTime  @default(now())
+
+  @@index([auctionCode])
+}
+
 // One sale as the website lists it: its own sequential id, the AuctionID it shares
 // with the sheet, and whether it has finished (only finished sales are pulled).
 model ArchiveSale {

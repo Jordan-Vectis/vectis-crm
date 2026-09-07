@@ -16,6 +16,24 @@ const JORDAN_ONLY = new Set(["jordan_secret_menu.md"])
 
 const ENTRIES: Entry[] = [
   {
+    filename: "bc_database.md",
+    content: `---
+name: bc-lots-database
+description: Databases → BC Database — every Business Central lot that has been through a sale, built like the ABC database: BC sync figures + the website's FULL description/photo/link keyed on BC's unique ID (BC's API has no long description). Read before touching /databases/bc or BcLotWeb.
+metadata: 
+  node_type: memory
+  type: reference
+  modified: 2026-09-07T17:30:00.000Z
+---
+
+🏢 **BC Database (2026-09-07).** /databases/bc — the Business Central counterpart of the ABC database (Jordan: "make another one for Business central lots which is our current" · "include the long description, build it like the ABC one"). Same layout: tiles, search (description · sale · year · hammer range), 100 a page, thumbnails, vectis.co.uk ↗ link, amber "site £N" where the site's hammer differs, admin Export & handover, GET /api/databases/bc/export streamed CSV.
+
+**Two sources, one raw LEFT JOIN** (WarehouseItem w ⟕ BcLotWeb b ON b.uniqueId = upper(w.uniqueId)): BC sync = sale code/name/date, lot (⚠ COALESCE(NULLIF(currentLotNo,'0'), lotNo) — lotNo is "0" on numbered lots), short description (max 250), estimates, hammer (0 = unsold). Website = the FULL description, siteLotId, siteLink, sitePhoto, photoKey bc-photos/{UniqueID}.webp, photoXlKey bc-photos/xl/…, siteHammerPrice. ⚠⚠ BC's API has NO long description — probed 2026-09-07 (Auction_Lines_Excel 59 fields, Receipt_Lines_Excel 77: only EVA_ShortDescription). The site's feed carries BC lots with unique_id "r008728-194" (= WarehouseItem "R008728-194") and BC sale URLs start with the sale CODE (/bidding/D062-…-1150). Measured: 221,185 items, 200,125 sold, 366 sales, Oct 2023 → now.
+
+**Same jobs as ABC** (lib/archive-site.ts): the "site" pull calls writeBcSale for finished sales whose lots have an R-number unique_id — one INSERT … ON CONFLICT DO UPDATE per sale (rows ARE created, unlike ABC's annotate-only rule, because BcLotWeb is purely the site's view and never touches WarehouseItem). The "photos" job does ABC lots first, then BC (copyOne, prefix bc-photos). WarehouseItem is a sync CACHE (reconcile-deleted may delete rows); BcLotWeb has no FK and survives. The ArchiveSite panel is shared on both pages — one walk covers both.
+`,
+  },
+  {
     filename: "lot_archive.md",
     content: `---
 name: lot-archive-databases
