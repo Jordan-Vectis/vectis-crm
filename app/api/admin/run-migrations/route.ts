@@ -1843,7 +1843,8 @@ const MIGRATIONS = [
     "importedAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ArchiveLot_pkey" PRIMARY KEY ("id")
   )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "ArchiveLot_auctionId_lot_key" ON "ArchiveLot"("auctionId", "lot")`,
+  // (The sale + lot unique index that used to be created here is gone: identity is the
+  // LotID — see the later block, which also drops it where it still exists.)
   `CREATE INDEX IF NOT EXISTS "ArchiveLot_auctionDate_idx" ON "ArchiveLot"("auctionDate")`,
   `CREATE INDEX IF NOT EXISTS "ArchiveLot_hammerPrice_idx" ON "ArchiveLot"("hammerPrice")`,
   `CREATE TABLE IF NOT EXISTS "ArchiveImport" (
