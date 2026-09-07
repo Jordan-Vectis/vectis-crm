@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"0d6ca1a9aa9c43fd521bd7499ec71b998d380e7c","author":"Jordan Orange","date":"2026-09-07T13:36:17+01:00","subject":"Lot Archive: identity is the LotID, not sale + lot number"},
   {"sha":"e4d4b212ee549e9143eeafe03fc202651e359f15","author":"Jordan Orange","date":"2026-09-07T13:02:03+01:00","subject":"Lot Archive import: read every sheet of the Crystal Viewer export"},
   {"sha":"39c9bdec2a12a9270b883b3f0da02103ae75cfc1","author":"Jordan Orange","date":"2026-09-07T12:43:03+01:00","subject":"Lot Archive: read LotID from the export, record the archive in RULES + memory"},
   {"sha":"61f16430959a2a14ae71a6874b09569bb4b2b0ba","author":"Jordan Orange","date":"2026-09-07T12:35:57+01:00","subject":"Lot Archive: stream the spreadsheet, pull LotIDs + photos from the website"},

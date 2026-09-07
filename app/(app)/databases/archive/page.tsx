@@ -35,15 +35,28 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
   if (and.length) where.AND = and
 
   // Migration-safe: before Run Migrations the table isn't there — say so, don't 500.
-  let rows: any[] = [], total = 0, stats: { n: number; from: Date | null; to: Date | null; hammer: number } | null = null, tableError: string | null = null
+  type Stats = { n: number; sales: number; from: Date | null; to: Date | null; hammer: number; sold: number; withLotId: number; inHub: number; siteOnly: number; noPhoto: number; fromSheet: number; fromSite: number }
+  let rows: any[] = [], total = 0, stats: Stats | null = null, tableError: string | null = null
   try {
     const [r, t, agg] = await Promise.all([
       prisma.archiveLot.findMany({ where, orderBy: [{ auctionDate: "desc" }, { auctionId: "desc" }, { lot: "asc" }], skip: (page - 1) * PAGE, take: PAGE }),
       prisma.archiveLot.count({ where }),
-      prisma.archiveLot.aggregate({ _count: { _all: true }, _min: { auctionDate: true }, _max: { auctionDate: true }, _sum: { hammerPrice: true } }),
+      // One pass over the table for the summary box (a million rows — one scan, not eight counts).
+      prisma.$queryRaw<{ n: bigint; sales: bigint; from: Date | null; to: Date | null; hammer: number | null; sold: bigint; withlotid: bigint; inhub: bigint; siteonly: bigint; fromsheet: bigint }[]>`
+        SELECT count(*)::bigint AS n, count(DISTINCT "auctionId")::bigint AS sales, min("auctionDate") AS "from", max("auctionDate") AS "to",
+               sum("hammerPrice")::float8 AS hammer, count("hammerPrice")::bigint AS sold, count("lotId")::bigint AS withlotid,
+               count("photoKey")::bigint AS inhub,
+               count(*) FILTER (WHERE "photoKey" IS NULL AND "sitePhoto" IS NOT NULL)::bigint AS siteonly,
+               count(*) FILTER (WHERE "source" = 'sheet')::bigint AS fromsheet
+        FROM "ArchiveLot"`,
     ])
     rows = r; total = t
-    stats = { n: agg._count._all, from: agg._min.auctionDate, to: agg._max.auctionDate, hammer: agg._sum.hammerPrice ?? 0 }
+    const a = agg[0]
+    const n = Number(a?.n ?? 0), inHub = Number(a?.inhub ?? 0), siteOnly = Number(a?.siteonly ?? 0)
+    stats = {
+      n, sales: Number(a?.sales ?? 0), from: a?.from ?? null, to: a?.to ?? null, hammer: a?.hammer ?? 0, sold: Number(a?.sold ?? 0),
+      withLotId: Number(a?.withlotid ?? 0), inHub, siteOnly, noPhoto: n - inHub - siteOnly, fromSheet: Number(a?.fromsheet ?? 0), fromSite: n - Number(a?.fromsheet ?? 0),
+    }
     // A picture per row: our copy (signed) first, else the site's medium-size image.
     await Promise.all(rows.map(async row => {
       row.photo = row.photoKey ? await getSignedImageUrl(row.photoKey, 3600).catch(() => null)
@@ -69,12 +82,28 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
             <h1 className="text-xl font-bold mt-1">Lot Archive</h1>
             <p className="text-sm text-gray-600 dark:text-gray-400">Every lot sold before Business Central — descriptions, estimates and hammer prices from the old system's export, with LotIDs and photos matched from the website.</p>
           </div>
-          {stats && stats.n > 0 && (
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              <span className="font-semibold text-gray-900 dark:text-white">{stats.n.toLocaleString()}</span> lots · {fmtDate(stats.from)} → {fmtDate(stats.to)} · hammer total <span className="font-semibold text-gray-900 dark:text-white">{fmtGBP(stats.hammer)}</span>
-            </p>
-          )}
         </div>
+
+        {stats && stats.n > 0 && (() => {
+          const pct = (x: number) => stats!.n ? Math.round((x / stats!.n) * 100) : 0
+          const tile = "rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] px-4 py-3"
+          const big = "text-2xl font-bold text-gray-900 dark:text-white tabular-nums"
+          const lbl = "text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400"
+          const sub = "text-xs text-gray-500 dark:text-gray-400 mt-0.5"
+          return (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={tile}><div className={lbl}>Lots in the archive</div><div className={big}>{stats.n.toLocaleString()}</div>
+                <div className={sub}>{stats.sales.toLocaleString()} sales · {fmtDate(stats.from)} → {fmtDate(stats.to)}</div></div>
+              <div className={tile}><div className={lbl}>Sold</div><div className={big}>{stats.sold.toLocaleString()}</div>
+                <div className={sub}>hammer total {fmtGBP(stats.hammer)} · {(stats.n - stats.sold).toLocaleString()} unsold or no result</div></div>
+              <div className={tile}><div className={lbl}>Photos in the Hub</div><div className={big}>{stats.inHub.toLocaleString()} <span className="text-base font-semibold text-gray-500">({pct(stats.inHub)}%)</span></div>
+                <div className={sub}>{stats.siteOnly.toLocaleString()} still on the website only · {stats.noPhoto.toLocaleString()} no photo</div>
+                <div className="mt-2 h-1.5 rounded bg-gray-200 dark:bg-gray-800 overflow-hidden"><div className="h-full bg-violet-500" style={{ width: `${pct(stats.inHub)}%` }} /></div></div>
+              <div className={tile}><div className={lbl}>Where the lots came from</div><div className={big}>{stats.fromSheet.toLocaleString()}</div>
+                <div className={sub}>from the old system's export · {stats.fromSite.toLocaleString()} from the website · {stats.withLotId.toLocaleString()} with a LotID</div></div>
+            </div>
+          )
+        })()}
 
         {isAdmin && <ArchiveImport />}
         {isAdmin && <ArchiveSite />}
