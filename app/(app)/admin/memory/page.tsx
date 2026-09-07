@@ -4571,6 +4571,10 @@ About, Users & Permissions, Roles & Defaults, Home Page (drag-to-reorder), Depar
 
 ### Databases (/databases)
 Customers, Receipts, Totes, Lots, Bids editors + Browse Any Table (read-only explorer, ~30 models, row counts + 3 sample rows).
+Two sold-lot databases sit beside them (2026-09-07), same layout each — summary tiles, search (description · sale · year · hammer range), 100 a page, thumbnails, "vectis.co.uk ↗" link, amber "site £N" where the website's hammer differs, admin Export & handover (streamed CSV + R2 naming):
+- **ABC Database** (/databases/archive, tables ArchiveLot/ArchiveImport/ArchiveSale/ArchiveJob): every lot sold through ABC, the system before Business Central, 1999–2023 — imported from the Crystal report's CSV ("Lot Export (Claude version).csv", 956k rows, STREAMED from R2). ⚠ Identity is the LotID (unique on lotId; sale+lot repeats). ⚠ The website pull is ANNOTATE-ONLY for ABC (link, site lot id, photo path, site hammer beside ours) — Jordan: "the website has errors", nothing is created from it.
+- **BC Database** (/databases/bc, table BcLotWeb ⟕ WarehouseItem on upper(uniqueId)): every Business Central lot that has been through a sale — BC sync figures + the website's FULL description/photo/link (BC's API has NO long description). Rows in BcLotWeb ARE created from the site (it never touches WarehouseItem).
+- Jobs (lib/archive-site.ts, ArchiveJob "site"/"photos"): one website walk covers both databases; the photo job copies the site's "large" (display) AND "xlarge" (full-size backup, ~250 KB) into R2 archive-photos/… / bc-photos/…. Jobs survive the tab closing, NOT a redeploy — the button resumes. See lot_archive.md + bc_database.md on this page.
 
 ---
 
