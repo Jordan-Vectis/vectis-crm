@@ -223,6 +223,32 @@ export const DESTINATIONS: Destination[] = [
     what: "The IT knowledge base and its own AI chat, for computer and equipment problems rather than 'where do I go' questions.",
     also: ["printer", "password", "broken", "it problem"],
   },
+  // ── IT Tools ────────────────────────────────────────────────────────────────
+  {
+    ask: "How do I record my screen?",
+    name: "IT Tools → Screen Recorder", href: "/tools/it-tools?tab=recorder",
+    what: "Record any screen, window or tab from the browser and keep the video in the Hub — for showing a fault, recording an Auto Clerk test, or a walk-through of the website. Computer only; the iPads can't do it.",
+    also: ["screen recording", "record the screen", "screen capture", "video of my screen", "record a test", "recordings"],
+  },
+  {
+    ask: "How do I take a screenshot?",
+    name: "IT Tools → Screenshots", href: "/tools/it-tools?tab=screenshots",
+    what: "A snipping tool that keeps the picture in the Hub: capture a screen, paste one in with Ctrl+V or upload it, crop it, draw arrows, boxes, numbers, ticks and text on it, then save it, copy it into an email, or download it.",
+    also: ["snip", "snipping tool", "screen grab", "screenshot", "annotate", "mark up a screenshot", "draw on a screenshot", "highlight a screenshot"],
+  },
+  // ── Databases ───────────────────────────────────────────────────────────────
+  {
+    ask: "Where are the old sale results?",
+    name: "Databases → ABC Database", href: "/databases/archive",   // no app key: Databases is gated on sign-in only
+    what: "Every lot sold through ABC, the system before Business Central — back to 1999 — with the description, estimate, hammer price, photo and a link to the lot on vectis.co.uk. Search by words in the description, sale, year or price.",
+    also: ["ABC", "abc database", "lot archive", "archive", "old results", "what did it sell for", "past prices", "pre-BC", "old system", "historic lots", "sold prices"],
+  },
+  {
+    ask: "Where can I look up what a lot sold for since we moved to Business Central?",
+    name: "Databases → BC Database", href: "/databases/bc",   // no app key: Databases is gated on sign-in only
+    what: "Every lot sold through Business Central — sale, lot, estimate and hammer from the nightly BC sync, with the full description, photo and a link to the lot on vectis.co.uk matched from the website. Search by words in the description, sale, year or price.",
+    also: ["BC database", "business central lots", "recent results", "what did it sell for", "sold prices", "current system", "BC lots"],
+  },
 ]
 
 /** Every AppKey mentioned in the map really exists. Cheap guard against a typo'd key

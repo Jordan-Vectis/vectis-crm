@@ -1791,6 +1791,137 @@ const MIGRATIONS = [
   // Quick mode on a queued sale — the runner paces itself instead of waiting a
   // flat 12s between lots. Default false, so every existing row is unchanged.
   `ALTER TABLE "PipelineQueueItem" ADD COLUMN IF NOT EXISTS "fastMode" BOOLEAN NOT NULL DEFAULT false`,
+
+  // Archive an Auction AI instruction: out of the Instructions list and out of
+  // every run dropdown, but still resolvable by key so a queued overnight sale
+  // holding that name keeps running. Default false, so nothing is hidden today.
+  `ALTER TABLE "AiPreset" ADD COLUMN IF NOT EXISTS "archived" BOOLEAN NOT NULL DEFAULT FALSE`,
+
+  // IT Tools → Screen Recorder: one row per recording, written only after the
+  // file has landed in R2 (the browser uploads straight there).
+  `CREATE TABLE IF NOT EXISTS "ScreenRecording" (
+    "id"             TEXT NOT NULL,
+    "title"          TEXT NOT NULL,
+    "key"            TEXT NOT NULL,
+    "contentType"    TEXT NOT NULL,
+    "sizeBytes"      INTEGER NOT NULL,
+    "durationMs"     INTEGER NOT NULL,
+    "recordedBy"     TEXT NOT NULL,
+    "recordedByName" TEXT NOT NULL,
+    "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ScreenRecording_pkey" PRIMARY KEY ("id")
+  )`,
+
+  // IT Tools → Screenshots: one row per saved, marked-up screenshot; the PNG
+  // is already in R2 before the row exists.
+  `CREATE TABLE IF NOT EXISTS "ScreenCapture" (
+    "id"          TEXT NOT NULL,
+    "title"       TEXT NOT NULL,
+    "key"         TEXT NOT NULL,
+    "contentType" TEXT NOT NULL,
+    "sizeBytes"   INTEGER NOT NULL,
+    "width"       INTEGER NOT NULL,
+    "height"      INTEGER NOT NULL,
+    "takenBy"     TEXT NOT NULL,
+    "takenByName" TEXT NOT NULL,
+    "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ScreenCapture_pkey" PRIMARY KEY ("id")
+  )`,
+
+  // Databases → Lot Archive: the pre-BC lot history from the old system's export.
+  `CREATE TABLE IF NOT EXISTS "ArchiveLot" (
+    "id"           TEXT NOT NULL,
+    "auctionId"    INTEGER NOT NULL,
+    "auctionDate"  TIMESTAMP(3),
+    "saleTitle"    TEXT NOT NULL,
+    "lot"          INTEGER NOT NULL,
+    "description"  TEXT NOT NULL,
+    "estimateLow"  DOUBLE PRECISION,
+    "estimateHigh" DOUBLE PRECISION,
+    "hammerPrice"  DOUBLE PRECISION,
+    "imageKeys"    TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    "importedAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ArchiveLot_pkey" PRIMARY KEY ("id")
+  )`,
+  // (The sale + lot unique index that used to be created here is gone: identity is the
+  // LotID — see the later block, which also drops it where it still exists.)
+  `CREATE INDEX IF NOT EXISTS "ArchiveLot_auctionDate_idx" ON "ArchiveLot"("auctionDate")`,
+  `CREATE INDEX IF NOT EXISTS "ArchiveLot_hammerPrice_idx" ON "ArchiveLot"("hammerPrice")`,
+  `CREATE TABLE IF NOT EXISTS "ArchiveImport" (
+    "id"        TEXT NOT NULL,
+    "key"       TEXT NOT NULL,
+    "filename"  TEXT NOT NULL,
+    "totalRows" INTEGER NOT NULL DEFAULT 0,
+    "offset"    INTEGER NOT NULL DEFAULT 0,
+    "added"     INTEGER NOT NULL DEFAULT 0,
+    "skipped"   INTEGER NOT NULL DEFAULT 0,
+    "bad"       INTEGER NOT NULL DEFAULT 0,
+    "done"      BOOLEAN NOT NULL DEFAULT false,
+    "error"     TEXT,
+    "startedBy" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ArchiveImport_pkey" PRIMARY KEY ("id")
+  )`,
+  // Lot Archive ← the website: LotIDs, photo paths and sales pulled from vectis.co.uk.
+  `ALTER TABLE "ArchiveLot"
+    ADD COLUMN IF NOT EXISTS "lotId" TEXT,
+    ADD COLUMN IF NOT EXISTS "siteLotId" INTEGER,
+    ADD COLUMN IF NOT EXISTS "sitePhoto" TEXT,
+    ADD COLUMN IF NOT EXISTS "photoKey" TEXT,
+    ADD COLUMN IF NOT EXISTS "siteHammerPrice" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "source" TEXT NOT NULL DEFAULT 'sheet'`,
+  `ALTER TABLE "ArchiveLot" ADD COLUMN IF NOT EXISTS "photoXlKey" TEXT`,
+  `ALTER TABLE "ArchiveLot" ADD COLUMN IF NOT EXISTS "siteLink" TEXT`,
+  // Databases → BC Database: the website's long description / link / photo per BC lot.
+  `CREATE TABLE IF NOT EXISTS "BcLotWeb" (
+    "uniqueId"        TEXT NOT NULL,
+    "auctionCode"     TEXT,
+    "lotNumber"       INTEGER,
+    "description"     TEXT,
+    "siteLotId"       INTEGER,
+    "siteLink"        TEXT,
+    "sitePhoto"       TEXT,
+    "photoKey"        TEXT,
+    "photoXlKey"      TEXT,
+    "siteHammerPrice" DOUBLE PRECISION,
+    "pulledAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "BcLotWeb_pkey" PRIMARY KEY ("uniqueId")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "BcLotWeb_auctionCode_idx" ON "BcLotWeb"("auctionCode")`,
+  `CREATE INDEX IF NOT EXISTS "WarehouseItem_auctionDate_idx" ON "WarehouseItem"("auctionDate")`,
+  `CREATE INDEX IF NOT EXISTS "WarehouseItem_hammerPrice_idx" ON "WarehouseItem"("hammerPrice")`,
+  // Identity is the LotID: sale + lot number repeats within multi-day sales.
+  `DROP INDEX IF EXISTS "ArchiveLot_auctionId_lot_key"`,
+  `DROP INDEX IF EXISTS "ArchiveLot_lotId_idx"`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ArchiveLot_lotId_key" ON "ArchiveLot"("lotId")`,
+  `CREATE INDEX IF NOT EXISTS "ArchiveLot_auctionId_lot_idx" ON "ArchiveLot"("auctionId", "lot")`,
+  `CREATE TABLE IF NOT EXISTS "ArchiveSale" (
+    "siteId"    INTEGER NOT NULL,
+    "auctionId" INTEGER,
+    "title"     TEXT NOT NULL,
+    "saleDate"  TIMESTAMP(3),
+    "lots"      INTEGER NOT NULL DEFAULT 0,
+    "finished"  BOOLEAN NOT NULL DEFAULT false,
+    "pulledAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ArchiveSale_pkey" PRIMARY KEY ("siteId")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ArchiveSale_auctionId_idx" ON "ArchiveSale"("auctionId")`,
+  `CREATE TABLE IF NOT EXISTS "ArchiveJob" (
+    "id"        TEXT NOT NULL,
+    "cursor"    INTEGER NOT NULL DEFAULT 0,
+    "total"     INTEGER NOT NULL DEFAULT 0,
+    "sales"     INTEGER NOT NULL DEFAULT 0,
+    "matched"   INTEGER NOT NULL DEFAULT 0,
+    "added"     INTEGER NOT NULL DEFAULT 0,
+    "done"      BOOLEAN NOT NULL DEFAULT false,
+    "error"     TEXT,
+    "note"      TEXT,
+    "startedBy" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ArchiveJob_pkey" PRIMARY KEY ("id")
+  )`,
 ]
 
 // Fingerprint of every statement above. Changes the moment a migration is added,

@@ -301,14 +301,38 @@ Default branch for all new work is **`staging`** unless told otherwise.
 
 Before every git push, ask yourself: "Did the user explicitly name `main`?" If not, push to `staging` only.
 
+⚠⚠ **And do not ASK to push to main either** (Jordan, 2026-09-04: *"you dont need to ask I will tell
+you when"*). Finish the work, push to `staging`, say plainly what is sitting there and therefore not
+live for him — then stop. No offer, no reminder, no "just say the word". He works on production all
+day and picks the moment himself. Same shape as the Run Migrations rule: state it once, never nag.
+
 ### ⚠ Refresh the changelog seed before pushing
 
 ```bash
 npm run changelog:seed
 ```
 
-Run it and commit the result **as part of every push**, or the work will not appear in
-Admin → **Patches & Changes**.
+Run it **as part of every push**, or the work will not appear in Admin → **Patches & Changes**.
+
+⚠ **It folds itself into your last commit — it does not make one of its own** (2026-09-04).
+Railway names a deployment after the **HEAD commit of the push**, and `capture-changelog.mjs`
+reads that same commit for the release headline. While the refresh was a separate commit pushed
+on top, it was always HEAD — so **every** Railway deployment and **every** release row was titled
+*"Refresh changelog seed"*, with the actual work buried underneath (Jordan, 2026-09-04: *"How come
+all the pushes are just called this in railway?"*). Now the seed rides inside the commit it
+describes, and the deployment is named after the work.
+
+- It amends **only** when that is unmistakably safe: HEAD unpushed, not a merge commit, nothing
+  else staged, no rebase in progress. Otherwise it writes the file, prints why it stopped, and
+  leaves the commit to you. It never force-pushes. `--no-amend` forces the old behaviour.
+- ⚠ **The newest commit is deliberately absent from the seed.** Amending changes its sha, so
+  recording the old one would file a commit that no longer exists — and because ingest is keyed
+  on `sha`, the next refresh would add the new sha *beside* it as a permanent duplicate row on
+  Patches & Changes. The deploy capture records HEAD under its final sha instead, and the next
+  refresh files it. Nothing is missed and nothing is filed twice. Do not "fix" this by including
+  HEAD.
+- `isHousekeeping` in `lib/changelog.ts` also matches *"Refresh changelog seed"*, so the ~30 such
+  commits already in the history stop padding the manager report. No new ones are created.
 
 **Railway's build has no `.git` directory.** `scripts/capture-changelog.mjs` therefore falls
 through to `RAILWAY_GIT_COMMIT_SHA` / `_MESSAGE` and records **exactly one commit per release** —
@@ -470,6 +494,40 @@ drift happened even though nobody edited it in the UI). Do **not** reintroduce a
   file → tick which to apply → upserts them). `POST /api/auction-ai/presets` does the bulk upsert
   (add new / overwrite by key). Import **never deletes** — it only adds/overwrites the ticked keys.
   This is the intended way to make production match staging after an instruction change.
+- **Archive (2026-09-04).** `AiPreset.archived` (Boolean, **NEEDS Run Migrations**) takes an old
+  instruction out of the Instructions list **and out of every run-tab dropdown**, reversibly.
+  Toggled by 🗄 Archive / ↩ Restore on the view panel, or ↩ in the collapsed **🗄 Archived (N)**
+  section at the foot of the list. Same `PATCH /api/auction-ai/presets` as favourites, which now
+  accepts `{key, favourite}` and/or `{key, archived}`.
+  - ⚠⚠ **`resolveInstruction()` must NEVER check `archived`.** A queued overnight sale stores its
+    instruction as a plain string on `PipelineQueueItem.preset` — no foreign key, no validation.
+    Refusing an archived key would fail **every lot of that sale, all night, unattended**. Archiving
+    is a LIST FILTER, not a delete and not a lock.
+  - ⚠ Filtered in **`getAllInstructions()`**, never in `fetchRows()`. That function's
+    `rows.length === 0` check seeds the starter defaults, so filtering lower down would make
+    archiving the last instruction **re-seed every built-in**. One filter there hides them from all
+    five pickers at once (Chat, Batch, Pipeline, Instructions Testing, the overnight queue form).
+  - ⚠ **`getPresetLayout()` (`?layout=1`) deliberately still returns them**, flagged — it feeds the
+    tab that has to show them to restore them, and it feeds **Export all**.
+  - ⚠ The client keeps archived rows in `presets` and filters at **render**. Dropping them at load
+    would leave them out of the export file and renumber `sortOrder` around the gap on the next drag.
+  - Export/Import **v4** carries an `archived` array, guarded by `Array.isArray` exactly like
+    `favourites`, so importing an older file never un-archives anything.
+  - ⚠⚠ **Every picker reloads on change, via `useInstructionOptions`** (`use-instructions.ts`).
+    They each used to fetch once on mount with `[]` deps, and this page keeps its tabs MOUNTED
+    (hidden with CSS, not unmounted) — so an archived instruction stayed sitting in the Batch,
+    Chat, Pipeline and Instructions Testing dropdowns, still pickable, until a full page reload.
+    Jordan: *"If they are archived I dont want them to show on any drop downs anywhere"*.
+    Anything that changes which instructions EXIST calls `announceInstructionsChanged()` —
+    archive, restore, delete, new, import. **Add the call to any new one, and use the hook rather
+    than a fifth copy of the fetch.**
+  - ⚠ The hook also drops a selection that has just been archived (`p && m[p] ? p : first`).
+    Without it the picker shows a value with no matching `<option>` and renders blank.
+  - ⚠ Archiving whatever currently sorts first silently changes the default instruction on the four
+    tabs that auto-select `Object.keys(m)[0]`. Expected, but worth knowing.
+  - `fetchRows()` gained its own fallback tier for the new column. **Each tier drops exactly one
+    feature** — adding a column to the top select without a matching tier sends a pre-migration
+    environment straight to the raw two-column read and silently loses favourites and categories.
 - **Favourites.** `AiPreset.favourite` (Boolean, **NEEDS Run Migrations**) pins instructions to the
   top of the Instructions list (and the run-tab dropdowns, via favourites-first ordering). Toggled by
   the ★ button → `PATCH /api/auction-ai/presets {key, favourite}`. `getAllInstructions()` returns the
@@ -868,6 +926,159 @@ everywhere else (`updateLot`/wizard/Manage Lots, `deleteLot`, bulk actions, `tra
 
 ---
 
+## ⚠ Change Vendor by RECEIPT clears the tote (2026-09-04)
+
+Change Vendor (Manage Lots → Tools, and the End of Day → BC intervention bar) takes a tote OR a
+receipt, and the vendor behind it is read from the BC tote data.
+
+- Type a **tote** → vendor, receipt **and tote** are all set from BC (2026-08-12).
+- Type a **receipt** → vendor and receipt are set, and the **tote is CLEARED**.
+
+A receipt covers several totes, so there is no single tote to set, and the one the lot is carrying
+belongs to wherever it used to be. Leaving it there made End of Day flag the lot — and worse,
+🔧 **Fix what BC can prove** then corrected vendor/receipt back **FROM that stale tote**, silently
+reversing the change that had just been made.
+
+⚠ **It clears unconditionally.** Jordan asked for exactly this, twice, the second time after being
+shown something cleverer: *"I just wanted it so if I pressed change vendor it cleared the tote
+field?"*. A version that kept a tote BC still places on the new receipt was built and **rejected as
+more than was asked for** — do not reintroduce it.
+
+⚠ A cleared tote raises **nothing** on End of Day — the empty-tote flag was removed the same day
+(next rule). Tote Check and Locking Check still show it.
+
+Both confirm dialogs say the tote will be cleared. A field that empties itself without warning is
+how people stop trusting a tool.
+
+---
+
+## ⚠ End of Day does NOT flag an empty tote (2026-09-04)
+
+Jordan: *"on the end of day remove the flag for empty totes it doesnt matter as we do everything of
+receipt anyway"*.
+
+The overnight sheet is keyed on **receipt**. A lot with no tote goes on it and imports perfectly
+well, so `no_tote` never described a problem with tonight's run — and it became self-inflicted on
+the same day, because Change Vendor by receipt now clears the tote deliberately and would have
+raised a fresh flag every time.
+
+⚠⚠ **It is dropped in `app/api/catalogue/end-of-day/route.ts`, NOT in `checkLot`.** The **Tote Check
+tab and Locking Check still show it** — those are the screens where not knowing a lot's tote
+actually matters. Never remove `no_tote` from the shared `lib/tote-check.ts`; that would silently
+blind all three.
+
+The page's `CHECK_META` entry, its row renderer case and its "not ignorable" clause went with it.
+`duplicate_barcode` remains the only check the server refuses to let anyone ignore.
+
+---
+## 🎥 IT Tools → Screen Recorder (2026-09-04)
+
+Jordan: *"I just start the recording and its stored in the hub"* — for recording Auto Clerk tests,
+the website, a fault, anything on the screen. Recording ONLY; a private livestream was offered and
+not pursued (no TURN server, and the socket layer has no login check — see the memory record).
+
+`app/(app)/tools/it-tools/recorder-tab.tsx` + `app/api/it-tools/recordings/*` + `ScreenRecording`
+(**NEEDS Run Migrations**). Browser `getDisplayMedia` + `MediaRecorder`; on Stop the browser PUTs the
+file **straight to R2 on a presigned URL** (a recording is hundreds of MB; the server body limit is
+20 MB and the proxy silently truncates past it), then registers the row.
+
+- **Desktop Chrome/Edge only.** iOS has no `getDisplayMedia`, so the iPads can't record; the tab
+  says so and still lets them play recordings. Everyone signed in can see every recording, the same
+  as the rest of IT Tools (`allUsers`).
+- ⚠⚠ **The recording lives in the tab's memory until it is saved.** Three guards, keep all three:
+  the IT Tools page keeps the recorder **mounted** (`hidden`, not unmounted) once opened, so
+  switching tabs doesn't kill it; `beforeunload` fires while anything is unsaved — recording,
+  uploading, **or a failed save still held in memory**; and unmounting mid-recording (a link
+  elsewhere in the Hub) **stops and saves what was captured** rather than dropping it. The
+  **Pop out** window hides this page's chrome AND the Hub top bar (a `<style>` from the page — the
+  shell layout can't read the query) so there is nothing to click away to. A second Pop out click
+  must **focus** the existing window: it probes with `window.open("", name)`, which returns an
+  existing window *without* navigating it — navigating would reload one that is recording.
+- ⚠ **Nothing unsaved is discarded until a NEW capture has begun.** Pressing Record with a failed
+  save in memory asks first — **inline, never `confirm()`**: a modal can outlive the click's transient
+  activation (~5 s in Chromium) and `getDisplayMedia` then refuses to open. Even after "yes" the old
+  recording and its retry / save-locally buttons stay until the picker has actually produced a
+  stream — and if the old file had already reached storage, it is **registered first** (idempotent
+  POST) so it lands in the list where it can be deleted, never left as an object nothing points at.
+  A closed picker, or screen capture blocked by the OS, gets an amber notice — a Record button that
+  silently does nothing reads as broken.
+- ⚠ **Record is guarded while the picker or mic prompt is up** (`startingRef` + `starting`). Without
+  it a double-click, or a click during Chrome's non-modal mic bubble, started a SECOND recorder into
+  the same chunk array — an unplayable interleaved file, and the first recorder and its stream leaked.
+- ⚠ **An in-flight save is guarded at MODULE scope, not in state.** The unmount path starts a save
+  with no component behind it; a state-held `beforeunload` is torn down with the instance, leaving a
+  minutes-long PUT unguarded. `pendingSaves` + one module-level listener cover it, and a save that
+  fails after its component has gone is stashed (`stranded`) and handed to the next mount so retry and
+  save-locally are still there.
+- **A stalled upload can be cancelled** (the XHR is kept and aborted) and the recording stays in
+  memory with both retry and save-locally on offer. A recorder error mid-recording is a **notice**,
+  not the error box — `upload()` clears the error box on its way in, which would have announced a
+  truncated file as "✓ Saved".
+- **Play URLs are signed for 8 hours**, not the Documents route's one: a `<video>` fetches lazily in
+  Range requests, each checked against the expiry, so an hour meant seeking or resuming an hour
+  after pressing Play died with a 403. A failed Play/Delete on one row shows above the table
+  (`actionError`); only a failed *load* replaces it (`listError`). **⬇ Download** signs the same
+  object with `ResponseContentDisposition: attachment` and the title as filename — `<a download>`
+  is ignored cross-origin, and R2 is a different origin, so the header is the only way that works.
+- ⚠⚠ **Fail at the free step, never after the upload.** `upload-url` touches the table
+  (`findFirst`) *before* signing, so a missing migration or a down database fails before the
+  browser spends minutes pushing a file the save could never register.
+- ⚠⚠ **A retry never re-uploads.** The client keeps the key once the PUT succeeds and a retry only
+  re-registers it; the save `POST` is **idempotent on key** (returns the existing row). Without
+  both, every retry left another unlisted, undeletable object in the bucket.
+- ⚠ **Only a definite 404 means "nothing was saved".** The save route HEADs the object itself and
+  turns any other failure into a 503 that says the file *may well be there* — `objectExistsInR2`
+  returns false on *every* error, which would have told people their upload was lost when it wasn't.
+  R2 is strongly consistent, so there is no eventual-consistency wait after a 200 PUT.
+- ⚠ **Size cap is 2,000,000,000 bytes, not 2 GiB** — `sizeBytes` is a Postgres INTEGER (max
+  2,147,483,647) and 2 GiB is one byte over. The cap is checked against the client-declared size
+  and is **not bound into the signature** (same as the Documents route); the route is
+  session-gated, so that is accepted rather than fixed. Bitrate is 2.5 Mbit/s (~1.1 GB/hour).
+- `MediaRecorder` records only the **first** audio track, so system audio and the microphone are
+  **mixed with an AudioContext**. MP4 is preferred where the browser can produce it; Chrome's WebM
+  carries no duration (seek bar broken), so WebM playback uses the seek-to-end trick.
+- The save route validates the key against the **exact shape** `upload-url` mints, never a prefix.
+- Registered in `lib/help-map.ts` ("How do I record my screen?").
+
+---
+## 📸 IT Tools → Screenshots (2026-09-07)
+
+Jordan: *"a snipping tool alternative as well that saves screenshots into the hub and lets me
+annotate and draw symbols on etc"*. Fifth IT Tools tab, beside the recorder.
+
+`app/(app)/tools/it-tools/screenshot-tab.tsx` + `app/api/it-tools/screenshots/*` + `ScreenCapture`
+(**NEEDS Run Migrations**). Three ways in — 📸 Capture (the recorder's picker; ONE frame is grabbed
+and the share stopped at once), **Ctrl+V** a screenshot, or upload a file — then ✂ crop and mark up
+with pen, highlighter, box, circle, arrow, text, numbered markers and ✓ ✗ ⚠ stamps; then 💾 Save,
+📋 Copy image (for pasting into an email) or ⬇ Download. Saved ones show as thumbnails with a viewer.
+
+- **ONE canvas, drawn from an immutable list of shapes over the base image.** Undo is "drop the last
+  shape", and ✂ Crop only has to translate the shapes it keeps (`shiftShape`) — mark-up moves with
+  the picture rather than being thrown away. Don't move to a stateful drawing surface.
+- **Crop applies the moment you let go** (snipping-tool feel; a tap under 10×10 is ignored) and a new
+  picture opens in crop mode. **One undo history covers drawings AND crops** in the order they
+  happened — a crop entry keeps the picture it replaced (Jordan: *"undo doesnt work for cropping"*).
+- ⚠ **The canvas is sized inside `redraw()`, not where the picture loads.** It isn't mounted until
+  `hasImage` is true, so sizing it at load time did nothing and it stayed at the browser default of
+  300×150 — a full-screen capture showed as a tiny top-left corner.
+- **Pointer events + `touch-action: none` on the canvas** (design rule 5). The iPads can't capture a
+  screen, but they can paste, upload and draw with a finger or pencil, and the tab says so.
+- ⚠ **Saved files are read back THROUGH the Hub** (`GET /api/it-tools/screenshots/[id]` streams the
+  PNG, `?download=1` for an attachment). Same origin on purpose: thumbnails, the viewer, Copy image
+  (which must `fetch()` the bytes) and Download all work with **no CORS rule on the bucket**. A
+  screenshot is a few MB at most, so streaming it is fine; recordings are hundreds of MB and use
+  signed URLs instead. Uploads still go straight to R2 on a presigned PUT, then register after a
+  HEAD check, idempotent on key, exactly like the recorder.
+- **Copy uses `ClipboardItem` with a `Promise<Blob>`** so the write stays inside the click's
+  user-gesture window while the PNG is still being encoded. Where the browser has no
+  `ClipboardItem` the error says so.
+- Capture has the recorder's **in-flight guard**; the paste listener is attached **only while the
+  tab is the one showing** (`active`); the tab is kept **mounted once opened** so an unsaved marked-up
+  image survives a tab switch; `beforeunload` guards it.
+- Every tool button carries a text label (design rule 3), so the symbols need no separate key.
+- Cap 25 MB. Registered in `lib/help-map.ts` ("How do I take a screenshot?").
+
+---
 ## ⚠⚠ The edit lock is the CATALOGUED tick, not "Added to BC" (2026-09-02)
 
 `requireNotBCLocked` — the one gate, 28 call sites — reads **`CatalogueAuction.catalogued`**.
@@ -1022,3 +1233,53 @@ read with **`getFallbackModel()`** from `lib/ai-models.ts`.
 - ⚠ **With no fallback set, "trying the other model" is a lie** — the retries all land on the same
   model. The overnight runner's log says *"trying again — no fallback model set"* instead
   (`hasFallback` on `withRetry`). Keep any new retry message honest the same way.
+
+## Databases → Lot Archive (pre-BC lots, LotIDs + photos from the website)
+
+- `/databases/archive`: every lot sold before Business Central — tables `ArchiveLot` (unique on
+  `lotId` — the old system's key; sale + lot number REPEATS in multi-day sales, so it is only an index),
+  `ArchiveImport`, `ArchiveSale`, `ArchiveJob`. Admin panels on top. NEEDS Run Migrations.
+- ⚠ The Crystal report is the trusted source, NOT "lot export.xlsx": measured 2026-09-07 the xlsx's 1,496,760 rows
+  are 946k real + 548,254 DUPLICATES + 1,637 hammerless 2008 rows. The report's 956,832 rows include 7,477 blank
+  placeholder lots and 849 unlotted entries the importer rejects as unreadable — expected, not a fault. AuctionID is
+  not printed by the report; the Hub-ready "Lot Export (Claude version).csv" was stamped from the xlsx by date/lot.
+- ⚠⚠ **The spreadsheet is STREAMED, never read whole.** The old system's export is 136 MB; SheetJS
+  reading it into memory killed the request ("Couldn't read the spreadsheet"). `readArchiveStream`
+  (lib/archive-import.ts: exceljs WorkbookReader for .xlsx, our own reader for .csv) feeds a
+  server-side loop the page polls — resumable from `offset`, `createMany skipDuplicates` is the dedupe.
+  .xls cannot be streamed: the error says save as .xlsx.
+- **Website pull (lib/archive-site.ts, job "site").** Walks vectis.co.uk's own sale ids; a sale's URL is
+  `/bidding/{AuctionID}-{slug}-{siteSaleId}` — the FIRST number is the sheet's AuctionID. Lots come from
+  the site's JSON feed (`task=commission.getLots`, auction_id = site id, per_page 500). The feed's
+  `unique_id` IS the old system's LotID and photos are filed under it
+  (`lot_images/large/{LotID}/{LotID}.webp`); the number at the end of a lot URL is the site's own row id
+  (`siteLotId`) — never confuse the two. Only FINISHED sales are written; matched rows get
+  lotId/siteLotId/sitePhoto/siteHammerPrice (the sheet's figures are KEPT, only blanks filled, one raw
+  `UPDATE … FROM unnest` per sale, matched on lotId, and `siteLink` = the site's exact lot address for the
+  "vectis.co.uk ↗" link). ⚠⚠ ANNOTATE ONLY — nothing is created or overwritten from the site (Jordan: "the
+  website has errors"); lots only on the site are just counted.
+- **Photo copy (job "photos")** copies each main photo (~23 KB) into R2 `archive-photos/{lotId}.webp`;
+  a 404 nulls `sitePhoto`. The page shows our copy (signed) first, else the site's medium image.
+- Jobs survive the tab closing but NOT a redeploy — the button resumes from the cursor. 250 ms between
+  requests, honest User-Agent, 40 empty ids in a row = done. "Check for new sales" restarts from the
+  first unfinished sale.
+- **Export & handover:** admin `⬇ Export data (CSV)` = `GET /api/databases/archive/export`, streamed 5,000 rows a
+  batch with every column (LotID, PhotoFile, PhotoFullSizeFile, SiteLink). The page's "Export & handover" panel
+  documents the R2 naming and the bucket-to-bucket rclone handover for a future website. Zips-of-everything were
+  deliberately NOT built — an object store keyed on LotID + a CSV is the handover format.
+- Where the site's hammer differs from the sheet's, the page shows "site £N" in amber under the hammer;
+  the sheet's value stays. Oldest sale on the site is Feb 2006 — earlier rows stay text-only.
+
+## Databases → BC Database (Business Central lots, built like the ABC database)
+
+- `/databases/bc`: every BC lot that has been through a sale, same layout as the ABC database (tiles, search,
+  thumbnails, "vectis.co.uk ↗", amber "site £N", Export & handover, `GET /api/databases/bc/export`).
+- **Two sources, one raw LEFT JOIN:** `WarehouseItem` (BC sync: sale, lot, short description, estimates, hammer —
+  lot = `COALESCE(NULLIF(currentLotNo,'0'), lotNo)`, hammer 0 = unsold) ⟕ `BcLotWeb` on `upper(uniqueId)` (the
+  website's FULL description, siteLotId, siteLink, sitePhoto, photoKey `bc-photos/{UniqueID}.webp`, photoXlKey).
+- ⚠⚠ **BC's API has NO long description** (probed 2026-09-07: only `EVA_ShortDescription`, 250 chars) — the site's
+  lot feed is the only source; its `unique_id` "r008728-194" = WarehouseItem "R008728-194"; BC sale URLs start
+  with the sale CODE (`/bidding/D062-…`). `writeBcSale` in lib/archive-site.ts CREATES/updates BcLotWeb rows (one
+  INSERT … ON CONFLICT per finished sale) — allowed here because BcLotWeb is purely the site's view and never
+  touches WarehouseItem. The photos job does ABC lots first, then BC (`copyOne`, prefix `bc-photos`).
+- WarehouseItem is a sync CACHE (`reconcile-deleted` may delete rows); BcLotWeb has no FK and survives.

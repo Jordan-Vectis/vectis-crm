@@ -523,9 +523,19 @@ export async function lookupToteOrReceipt(query: string): Promise<{
 export async function setLotsVendorReceipt(
   auctionId: string,
   lotIds: string[],
-  // `tote` (optional) also rewrites the lot's tote — used by End of Day → BC
-  // where the flagged problem IS a mistyped tote. Manage Lots doesn't pass it,
-  // so its behaviour is unchanged.
+  // `tote` given (a TOTE was looked up) sets the lot's tote.
+  //
+  // ⚠ NO tote given (a RECEIPT was looked up) CLEARS it. A receipt spans many
+  // totes, so there is no single answer, and the tote the lot is carrying belongs
+  // to wherever it used to be — End of Day then flags it (2026-09-04, Jordan:
+  // "when I change a vendor by receipt number it leaves the old tote number
+  // causing it to be flagged in the end of day, it should just clear the tote
+  // field"). Worse, 🔧 Fix what BC can prove corrects vendor/receipt back FROM
+  // that stale tote, silently reversing the change just made.
+  //
+  // ⚠ It clears UNCONDITIONALLY — Jordan's call, asked for twice. A version that
+  // kept a tote BC still places on the new receipt was built and rejected as more
+  // than was asked for. Don't reintroduce it.
   input: { vendor: string; receipt: string; tote?: string },
   undoId?: string | null,
   /** Intermediate chunk of a chunked press — skip the page revalidation (see runInChunks). */
@@ -547,6 +557,7 @@ export async function setLotsVendorReceipt(
     })
     if (lots.length === 0) return { ok: false, error: "None of those lots are in this auction." }
 
+
     // ⚠ NO unique IDs minted here any more (2026-08-06) — a blank stays blank
     // until 🔗 BC Match imports BC's own ID by barcode. Existing IDs are still
     // never touched.
@@ -555,10 +566,11 @@ export async function setLotsVendorReceipt(
     let updated = 0
 
     for (const lot of lots) {
-      const data: Record<string, string> = {}
+      const data: Record<string, string | null> = {}
       if (vendor  && lot.vendor  !== vendor)  data.vendor  = vendor
       if (receipt && lot.receipt !== receipt) data.receipt = receipt
-      if (tote    && lot.tote    !== tote)    data.tote    = tote
+      if (tote) { if (lot.tote !== tote) data.tote = tote }
+      else if (receipt && lot.tote) data.tote = null   // it belongs to where the lot used to be
       if (Object.keys(data).length === 0) continue
 
       const fields: Record<string, { before: unknown; after: unknown }> = {}

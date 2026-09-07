@@ -290,6 +290,7 @@ model AiPreset {
   key         String   @id
   instruction String   @db.Text
   favourite   Boolean  @default(false)
+  archived    Boolean  @default(false) // out of the list and the run dropdowns, but still resolvable by key
   category    String? // header the instruction sits under (null = Uncategorised)
   sortOrder   Int      @default(0) // order within its category (drag-to-reorder)
   updatedAt   DateTime @updatedAt
@@ -1347,6 +1348,152 @@ model DocumentFile {
   folder     DocumentFolder? @relation(fields: [folderId], references: [id])
   uploadedBy String
   createdAt  DateTime        @default(now())
+}
+
+// A screen recording made from IT Tools → Screen Recorder. The browser captures a
+// screen, window or tab and uploads the file STRAIGHT to R2 (presigned PUT — a
+// recording can run to hundreds of MB, far past the 20 MB server body limit);
+// this row is written only after that upload succeeds, so a row always has a file.
+model ScreenRecording {
+  id             String   @id @default(cuid())
+  title          String
+  key            String   // R2 object key, recordings/…
+  contentType    String   // video/mp4 or video/webm — whatever the browser could produce
+  sizeBytes      Int
+  durationMs     Int
+  recordedBy     String   // email
+  recordedByName String
+  createdAt      DateTime @default(now())
+}
+
+// A screenshot from IT Tools → Screenshots (the snipping-tool stand-in): captured
+// or pasted in the browser, cropped and marked up on a canvas, then the PNG goes
+// straight to R2 (presigned PUT) and this row is written once it is confirmed there.
+model ScreenCapture {
+  id          String   @id @default(cuid())
+  title       String
+  key         String   // R2 object key, screenshots/…
+  contentType String   // always image/png
+  sizeBytes   Int
+  width       Int
+  height      Int
+  takenBy     String   // email
+  takenByName String
+  createdAt   DateTime @default(now())
+}
+
+// ⚠ The pre-BC lot archive — every lot Vectis sold from 1999 until Business Central
+// took over, imported from the old system's spreadsheet export (Databases → Lot
+// Archive). Human-written descriptions with the house condition grading, estimates
+// and the hammer price. `auctionId` is the OLD system's sale number — and it is
+// also the number the website's sale URL STARTS with: /bidding/19-model-train-
+// sale-15/4001-10342 is AuctionID 19, site sale id 15, lot 4001, site lot id 10342
+// (Jordan, 2026-09-07). So photos are matched by AuctionID then lot number; the
+// site's own ids (15, 10342) are read off the sale's pages when needed.
+model ArchiveLot {
+  id           String    @id @default(cuid())
+  auctionId    Int
+  auctionDate  DateTime?
+  saleTitle    String
+  lot          Int
+  description  String    @db.Text
+  estimateLow  Float?
+  estimateHigh Float?
+  hammerPrice  Float?
+  imageKeys    String[]  @default([]) // (unused — see photoKey)
+  // ── Filled by the website pull (lib/archive-site.ts) ──
+  // The old system's LotID is what the website calls a lot's unique_id, and its
+  // photos are filed under it: lot_images/large/{lotId}/{lotId}.webp. The site's
+  // own row id (the number at the end of a lot URL) is siteLotId. Rows the sheet
+  // never had are created from the site with source "site".
+  lotId           String?
+  siteLotId       Int?
+  siteLink        String?   // the site's own lot address, e.g. bidding/724-doll-teddy-bear-sale-683/4656-a-boxed-kit-group-751438
+  sitePhoto       String?   // the site's main photo path
+  photoKey        String?   // our R2 copy for display (the site's "large", ~23 KB: archive-photos/{lotId}.webp)
+  photoXlKey      String?   // our R2 backup of the best quality the site holds ("xlarge", ~250 KB: archive-photos/xl/{lotId}.webp)
+  siteHammerPrice Float?    // the site's hammer, kept beside the sheet's where they differ
+  source          String    @default("sheet")
+  importedAt   DateTime  @default(now())
+
+  // ⚠ Identity is the LotID (the old system's key, unique across every sale). Sale +
+  // lot number is NOT unique — the report has 1,637 lot numbers repeated within a
+  // sale (multi-day sales re-used them) — so it is only an index, and createMany's
+  // skipDuplicates dedupes on lotId.
+  @@unique([lotId])
+  @@index([auctionId, lot])
+  @@index([auctionDate])
+  @@index([hammerPrice])
+}
+
+// Databases → BC Database: what the WEBSITE holds for a Business Central lot that BC's
+// own API doesn't — the long description (BC exposes only the 250-char short one),
+// the site's link and its photo — keyed on BC's unique ID (site "r008728-194" =
+// BC "R008728-194"). Filled by the same website pull as the ABC database; the lot's
+// own figures (estimate, hammer, sale) stay on WarehouseItem from the BC sync.
+model BcLotWeb {
+  uniqueId        String    @id                    // upper-cased, as WarehouseItem.uniqueId
+  auctionCode     String?                          // the sale's code from the site URL (D062, F111…)
+  lotNumber       Int?
+  description     String?   @db.Text               // the site's full description
+  siteLotId       Int?
+  siteLink        String?
+  sitePhoto       String?
+  photoKey        String?                          // bc-photos/{uniqueId}.webp
+  photoXlKey      String?                          // bc-photos/xl/{uniqueId}.webp
+  siteHammerPrice Float?
+  pulledAt        DateTime  @default(now())
+
+  @@index([auctionCode])
+}
+
+// One sale as the website lists it: its own sequential id, the AuctionID it shares
+// with the sheet, and whether it has finished (only finished sales are pulled).
+model ArchiveSale {
+  siteId    Int       @id
+  auctionId Int?
+  title     String
+  saleDate  DateTime?
+  lots      Int       @default(0)
+  finished  Boolean   @default(false)
+  pulledAt  DateTime  @default(now())
+
+  @@index([auctionId])
+}
+
+// The two long-running archive jobs ("site" = pull lots/LotIDs/photo paths from the
+// website; "photos" = copy those photos into R2), resumable from cursor.
+model ArchiveJob {
+  id        String   @id
+  cursor    Int      @default(0)
+  total     Int      @default(0)
+  sales     Int      @default(0)
+  matched   Int      @default(0)
+  added     Int      @default(0)
+  done      Boolean  @default(false)
+  error     String?
+  note      String?
+  startedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One upload of the archive spreadsheet, worked through in chunks so a twenty-year
+// file can't time a request out; re-runnable — rows already present are skipped.
+model ArchiveImport {
+  id        String   @id @default(cuid())
+  key       String   // R2 key of the uploaded spreadsheet
+  filename  String
+  totalRows Int      @default(0)
+  offset    Int      @default(0)
+  added     Int      @default(0)
+  skipped   Int      @default(0)
+  bad       Int      @default(0)
+  done      Boolean  @default(false)
+  error     String?
+  startedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Pre-typed email reply snippets staff can copy into customer responses.

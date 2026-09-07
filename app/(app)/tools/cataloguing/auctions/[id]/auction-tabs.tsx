@@ -1469,7 +1469,10 @@ function ManageLotsTab({ lots, auctionId, auction, allAuctions, bcLocked, onEdit
     // vendor were already right, nothing changed at all while the message still said "✓".
     const newTote = vendorHit.kind === "tote" ? (vendorHit.tote ?? "") : ""
     const who = `${newTote ? `tote ${newTote} · ` : ""}${vendorHit.receipt ?? "—"} / ${vendorHit.vendor ?? "—"}${vendorHit.vendorName ? ` (${vendorHit.vendorName})` : ""}`
-    if (!confirm(`Put ${scopeWord()} onto ${who}?`)) return
+    // A receipt spans many totes, so the server clears the tote rather than guess.
+    // Say so — a silently emptied field is how people stop trusting a tool.
+    const toteNote = newTote ? "" : "\n\nThe tote is cleared — a receipt covers several totes, and the one on the lot belongs to where it used to be."
+    if (!confirm(`Put ${scopeWord()} onto ${who}?${toteNote}`)) return
     setFillMsg(null)
     startFill(async () => {
       let failed: string | undefined

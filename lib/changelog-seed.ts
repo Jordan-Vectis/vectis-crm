@@ -1,4 +1,4 @@
-// The commit history from 1 July 2026 up to 2026-09-03, committed into the repo.
+// The commit history from 1 July 2026 up to 2026-09-07, committed into the repo.
 //
 // ⚠ THIS IS THE ONLY COMPLETE HISTORY THE RUNNING APP CAN SEE. Railway's build
 // has no .git, so scripts/capture-changelog.mjs falls back to the deploy
@@ -10,10 +10,42 @@
 //     npm run changelog:seed
 // Never edit it by hand. Ingest is keyed on sha, so re-seeding only ever adds
 // what is missing — it can't duplicate or overwrite anything.
+//
+// The very newest commit is deliberately NOT in here. The refresh folds itself
+// into that commit, which changes its sha, so it is recorded by the deploy
+// capture instead and lands here on the next refresh. Between the two, nothing
+// is missed and no commit is filed twice.
 
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"b13b7b0ab61bdf448916ae3a1058308fd9c049f0","author":"Jordan Orange","date":"2026-09-07T16:52:59+01:00","subject":"Databases: BC Database — Business Central lots, built like the ABC one"},
+  {"sha":"1e99988fa04b77059c052689c1822fb34d479c2c","author":"Jordan Orange","date":"2026-09-07T16:41:28+01:00","subject":"Databases: the Lot Archive is the ABC Database (the system the lots came from)"},
+  {"sha":"120880b4203631452d89078b294690b3ceea4623","author":"Jordan Orange","date":"2026-09-07T16:12:35+01:00","subject":"Lot Archive: export data (streamed CSV) + handover panel for a future website"},
+  {"sha":"dadc7621924a22cb6140a1576b6c2f7e55727b08","author":"Jordan Orange","date":"2026-09-07T15:36:42+01:00","subject":"Lot Archive: link each lot to vectis.co.uk; the website pull is annotate-only"},
+  {"sha":"324639002d1b1413f8ff61c25ef3fd2347fa9b46","author":"Jordan Orange","date":"2026-09-07T15:26:50+01:00","subject":"Migrations: stop recreating the old ArchiveLot sale+lot unique index"},
+  {"sha":"0d1c331327582fc7c1b866bbcb6ba70e57d39886","author":"Jordan Orange","date":"2026-09-07T14:09:12+01:00","subject":"Lot Archive: type the photo-job filter (fixes the staging build)"},
+  {"sha":"dd1d472b06f695807c22e6744c973a39a2f363d9","author":"Jordan Orange","date":"2026-09-07T14:05:58+01:00","subject":"Lot Archive: back up the full-size photo as well as the display copy"},
+  {"sha":"207bce67751d7dccca68cfbbf5c994d51e3fb15a","author":"Jordan Orange","date":"2026-09-07T13:55:54+01:00","subject":"Lot Archive: summary box (lots, sold, photos in the Hub, where they came from)"},
+  {"sha":"0d6ca1a9aa9c43fd521bd7499ec71b998d380e7c","author":"Jordan Orange","date":"2026-09-07T13:36:17+01:00","subject":"Lot Archive: identity is the LotID, not sale + lot number"},
+  {"sha":"e4d4b212ee549e9143eeafe03fc202651e359f15","author":"Jordan Orange","date":"2026-09-07T13:02:03+01:00","subject":"Lot Archive import: read every sheet of the Crystal Viewer export"},
+  {"sha":"39c9bdec2a12a9270b883b3f0da02103ae75cfc1","author":"Jordan Orange","date":"2026-09-07T12:43:03+01:00","subject":"Lot Archive: read LotID from the export, record the archive in RULES + memory"},
+  {"sha":"61f16430959a2a14ae71a6874b09569bb4b2b0ba","author":"Jordan Orange","date":"2026-09-07T12:35:57+01:00","subject":"Lot Archive: stream the spreadsheet, pull LotIDs + photos from the website"},
+  {"sha":"1a34de77b9c4528f133113d6ee03cdc5f66fa306","author":"Jordan Orange","date":"2026-09-07T12:01:36+01:00","subject":"Databases: Lot Archive"},
+  {"sha":"531d593d27867e44ab3f1748c302ebbff1d152e6","author":"Jordan Orange","date":"2026-09-07T10:55:40+01:00","subject":"Screenshots: size the canvas from the picture, crop on release, undo covers crops"},
+  {"sha":"1477e81361b945d6fbff2fd5908a2f9b846e0255","author":"Jordan Orange","date":"2026-09-07T10:42:44+01:00","subject":"IT Tools: Screenshots"},
+  {"sha":"2df18e8928a58bbbc3a2f29545a63ea57ac00b12","author":"Jordan Orange","date":"2026-09-07T10:06:37+01:00","subject":"Screen Recorder: download a recording"},
+  {"sha":"e9d545035701497cd89503a2a0e7cd3e5fc179cf","author":"Jordan Orange","date":"2026-09-05T00:57:42+01:00","subject":"IT Tools: Screen Recorder"},
+  {"sha":"0f19429898ffb5d0a72fa49fb04839d156b5fd72","author":"Jordan Orange","date":"2026-09-04T15:33:22+01:00","subject":"Archived instructions leave every dropdown at once"},
+  {"sha":"69f70f846aaf59294fc6259212b22ef725c70834","author":"Jordan Orange","date":"2026-09-04T15:00:17+01:00","subject":"Instructions: archive an old one, and bring it back"},
+  {"sha":"7cf6f2638a470727e4ea435741692cb205510289","author":"Jordan Orange","date":"2026-09-04T11:40:46+01:00","subject":"Rules: don't ask to push to main, Jordan says when"},
+  {"sha":"6f4d88236e35e4f62ca460e13af348bd3042733f","author":"Jordan Orange","date":"2026-09-04T11:31:28+01:00","subject":"End of Day: stop flagging an empty tote"},
+  {"sha":"2c720cec75b5d16b5991a56f7d9e36c80007821b","author":"Jordan Orange","date":"2026-09-04T11:15:30+01:00","subject":"Change Vendor by receipt: just clear the tote"},
+  {"sha":"1c01c0f1b9b5c2c0d0fc0beb8ae7c50455179fe0","author":"Jordan Orange","date":"2026-09-04T09:51:20+01:00","subject":"chore: restore the memory page's line endings"},
+  {"sha":"1329d0a623f9e625c4d5b68473882f96b528b81a","author":"Jordan Orange","date":"2026-09-04T09:49:01+01:00","subject":"Change Vendor by receipt: clear a tote that no longer belongs to it"},
+  {"sha":"0e39438d18154c626f487d7380d8fe602132a2e7","author":"Jordan Orange","date":"2026-09-04T09:24:11+01:00","subject":"Name the Railway deployment after the work, not the changelog seed"},
+  {"sha":"015780e8b3bedc118d5b704e8930957b95e885c2","author":"Jordan Orange","date":"2026-09-04T09:04:34+01:00","subject":"Merge staging into main: reserves on the tablet, BC lot-number top-up, app-wide fallback model"},
+  {"sha":"ce966fb16637ff92dc4b71d1b3da2bbf475fee1f","author":"Jordan Orange","date":"2026-09-04T09:04:21+01:00","subject":"Refresh changelog seed"},
   {"sha":"277f2eb6de0776e4f024951296b5da7b12f05273","author":"Jordan Orange","date":"2026-09-03T16:59:09+01:00","subject":"Add an app-wide fallback model, and make Overnight runs open on the admin defaults"},
   {"sha":"bec3dd3c20c3f720dded8b24d7f5decb5913b41c","author":"Jordan Orange","date":"2026-09-03T16:03:47+01:00","subject":"Update opening message: staging only, reserves tablet fix, help box getEffectiveSession, lot-number top-up"},
   {"sha":"2508b3ac2c560404110149b655c5b50e764eba9c","author":"Jordan Orange","date":"2026-09-03T12:28:48+01:00","subject":"Refresh changelog seed"},

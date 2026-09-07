@@ -9,6 +9,7 @@ import { showError } from "@/lib/error-modal"
 import { MacroTab } from "./macro-tab"
 import BcImportCheckTab from "./bc-import-check-tab"
 import InstructionsTestTab from "./instructions-test-tab"
+import { useInstructionOptions, announceInstructionsChanged } from "./use-instructions"
 import { analyseKeyPoints, HighlightedDescription, kpColour } from "@/lib/kp-analysis"
 import RunCostEstimate from "@/components/run-cost-estimate"
 import Link from "next/link"
@@ -364,12 +365,7 @@ function ChatTab({ model }: { model: string }) {
   const [lastSearchQueries, setLastSearchQueries] = useState<string[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    fetch("/api/auction-ai/presets").then(r => r.json()).then((m: Record<string, string>) => {
-      setInstructions(m)
-      setPreset(p => p || Object.keys(m)[0] || "")
-    }).catch(() => {})
-  }, [])
+  useInstructionOptions(setInstructions, setPreset)
 
   async function send() {
     if (!message.trim() && !images.length) return
@@ -539,11 +535,9 @@ function BatchTab({ model, fallbackModel }: { model: string; fallbackModel: stri
   const [runList,      setRunList]      = useState<{ id: string; code: string; _count: { lots: number } }[]>([])
   const [keyPointsMap, setKeyPointsMap] = useState<Record<string, string>>({})
 
+  useInstructionOptions(setInstructions, setPreset)
+
   useEffect(() => {
-    fetch("/api/auction-ai/presets").then(r => r.json()).then((m: Record<string, string>) => {
-      setInstructions(m)
-      setPreset(p => p || Object.keys(m)[0] || "")
-    }).catch(() => {})
     fetch("/api/auction-ai/runs").then(r => r.json()).then(setRunList).catch(() => {})
     // Pre-load auction code from cataloguing page "Upgrade with AI" button
     const raw = localStorage.getItem("batch_preload")
@@ -2057,7 +2051,7 @@ function KPRunsTab() {
 
 // ─── Instructions Tab ─────────────────────────────────────────────────────────
 
-type CustomPreset = { key: string; instruction: string; favourite: boolean; category: string | null; sortOrder: number }
+type CustomPreset = { key: string; instruction: string; favourite: boolean; category: string | null; sortOrder: number; archived: boolean }
 
 const UNCATEGORISED = "Uncategorised"
 
@@ -2082,6 +2076,11 @@ function InstructionsTab() {
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [dragCat, setDragCat] = useState<string | null>(null)
   const [dropHint, setDropHint] = useState<string | null>(null)
+  // Archived instructions are kept in `presets` and filtered at RENDER, never at
+  // load — Export all and the drag-layout save both read that array, so dropping
+  // them on load would quietly leave them out of the sync file and renumber the
+  // list around the gap.
+  const [showArchived, setShowArchived] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -2093,7 +2092,7 @@ function InstructionsTab() {
       const cats: string[] = Array.isArray(data?.categories) ? data.categories.map((c: any) => c.name) : []
       const rows: CustomPreset[] = list.map((r: any) => ({
         key: r.key, instruction: r.instruction, favourite: !!r.favourite,
-        category: r.category ?? null, sortOrder: r.sortOrder ?? 0,
+        category: r.category ?? null, sortOrder: r.sortOrder ?? 0, archived: !!r.archived,
       }))
       // Flat array in category-grouped order (favourites are lifted out at render
       // time, so keep the array purely category-ordered for clean reordering).
@@ -2236,7 +2235,8 @@ function InstructionsTab() {
         body: JSON.stringify({ key: name, instruction: draftText }),
       })
       if (!res.ok) throw new Error("Save failed")
-      setPresets(p => [...p, { key: name, instruction: draftText, favourite: false, category: null, sortOrder: 0 }])
+      setPresets(p => [...p, { key: name, instruction: draftText, favourite: false, category: null, sortOrder: 0, archived: false }])
+      announceInstructionsChanged()
       setSelected(name); setMode("view"); setNewName("")
     } catch (e: any) { setError(e.message) }
     setSaving(false)
@@ -2267,6 +2267,7 @@ function InstructionsTab() {
       })
       if (!res.ok) throw new Error("Delete failed")
       setPresets(p => p.filter(x => x.key !== key))
+      announceInstructionsChanged()
       setSelected(null); setMode("view")
     } catch (e: any) { setError(e.message) }
     setSaving(false)
@@ -2289,17 +2290,43 @@ function InstructionsTab() {
     }
   }
 
+  // Archive / restore. Takes the instruction out of this list and out of every
+  // run-tab dropdown, and nothing else — the text stays, and a sale already
+  // queued against it still runs, because the server resolves it by key.
+  async function toggleArchived(key: string) {
+    const p = presets.find(x => x.key === key)
+    if (!p) return
+    const next = !p.archived
+    setPresets(ps => ps.map(x => x.key === key ? { ...x, archived: next } : x))   // optimistic
+    try {
+      const res = await fetch("/api/auction-ai/presets", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, archived: next }),
+      })
+      if (!res.ok) throw new Error()
+      announceInstructionsChanged()     // empty it out of the run tabs' dropdowns now, not on the next reload
+      if (next) setShowArchived(true)   // so it doesn't just vanish with no trace
+    } catch {
+      setPresets(ps => ps.map(x => x.key === key ? { ...x, archived: !next } : x))  // revert
+      setError("Couldn't archive that — has Run Migrations been done on this environment?")
+    }
+  }
+
   // ── Export / Import — sync instructions between environments (e.g. staging → production) ──
   function exportAll() {
     const map: Record<string, string> = {}
     for (const p of presets) map[p.key] = p.instruction
     const favourites = presets.filter(p => p.favourite).map(p => p.key)
+    // v4: carries the archived list too, so an environment synced from here ends
+    // up with the same instructions hidden. An older file without it never
+    // un-archives anything (the import only applies the list when it is present).
+    const archived = presets.filter(p => p.archived).map(p => p.key)
     // v3: carries the category layout so an import arranges the list the same way.
     const layout = {
       categoryOrder: categories,
       items: Object.fromEntries(presets.map(p => [p.key, { category: p.category, sortOrder: p.sortOrder }])),
     }
-    const payload = { type: "vectis-ai-instructions", version: 3, exportedAt: new Date().toISOString(), instructions: map, favourites, layout }
+    const payload = { type: "vectis-ai-instructions", version: 4, exportedAt: new Date().toISOString(), instructions: map, favourites, archived, layout }
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -2357,6 +2384,7 @@ function InstructionsTab() {
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "import failed")
       setImportRows(null)
       await load()
+      announceInstructionsChanged()   // an import can add, and can archive
     } catch (err: any) { setError(`Import failed: ${err.message}`) }
     setImporting(false)
   }
@@ -2414,7 +2442,9 @@ function InstructionsTab() {
         ) : (
           <div className="mt-1 overflow-y-auto">
             {(() => {
-              const favs = presets.filter(p => p.favourite)
+              const active   = presets.filter(p => !p.archived)
+              const archived = presets.filter(p => p.archived)
+              const favs     = active.filter(p => p.favourite)
               const row = (p: CustomPreset) => (
                 <div key={p.key}
                   draggable
@@ -2475,9 +2505,11 @@ function InstructionsTab() {
                 </div>
               )
 
+              // An archived instruction is out of the favourites strip and out of
+              // every category, so it can't be reached by dragging either.
               const groups: { name: string; real: boolean; items: CustomPreset[] }[] = [
-                ...categories.map(name => ({ name, real: true, items: presets.filter(p => !p.favourite && p.category === name) })),
-                { name: UNCATEGORISED, real: false, items: presets.filter(p => !p.favourite && (p.category == null || !categories.includes(p.category))) },
+                ...categories.map(name => ({ name, real: true, items: active.filter(p => !p.favourite && p.category === name) })),
+                { name: UNCATEGORISED, real: false, items: active.filter(p => !p.favourite && (p.category == null || !categories.includes(p.category))) },
               ]
 
               return (
@@ -2500,6 +2532,44 @@ function InstructionsTab() {
                       </div>
                     )
                   ))}
+
+                  {/* Archived — only appears once something is in it. Its own
+                      header rather than the shared one, so an instruction can't
+                      be dropped in here by a stray drag (archiving is a button). */}
+                  {archived.length > 0 && (
+                    <div className="mt-1 pt-1 border-t border-gray-200 dark:border-gray-800">
+                      <button onClick={() => setShowArchived(s => !s)}
+                        title="Instructions hidden from this list and from the run tabs"
+                        className="w-full flex items-center gap-1 px-1 py-2 rounded text-left hover:bg-gray-100 dark:hover:bg-[#2C2C2E] transition-colors">
+                        <span className="text-[9px] text-gray-500">{showArchived ? "▾" : "▸"}</span>
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-bold">🗄 Archived</span>
+                        <span className="text-[9px] text-gray-400 dark:text-gray-600">({archived.length})</span>
+                      </button>
+                      {showArchived && (
+                        <>
+                          <p className="px-3 pb-1 text-[10px] text-gray-400 dark:text-gray-600 italic">
+                            Hidden from the run tabs. Still saved, and still used by anything already queued against them.
+                          </p>
+                          {archived.map(p => (
+                            <div key={p.key} className="flex items-center gap-0.5 rounded opacity-60 hover:opacity-100 transition-opacity">
+                              <button onClick={() => openView(p.key)}
+                                className={`flex-1 min-w-0 text-left px-2 py-2 rounded text-sm transition-colors truncate ${
+                                  selected === p.key
+                                    ? "bg-[#C8A96E]/15 text-[#C8A96E] border border-[#C8A96E]/30"
+                                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2E]"
+                                }`}>
+                                {p.key}
+                              </button>
+                              <button onClick={() => toggleArchived(p.key)} title="Put this back in the list"
+                                className="px-2 py-2 text-xs text-gray-400 hover:text-[#C8A96E] flex-shrink-0">
+                                ↩
+                              </button>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })()}
@@ -2573,12 +2643,24 @@ function InstructionsTab() {
                   className="px-4 py-1.5 text-sm border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded hover:border-[#C8A96E] hover:text-[#C8A96E] transition-colors">
                   ✎ Edit
                 </button>
+                <button onClick={() => toggleArchived(selected)}
+                  title={selectedPreset?.archived
+                    ? "Put this back in the list and the run tabs"
+                    : "Hide this from the list and the run tabs. Nothing is deleted, and you can bring it back."}
+                  className="px-4 py-1.5 text-sm border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded hover:border-[#C8A96E] hover:text-[#C8A96E] transition-colors">
+                  {selectedPreset?.archived ? "↩ Restore" : "🗄 Archive"}
+                </button>
                 <button onClick={() => deletePreset(selected)} disabled={saving}
                   className="px-4 py-1.5 text-sm border border-red-900/60 text-red-500 rounded hover:bg-red-900/20 transition-colors disabled:opacity-40">
                   Delete
                 </button>
               </div>
             </div>
+            {selectedPreset?.archived && (
+              <p className="px-5 py-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#1C1C1E] border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
+                🗄 Archived — hidden from the run tabs, but still saved. Anything already queued against it still runs.
+              </p>
+            )}
             <pre className="flex-1 px-5 py-4 text-xs text-gray-600 dark:text-gray-400 font-mono whitespace-pre-wrap overflow-auto">
               {selectedPreset?.instruction ?? ""}
             </pre>
@@ -4088,11 +4170,9 @@ function PipelineTab({ model: globalModel, fallbackModel }: { model: string; fal
     loggedModelRef.current = globalModel
   }, [globalModel, running])
 
+  useInstructionOptions(setInstructions, setPreset)
+
   useEffect(() => {
-    fetch("/api/auction-ai/presets").then(r => r.json()).then((m: Record<string, string>) => {
-      setInstructions(m)
-      setPreset(p => p || Object.keys(m)[0] || "")
-    }).catch(() => {})
     fetch("/api/auction-ai/auctions").then(r => r.json()).then(d => { if (Array.isArray(d)) setAuctionList(d) }).catch(() => {})
     // Pre-load auction code from cataloguing "AI Upgrade" button
     const raw = localStorage.getItem("pipeline_preload")
