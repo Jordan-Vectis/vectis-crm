@@ -111,6 +111,25 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
 
         {isAdmin && <ArchiveImport />}
         {isAdmin && <ArchiveSite />}
+        {isAdmin && (
+          <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-5">
+            <summary className="cursor-pointer text-base font-bold text-gray-900 dark:text-white">Export &amp; handover — for a backup, or a future website</summary>
+            <div className="mt-3 space-y-3 text-sm text-gray-700 dark:text-gray-300">
+              <div className="flex flex-wrap items-center gap-3">
+                <a href="/api/databases/archive/export" className="min-h-[44px] inline-flex items-center px-4 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">⬇ Export data (CSV)</a>
+                <span className="text-gray-600 dark:text-gray-400">Every lot, one row each, with its LotID, both photo file names and the site link. Around 400 MB — opens in Excel. Streams as it goes, so give it a minute.</span>
+              </div>
+              <p><span className="font-semibold text-gray-900 dark:text-white">Where the photos live.</span> Cloudflare R2, bucket <code className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{process.env.CLOUDFLARE_R2_BUCKET ?? "(not set)"}</code>, two files per lot named by its LotID:</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li><code className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">archive-photos/xl/&#123;LotID&#125;.webp</code> — full size, the best the old website held (about 250 KB)</li>
+                <li><code className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">archive-photos/&#123;LotID&#125;.webp</code> — small display copy (about 23 KB)</li>
+              </ul>
+              <p><span className="font-semibold text-gray-900 dark:text-white">Handing it to a new website.</span> Give the developer the CSV above and a read-only R2 API token (Cloudflare dashboard → R2 → Manage API tokens, "Object Read only", scoped to this bucket). They copy the pictures bucket-to-bucket with any S3 tool — nothing passes through a PC — for example with rclone:</p>
+              <pre className="overflow-x-auto rounded-lg bg-gray-100 dark:bg-gray-900 p-3 text-xs font-mono">rclone copy r2:{process.env.CLOUDFLARE_R2_BUCKET ?? "BUCKET"}/archive-photos  their-storage:their-bucket/archive-photos  --transfers 32</pre>
+              <p className="text-gray-600 dark:text-gray-400">Each row's PhotoFullSizeFile column names its file in that folder, so the new site needs nothing else to pair pictures with lots. The database itself is backed up nightly with the rest of the Hub.</p>
+            </div>
+          </details>
+        )}
 
         <form method="get" className="grid gap-2 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]">
           <input name="q" defaultValue={q} placeholder="Search descriptions — e.g. Dinky 105, Steiff, Palitoy Leia" className={input} />

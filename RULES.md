@@ -1263,5 +1263,9 @@ read with **`getFallbackModel()`** from `lib/ai-models.ts`.
 - Jobs survive the tab closing but NOT a redeploy — the button resumes from the cursor. 250 ms between
   requests, honest User-Agent, 40 empty ids in a row = done. "Check for new sales" restarts from the
   first unfinished sale.
+- **Export & handover:** admin `⬇ Export data (CSV)` = `GET /api/databases/archive/export`, streamed 5,000 rows a
+  batch with every column (LotID, PhotoFile, PhotoFullSizeFile, SiteLink). The page's "Export & handover" panel
+  documents the R2 naming and the bucket-to-bucket rclone handover for a future website. Zips-of-everything were
+  deliberately NOT built — an object store keyed on LotID + a CSV is the handover format.
 - Where the site's hammer differs from the sheet's, the page shows "site £N" in amber under the hammer;
   the sheet's value stays. Oldest sale on the site is Feb 2006 — earlier rows stay text-only.
