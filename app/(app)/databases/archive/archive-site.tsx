@@ -66,7 +66,7 @@ export default function ArchiveSite() {
       <div className="border-t border-gray-200 dark:border-gray-800 pt-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-gray-900 dark:text-white">Copy the photos into the Hub</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Each matched lot's main photo (about 23 KB) is copied from the site into our own storage, so the pictures are ours whatever happens to the website. Run the pull first.</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Each lot's photo is copied from the site into our own storage twice: the full-size version the site holds (about 250 KB) as the backup, and a small copy for showing on this page. About 260 GB for the whole archive; pictures stay ours whatever happens to the website.</p>
         </div>
         {photos?.running
           ? <button onClick={() => act("photos", "stop")} className={plain}>⏹ Stop</button>

@@ -1870,6 +1870,7 @@ const MIGRATIONS = [
     ADD COLUMN IF NOT EXISTS "photoKey" TEXT,
     ADD COLUMN IF NOT EXISTS "siteHammerPrice" DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS "source" TEXT NOT NULL DEFAULT 'sheet'`,
+  `ALTER TABLE "ArchiveLot" ADD COLUMN IF NOT EXISTS "photoXlKey" TEXT`,
   // Identity is the LotID: sale + lot number repeats within multi-day sales.
   `DROP INDEX IF EXISTS "ArchiveLot_auctionId_lot_key"`,
   `DROP INDEX IF EXISTS "ArchiveLot_lotId_idx"`,

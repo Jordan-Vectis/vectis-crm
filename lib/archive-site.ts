@@ -202,9 +202,14 @@ async function runSitePull() {
 
 // ── "photos" job ────────────────────────────────────────────────────────────
 
+// Two copies per lot: the site's "large" (~23 KB) for display, and its "xlarge"
+// (~250 KB, the best it holds — there are no originals) as the backup, so a future
+// move off the website has the full-quality pictures. ~260 GB for the whole archive.
+const PHOTO_TODO = { sitePhoto: { not: null }, OR: [{ photoKey: null }, { photoXlKey: null }] } as const
+
 export async function startPhotoCopy(startedBy: string) {
   if (isActive("photos")) return getJob("photos")
-  const total = await prisma.archiveLot.count({ where: { sitePhoto: { not: null }, photoKey: null } })
+  const total = await prisma.archiveLot.count({ where: PHOTO_TODO })
   const job = await prisma.archiveJob.upsert({
     where: { id: "photos" },
     create: { id: "photos", startedBy, total },
@@ -218,18 +223,31 @@ async function runPhotoCopy() {
   const ctl: Ctl = { stop: false }; active.set("photos", ctl)
   try {
     while (!ctl.stop) {
-      const batch = await prisma.archiveLot.findMany({ where: { sitePhoto: { not: null }, photoKey: null }, select: { id: true, lotId: true, sitePhoto: true }, take: 40, orderBy: { id: "asc" } })
-      if (!batch.length) { await prisma.archiveJob.update({ where: { id: "photos" }, data: { done: true, note: "Every photo the site has is in the Hub" } }); break }
+      const batch = await prisma.archiveLot.findMany({ where: PHOTO_TODO, select: { id: true, lotId: true, sitePhoto: true, photoKey: true, photoXlKey: true }, take: 40, orderBy: { id: "asc" } })
+      if (!batch.length) { await prisma.archiveJob.update({ where: { id: "photos" }, data: { done: true, note: "Every photo the site has is in the Hub, display and full-size" } }); break }
       let n = 0
+      const grab = async (path: string): Promise<Buffer | null> => {           // null = the site has no such file
+        const res = await fetch(SITE_IMAGES + path, { headers: { "User-Agent": UA } })
+        if (res.status === 404 || res.status === 403) return null
+        if (!res.ok) throw new Error(`Photo download answered ${res.status}`)
+        return Buffer.from(await res.arrayBuffer())
+      }
       for (let i = 0; i < batch.length && !ctl.stop; i += 5) {
         await Promise.all(batch.slice(i, i + 5).map(async l => {
-          const res = await fetch(SITE_IMAGES + l.sitePhoto, { headers: { "User-Agent": UA } })
-          if (res.status === 404 || res.status === 403) { await prisma.archiveLot.update({ where: { id: l.id }, data: { sitePhoto: null } }); return }   // the site has no picture after all
-          if (!res.ok) throw new Error(`Photo download answered ${res.status}`)
-          const buf = Buffer.from(await res.arrayBuffer())
-          const key = `archive-photos/${String(l.lotId || l.id).replace(/[^A-Za-z0-9_-]/g, "")}.webp`
-          await uploadBufferToR2(buf, key, "image/webp")
-          await prisma.archiveLot.update({ where: { id: l.id }, data: { photoKey: key } })
+          const safe = String(l.lotId || l.id).replace(/[^A-Za-z0-9_-]/g, "")
+          const data: { photoKey?: string; photoXlKey?: string; sitePhoto?: null } = {}
+          if (!l.photoKey) {
+            const buf = await grab(l.sitePhoto!)
+            if (!buf) { await prisma.archiveLot.update({ where: { id: l.id }, data: { sitePhoto: null } }); return }   // the site has no picture after all
+            data.photoKey = `archive-photos/${safe}.webp`
+            await uploadBufferToR2(buf, data.photoKey, "image/webp")
+          }
+          if (!l.photoXlKey) {
+            const buf = await grab(l.sitePhoto!.replace("/large/", "/xlarge/"))
+            if (buf) { data.photoXlKey = `archive-photos/xl/${safe}.webp`; await uploadBufferToR2(buf, data.photoXlKey, "image/webp") }
+            else data.photoXlKey = data.photoKey ?? l.photoKey ?? undefined                       // no full-size on the site: the display copy is the best there is
+          }
+          await prisma.archiveLot.update({ where: { id: l.id }, data })
           n++
         }))
         await sleep(100)
