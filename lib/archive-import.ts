@@ -140,30 +140,40 @@ async function* csvRows(stream: Readable): AsyncGenerator<string[]> {
  * Streams every data row of the file to onRow (an ArchiveRow, or "bad" for a row
  * with content that couldn't be read). Only the first sheet of a workbook is read.
  */
-export async function readArchiveStream(stream: Readable, ext: string, onRow: (r: ArchiveRow | "bad") => Promise<void>): Promise<{ headers: string[] }> {
-  let cols: Cols | null = null, headers: string[] = []
+export async function readArchiveStream(stream: Readable, ext: string, onRow: (r: ArchiveRow | "bad") => Promise<void>): Promise<{ headers: string[]; sheets: number }> {
+  // ⚠ The Crystal Reports Viewer export SPLITS the data across many sheets (Sheet1…
+  // Sheet11…), each starting with its own header row — so every sheet is read, and the
+  // first non-blank row of each is tried as a header (kept as data if it isn't one).
+  let cols: Cols | null = null, headers: string[] = [], sheets = 0, sheetStart = true
   const handle = async (cells: unknown[]) => {
-    if (!cols) {
-      if (!cells.some(v => v !== "" && v != null)) return                  // blank lines above the header
-      headers = cells.map(v => String(v ?? "").trim()); cols = mapHeaders(headers); return
+    if (!cells.some(v => v !== "" && v != null)) return                    // blank line
+    if (sheetStart) {
+      sheetStart = false
+      const h = cells.map(v => String(v ?? "").trim())
+      try { cols = mapHeaders(h); headers = h; return } catch (e) { if (!cols) throw e }   // not a header: data continues under the last header
     }
-    const r = rowFrom(cells, cols)
+    const r = rowFrom(cells, cols!)
     if (r !== "empty") await onRow(r)
   }
   if (ext === "csv") {
+    sheets = 1
     for await (const cells of csvRows(stream)) await handle(cells)
   } else if (ext === "xls") {
     throw new Error("The old binary .xls format can't be streamed — open it in Excel and save it as .xlsx (or .csv), then import that")
   } else {
     const reader = new ExcelJS.stream.xlsx.WorkbookReader(stream, { sharedStrings: "cache", hyperlinks: "ignore", styles: "ignore", worksheets: "emit", entries: "emit" })
+    // ⚠ exceljs 4.4 crashes ("Cannot read properties of undefined (reading 'sheets')")
+    // when a worksheet turns up in the zip before workbook.xml — it only uses the
+    // model to name the sheet, which we don't need, so give it an empty one to start.
+    ;(reader as any).model ??= { sheets: [] }
     for await (const ws of reader) {
+      sheets++; sheetStart = true
       for await (const row of ws) {
         const vals = Array.from((row.values as unknown[]) ?? [])          // 1-based, may be sparse
         await handle(vals.slice(1).map(cellText))
       }
-      break                                                              // first sheet only
     }
   }
   if (!cols) throw new Error("The file looks empty — no header row found")
-  return { headers }
+  return { headers, sheets }
 }
