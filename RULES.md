@@ -1233,3 +1233,28 @@ read with **`getFallbackModel()`** from `lib/ai-models.ts`.
 - ⚠ **With no fallback set, "trying the other model" is a lie** — the retries all land on the same
   model. The overnight runner's log says *"trying again — no fallback model set"* instead
   (`hasFallback` on `withRetry`). Keep any new retry message honest the same way.
+
+## Databases → Lot Archive (pre-BC lots, LotIDs + photos from the website)
+
+- `/databases/archive`: every lot sold before Business Central — tables `ArchiveLot` (unique on
+  `auctionId + lot`), `ArchiveImport`, `ArchiveSale`, `ArchiveJob`. Admin panels on top. NEEDS Run Migrations.
+- ⚠⚠ **The spreadsheet is STREAMED, never read whole.** The old system's export is 136 MB; SheetJS
+  reading it into memory killed the request ("Couldn't read the spreadsheet"). `readArchiveStream`
+  (lib/archive-import.ts: exceljs WorkbookReader for .xlsx, our own reader for .csv) feeds a
+  server-side loop the page polls — resumable from `offset`, `createMany skipDuplicates` is the dedupe.
+  .xls cannot be streamed: the error says save as .xlsx.
+- **Website pull (lib/archive-site.ts, job "site").** Walks vectis.co.uk's own sale ids; a sale's URL is
+  `/bidding/{AuctionID}-{slug}-{siteSaleId}` — the FIRST number is the sheet's AuctionID. Lots come from
+  the site's JSON feed (`task=commission.getLots`, auction_id = site id, per_page 500). The feed's
+  `unique_id` IS the old system's LotID and photos are filed under it
+  (`lot_images/large/{LotID}/{LotID}.webp`); the number at the end of a lot URL is the site's own row id
+  (`siteLotId`) — never confuse the two. Only FINISHED sales are written; matched rows get
+  lotId/siteLotId/sitePhoto/siteHammerPrice (the sheet's figures are KEPT, only blanks filled, one raw
+  `UPDATE … FROM unnest` per sale); lots the sheet never had are created with `source = "site"`.
+- **Photo copy (job "photos")** copies each main photo (~23 KB) into R2 `archive-photos/{lotId}.webp`;
+  a 404 nulls `sitePhoto`. The page shows our copy (signed) first, else the site's medium image.
+- Jobs survive the tab closing but NOT a redeploy — the button resumes from the cursor. 250 ms between
+  requests, honest User-Agent, 40 empty ids in a row = done. "Check for new sales" restarts from the
+  first unfinished sale.
+- Where the site's hammer differs from the sheet's, the page shows "site £N" in amber under the hammer;
+  the sheet's value stays. Oldest sale on the site is Feb 2006 — earlier rows stay text-only.

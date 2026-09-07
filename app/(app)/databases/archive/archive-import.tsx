@@ -81,7 +81,7 @@ export default function ArchiveImport() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-bold text-gray-900 dark:text-white">Import the old system's lot export</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">An .xlsx or .csv with AuctionID, AuctionDate, OnlineTitle, Lot, Description, BottomPrice, TopPrice, HammerPrice. Lots already in the archive (same AuctionID and Lot) are skipped, so it is safe to run again with a newer export. The load carries on by itself — you can leave the page.</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">An .xlsx or .csv with AuctionID, AuctionDate, OnlineTitle, Lot, Description, BottomPrice, TopPrice, HammerPrice — and LotID if the export has it (then the photos need no website pull). Lots already in the archive (same AuctionID and Lot) are skipped, so it is safe to run again with a newer export. The load carries on by itself — you can leave the page.</p>
         </div>
         <div className="flex gap-2">
           <input ref={fileRef} type="file" accept=".xlsx,.xlsm,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) run(f); e.target.value = "" }} />

@@ -16,6 +16,26 @@ const JORDAN_ONLY = new Set(["jordan_secret_menu.md"])
 
 const ENTRIES: Entry[] = [
   {
+    filename: "lot_archive.md",
+    content: `---
+name: lot-archive-databases
+description: Databases → Lot Archive — the pre-BC lot history: the old export STREAMED from R2 + a website pull that matches LotIDs and photos by AuctionID + lot number. Read before touching archive import, the site pull, or anything wanting old sold prices/photos.
+metadata: 
+  node_type: memory
+  type: reference
+  modified: 2026-09-07T12:30:00.000Z
+---
+
+📚 **Lot Archive (2026-09-07).** /databases/archive — every lot sold before Business Central, searchable (description · sale title · year · hammer range, 100 a page). Tables ArchiveLot (unique on auctionId + lot), ArchiveImport, ArchiveSale, ArchiveJob. NEEDS Run Migrations.
+
+**Two sources, one table.** (1) The old system's export (136 MB xlsx: AuctionID · AuctionDate as US " MM/DD/YYYY" · OnlineTitle · Lot "2,265" · Description · BottomPrice · TopPrice · HammerPrice). ⚠⚠ STREAMED from R2 row by row (readArchiveStream in lib/archive-import.ts) by a server-side loop the page polls — reading it whole with SheetJS killed the request. Resumable; createMany skipDuplicates is the dedupe; .xls must be saved as .xlsx. (2) The website (lib/archive-site.ts, job "site"): walks vectis.co.uk's own sale ids; a sale URL is /bidding/{AuctionID}-{slug}-{siteSaleId} — the FIRST number is the sheet's AuctionID (724 → site 683). Lots come from the site's JSON feed (task=commission.getLots): lot_number, unique_id = the OLD SYSTEM'S LotID (e.g. 764731), image = lot_images/large/{LotID}/{LotID}.webp, description, estimates, hammer, isFinished. Only finished sales are written; existing rows get lotId/siteLotId/sitePhoto/siteHammerPrice (sheet figures KEPT, blanks filled); rows the sheet lacks are created with source "site". Job "photos" copies each main photo (~23 KB) into R2 archive-photos/{lotId}.webp.
+
+**Why:** Jordan no longer has Crystal Reports and the xlsx lacks the LotID column; the site's unique_id IS that LotID and photos are keyed on it (verified on 2008, 2019 and 2023 lots). ⚠ The number at the end of a lot URL (/4656-…-751438) is the site's own row id — never treat it as the LotID.
+
+**Gotchas:** oldest sale on the site is Feb 2006 — 1999–2005 stays text-only. Site figures can differ from the sheet (Steiff 724/4656: sheet 50–60/£45, site 80–120/£100) — shown as amber "site £100" under the hammer; the sheet's value stays. Jobs survive the tab closing, not a redeploy — the button resumes from the cursor. 250 ms between requests, honest User-Agent. The feed shows hammer prices the lot pages paywall — internal use only.
+`,
+  },
+  {
     filename: "reserves.md",
     content: `---
 name: reserves-recorded-here-reminded-at-locking-check

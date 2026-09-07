@@ -12,10 +12,16 @@ import ExcelJS from "exceljs"
 // re-export with slightly different names still loads. .xlsx and .csv only — the old
 // binary .xls can't be streamed; save it as .xlsx first.
 
+// LotID is optional (the Excel export lacked it; the Crystal Reports Viewer export has
+// it). When present it is the website's unique_id and the photo is filed under it, so
+// the photo path is known at import time and the website pull is only needed for
+// lots the sheet never had.
 export type ArchiveRow = {
   auctionId: number; auctionDate: Date | null; saleTitle: string; lot: number
   description: string; estimateLow: number | null; estimateHigh: number | null; hammerPrice: number | null
+  lotId: string | null; sitePhoto: string | null
 }
+export const sitePhotoFor = (lotId: string) => `lot_images/large/${lotId}/${lotId}.webp`
 
 const num = (v: unknown): number | null => {
   if (v == null || v === "") return null
@@ -56,10 +62,11 @@ function findCol(headers: string[], ...names: string[]): number {
   return -1
 }
 
-type Cols = { cA: number; cD: number; cT: number; cL: number; cDesc: number; cLo: number; cHi: number; cH: number }
+type Cols = { cA: number; cD: number; cT: number; cL: number; cDesc: number; cLo: number; cHi: number; cH: number; cId: number }
 
 export function mapHeaders(headers: string[]): Cols {
   const cols: Cols = {
+    cId: findCol(headers, "LotID", "LotId", "UniqueID", "UniqueId", "LotUniqueId"),   // never a bare "ID" — it would match AuctionID
     cA: findCol(headers, "AuctionID", "AuctionId", "SaleId"), cD: findCol(headers, "AuctionDate", "SaleDate", "Date"),
     cT: findCol(headers, "OnlineTitle", "SaleTitle", "Title"), cL: findCol(headers, "Lot", "LotNumber", "LotNo"),
     cDesc: findCol(headers, "Description"), cLo: findCol(headers, "BottomPrice", "EstimateLow", "LowEstimate"),
@@ -74,8 +81,11 @@ export function rowFrom(r: unknown[], c: Cols): ArchiveRow | "bad" | "empty" {
   const auctionId = int(r[c.cA]), lot = int(r[c.cL])
   const description = String(r[c.cDesc] ?? "").trim()
   if (auctionId == null || lot == null || !description) return r.some(v => v !== "" && v != null) ? "bad" : "empty"
+  const idNum = c.cId >= 0 ? int(r[c.cId]) : null
+  const lotId = idNum != null && idNum > 0 ? String(idNum) : (c.cId >= 0 ? (String(r[c.cId] ?? "").trim() || null) : null)
   return {
     auctionId, lot, description,
+    lotId, sitePhoto: lotId ? sitePhotoFor(lotId) : null,
     auctionDate: c.cD >= 0 ? parseArchiveDate(r[c.cD]) : null,
     saleTitle: c.cT >= 0 ? String(r[c.cT] ?? "").trim() : "",
     estimateLow: c.cLo >= 0 ? num(r[c.cLo]) : null,
