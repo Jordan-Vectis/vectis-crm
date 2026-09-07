@@ -1827,6 +1827,41 @@ const MIGRATIONS = [
     "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ScreenCapture_pkey" PRIMARY KEY ("id")
   )`,
+
+  // Databases → Lot Archive: the pre-BC lot history from the old system's export.
+  `CREATE TABLE IF NOT EXISTS "ArchiveLot" (
+    "id"           TEXT NOT NULL,
+    "auctionId"    INTEGER NOT NULL,
+    "auctionDate"  TIMESTAMP(3),
+    "saleTitle"    TEXT NOT NULL,
+    "lot"          INTEGER NOT NULL,
+    "description"  TEXT NOT NULL,
+    "estimateLow"  DOUBLE PRECISION,
+    "estimateHigh" DOUBLE PRECISION,
+    "hammerPrice"  DOUBLE PRECISION,
+    "imageKeys"    TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    "importedAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ArchiveLot_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ArchiveLot_auctionId_lot_key" ON "ArchiveLot"("auctionId", "lot")`,
+  `CREATE INDEX IF NOT EXISTS "ArchiveLot_auctionDate_idx" ON "ArchiveLot"("auctionDate")`,
+  `CREATE INDEX IF NOT EXISTS "ArchiveLot_hammerPrice_idx" ON "ArchiveLot"("hammerPrice")`,
+  `CREATE TABLE IF NOT EXISTS "ArchiveImport" (
+    "id"        TEXT NOT NULL,
+    "key"       TEXT NOT NULL,
+    "filename"  TEXT NOT NULL,
+    "totalRows" INTEGER NOT NULL DEFAULT 0,
+    "offset"    INTEGER NOT NULL DEFAULT 0,
+    "added"     INTEGER NOT NULL DEFAULT 0,
+    "skipped"   INTEGER NOT NULL DEFAULT 0,
+    "bad"       INTEGER NOT NULL DEFAULT 0,
+    "done"      BOOLEAN NOT NULL DEFAULT false,
+    "error"     TEXT,
+    "startedBy" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ArchiveImport_pkey" PRIMARY KEY ("id")
+  )`,
 ]
 
 // Fingerprint of every statement above. Changes the moment a migration is added,

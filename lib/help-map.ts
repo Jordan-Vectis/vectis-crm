@@ -236,6 +236,13 @@ export const DESTINATIONS: Destination[] = [
     what: "A snipping tool that keeps the picture in the Hub: capture a screen, paste one in with Ctrl+V or upload it, crop it, draw arrows, boxes, numbers, ticks and text on it, then save it, copy it into an email, or download it.",
     also: ["snip", "snipping tool", "screen grab", "screenshot", "annotate", "mark up a screenshot", "draw on a screenshot", "highlight a screenshot"],
   },
+  // ── Databases ───────────────────────────────────────────────────────────────
+  {
+    ask: "Where are the old sale results?",
+    name: "Databases → Lot Archive", href: "/databases/archive",   // no app key: Databases is gated on sign-in only
+    what: "Every lot sold before Business Central — the old system\u2019s export back to 1999 — with the description, estimate and hammer price. Search by words in the description, sale, year or price.",
+    also: ["archive", "old results", "what did it sell for", "past prices", "pre-BC", "old system", "historic lots", "sold prices"],
+  },
 ]
 
 /** Every AppKey mentioned in the map really exists. Cheap guard against a typo'd key

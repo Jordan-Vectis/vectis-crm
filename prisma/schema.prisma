@@ -1382,6 +1382,50 @@ model ScreenCapture {
   createdAt   DateTime @default(now())
 }
 
+// ⚠ The pre-BC lot archive — every lot Vectis sold from 1999 until Business Central
+// took over, imported from the old system's spreadsheet export (Databases → Lot
+// Archive). Human-written descriptions with the house condition grading, estimates
+// and the hammer price. `auctionId` is the OLD system's sale number — and it is
+// also the number the website's sale URL STARTS with: /bidding/19-model-train-
+// sale-15/4001-10342 is AuctionID 19, site sale id 15, lot 4001, site lot id 10342
+// (Jordan, 2026-09-07). So photos are matched by AuctionID then lot number; the
+// site's own ids (15, 10342) are read off the sale's pages when needed.
+model ArchiveLot {
+  id           String    @id @default(cuid())
+  auctionId    Int
+  auctionDate  DateTime?
+  saleTitle    String
+  lot          Int
+  description  String    @db.Text
+  estimateLow  Float?
+  estimateHigh Float?
+  hammerPrice  Float?
+  imageKeys    String[]  @default([]) // R2 keys once the site's photos have been matched
+  importedAt   DateTime  @default(now())
+
+  @@unique([auctionId, lot])
+  @@index([auctionDate])
+  @@index([hammerPrice])
+}
+
+// One upload of the archive spreadsheet, worked through in chunks so a twenty-year
+// file can't time a request out; re-runnable — rows already present are skipped.
+model ArchiveImport {
+  id        String   @id @default(cuid())
+  key       String   // R2 key of the uploaded spreadsheet
+  filename  String
+  totalRows Int      @default(0)
+  offset    Int      @default(0)
+  added     Int      @default(0)
+  skipped   Int      @default(0)
+  bad       Int      @default(0)
+  done      Boolean  @default(false)
+  error     String?
+  startedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // Pre-typed email reply snippets staff can copy into customer responses.
 // Lives behind the IT Tools "Templates" tab.
 model EmailTemplate {

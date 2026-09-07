@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"531d593d27867e44ab3f1748c302ebbff1d152e6","author":"Jordan Orange","date":"2026-09-07T10:55:40+01:00","subject":"Screenshots: size the canvas from the picture, crop on release, undo covers crops"},
   {"sha":"1477e81361b945d6fbff2fd5908a2f9b846e0255","author":"Jordan Orange","date":"2026-09-07T10:42:44+01:00","subject":"IT Tools: Screenshots"},
   {"sha":"2df18e8928a58bbbc3a2f29545a63ea57ac00b12","author":"Jordan Orange","date":"2026-09-07T10:06:37+01:00","subject":"Screen Recorder: download a recording"},
   {"sha":"e9d545035701497cd89503a2a0e7cd3e5fc179cf","author":"Jordan Orange","date":"2026-09-05T00:57:42+01:00","subject":"IT Tools: Screen Recorder"},
