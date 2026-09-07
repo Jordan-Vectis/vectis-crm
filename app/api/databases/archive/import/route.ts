@@ -1,27 +1,60 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { getObjectBuffer } from "@/lib/r2"
-import { parseArchiveSheet, type ArchiveRow } from "@/lib/archive-import"
+import { getObjectStream } from "@/lib/r2"
+import { readArchiveStream, type ArchiveRow } from "@/lib/archive-import"
 
-export const maxDuration = 300
-
-// Databases → Lot Archive import, worked through in CHUNKS the way Data Sync is:
-//   POST { key, filename }  → parses the sheet, creates an ArchiveImport job, returns it
-//   POST { jobId }          → loads the next chunk, returns the job (client loops until done)
-//   GET  ?jobId=            → the job as it stands
+// Databases → Lot Archive import. The spreadsheet is STREAMED from R2 row by row and
+// loaded 2,000 at a time by a loop that runs on the server after the request has
+// returned — the page just polls. (Reading the whole workbook into memory is what
+// broke the first version on the real 136 MB export.)
+//   POST { key, filename }  → creates an ArchiveImport job, starts the loop, returns it
+//   POST { jobId }          → resumes a stopped job from its offset
+//   GET  ?jobId=            → the job as it stands (no jobId = the latest job)
 // Rows already present (same AuctionID + Lot) are SKIPPED, not overwritten, so a
-// re-run with a newer export only ever adds. The parsed rows are cached in memory per
-// job; if the server has restarted since, the sheet is simply read from R2 again.
+// re-run with a newer export only ever adds.
 const CHUNK = 2000
-const cache = new Map<string, ArchiveRow[]>()
+const active = new Map<string, { stop: boolean }>()
 
-async function rowsFor(job: { id: string; key: string }): Promise<ArchiveRow[]> {
-  const hit = cache.get(job.id)
-  if (hit) return hit
-  const parsed = parseArchiveSheet(await getObjectBuffer(job.key))
-  cache.set(job.id, parsed.rows)
-  return parsed.rows
+type Job = NonNullable<Awaited<ReturnType<typeof prisma.archiveImport.findUnique>>>
+const withRunning = (j: Job) => ({ ...j, running: active.has(j.id) })
+
+async function runImport(jobId: string) {
+  const ctl = { stop: false }; active.set(jobId, ctl)
+  let stream: import("node:stream").Readable | null = null
+  try {
+    const job = await prisma.archiveImport.findUniqueOrThrow({ where: { id: jobId } })
+    const ext = job.key.split(".").pop()?.toLowerCase() ?? "xlsx"
+    stream = await getObjectStream(job.key)
+    let seen = 0, bad = 0, batch: ArchiveRow[] = []
+    const flush = async () => {
+      if (!batch.length) return
+      const res = await prisma.archiveLot.createMany({ data: batch, skipDuplicates: true })
+      await prisma.archiveImport.update({
+        where: { id: jobId },
+        data: { offset: seen, totalRows: seen, added: { increment: res.count }, skipped: { increment: batch.length - res.count }, bad: { increment: bad } },
+      })
+      bad = 0; batch = []
+    }
+    await readArchiveStream(stream, ext, async r => {
+      if (ctl.stop) throw new Error("__stopped__")
+      seen++
+      if (seen <= job.offset) return                                  // already loaded on an earlier run
+      if (r === "bad") { bad++; return }
+      batch.push(r)
+      if (batch.length >= CHUNK) await flush()
+    })
+    await flush()
+    await prisma.archiveImport.update({ where: { id: jobId }, data: { done: true, offset: seen, totalRows: seen } })
+  } catch (e: any) {
+    if (e?.message !== "__stopped__") {
+      console.error("databases/archive/import loop error:", e)
+      await prisma.archiveImport.update({ where: { id: jobId }, data: { error: e?.message ?? "Import stopped with an error" } }).catch(() => {})
+    }
+  } finally {
+    try { stream?.destroy() } catch {}
+    active.delete(jobId)
+  }
 }
 
 async function requireAdmin() {
@@ -35,9 +68,11 @@ export async function GET(req: NextRequest) {
   try {
     const g = await requireAdmin(); if (g.error) return g.error
     const jobId = new URL(req.url).searchParams.get("jobId") ?? ""
-    const job = await prisma.archiveImport.findUnique({ where: { id: jobId } })
-    if (!job) return NextResponse.json({ error: "No such import" }, { status: 404 })
-    return NextResponse.json(job)
+    const job = jobId
+      ? await prisma.archiveImport.findUnique({ where: { id: jobId } })
+      : await prisma.archiveImport.findFirst({ orderBy: { createdAt: "desc" } })
+    if (!job) return NextResponse.json(null)
+    return NextResponse.json(withRunning(job))
   } catch (e: any) {
     console.error("databases/archive/import GET error:", e)
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 })
@@ -49,40 +84,30 @@ export async function POST(req: NextRequest) {
     const g = await requireAdmin(); if (g.error) return g.error
     const body = await req.json()
 
+    if (body?.action === "stop" && typeof body.jobId === "string") {
+      const c = active.get(body.jobId); if (c) c.stop = true
+      const job = await prisma.archiveImport.findUnique({ where: { id: body.jobId } })
+      return NextResponse.json(job ? { ...job, running: false } : null)
+    }
+
     // ── Start ──
     if (typeof body?.key === "string" && !body.jobId) {
       const key = body.key as string
       if (!key.startsWith("archive-imports/")) return NextResponse.json({ error: "Bad key" }, { status: 400 })
-      const parsed = parseArchiveSheet(await getObjectBuffer(key))
-      if (!parsed.rows.length) return NextResponse.json({ error: `No usable rows found. Headers were: ${parsed.headers.join(", ")}` }, { status: 400 })
       const job = await prisma.archiveImport.create({
-        data: { key, filename: String(body.filename ?? "").slice(0, 200) || "lot export", totalRows: parsed.rows.length, bad: parsed.bad, startedBy: g.session.user?.email ?? "unknown" },
+        data: { key, filename: String(body.filename ?? "").slice(0, 200) || "lot export", startedBy: g.session.user?.email ?? "unknown" },
       })
-      cache.set(job.id, parsed.rows)
-      return NextResponse.json(job)
+      void runImport(job.id)
+      return NextResponse.json({ ...job, running: true })
     }
 
-    // ── Next chunk ──
+    // ── Resume ──
     const job = await prisma.archiveImport.findUnique({ where: { id: String(body?.jobId ?? "") } })
     if (!job) return NextResponse.json({ error: "No such import" }, { status: 404 })
-    if (job.done) return NextResponse.json(job)
-
-    const rows = await rowsFor(job)
-    const slice = rows.slice(job.offset, job.offset + CHUNK)
-    if (!slice.length) {
-      cache.delete(job.id)
-      return NextResponse.json(await prisma.archiveImport.update({ where: { id: job.id }, data: { done: true } }))
-    }
-    // ON CONFLICT DO NOTHING on (auctionId, lot): the unique index is the dedupe.
-    const res = await prisma.archiveLot.createMany({ data: slice, skipDuplicates: true })
-    const offset = job.offset + slice.length
-    const done = offset >= rows.length
-    if (done) cache.delete(job.id)
-    const updated = await prisma.archiveImport.update({
-      where: { id: job.id },
-      data: { offset, added: { increment: res.count }, skipped: { increment: slice.length - res.count }, done },
-    })
-    return NextResponse.json(updated)
+    if (job.done || active.has(job.id)) return NextResponse.json(withRunning(job))
+    await prisma.archiveImport.update({ where: { id: job.id }, data: { error: null } })
+    void runImport(job.id)
+    return NextResponse.json({ ...job, error: null, running: true })
   } catch (e: any) {
     console.error("databases/archive/import POST error:", e)
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 })

@@ -1862,6 +1862,41 @@ const MIGRATIONS = [
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ArchiveImport_pkey" PRIMARY KEY ("id")
   )`,
+  // Lot Archive ← the website: LotIDs, photo paths and sales pulled from vectis.co.uk.
+  `ALTER TABLE "ArchiveLot"
+    ADD COLUMN IF NOT EXISTS "lotId" TEXT,
+    ADD COLUMN IF NOT EXISTS "siteLotId" INTEGER,
+    ADD COLUMN IF NOT EXISTS "sitePhoto" TEXT,
+    ADD COLUMN IF NOT EXISTS "photoKey" TEXT,
+    ADD COLUMN IF NOT EXISTS "siteHammerPrice" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "source" TEXT NOT NULL DEFAULT 'sheet'`,
+  `CREATE INDEX IF NOT EXISTS "ArchiveLot_lotId_idx" ON "ArchiveLot"("lotId")`,
+  `CREATE TABLE IF NOT EXISTS "ArchiveSale" (
+    "siteId"    INTEGER NOT NULL,
+    "auctionId" INTEGER,
+    "title"     TEXT NOT NULL,
+    "saleDate"  TIMESTAMP(3),
+    "lots"      INTEGER NOT NULL DEFAULT 0,
+    "finished"  BOOLEAN NOT NULL DEFAULT false,
+    "pulledAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ArchiveSale_pkey" PRIMARY KEY ("siteId")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ArchiveSale_auctionId_idx" ON "ArchiveSale"("auctionId")`,
+  `CREATE TABLE IF NOT EXISTS "ArchiveJob" (
+    "id"        TEXT NOT NULL,
+    "cursor"    INTEGER NOT NULL DEFAULT 0,
+    "total"     INTEGER NOT NULL DEFAULT 0,
+    "sales"     INTEGER NOT NULL DEFAULT 0,
+    "matched"   INTEGER NOT NULL DEFAULT 0,
+    "added"     INTEGER NOT NULL DEFAULT 0,
+    "done"      BOOLEAN NOT NULL DEFAULT false,
+    "error"     TEXT,
+    "note"      TEXT,
+    "startedBy" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ArchiveJob_pkey" PRIMARY KEY ("id")
+  )`,
 ]
 
 // Fingerprint of every statement above. Changes the moment a migration is added,

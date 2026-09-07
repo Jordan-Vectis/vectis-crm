@@ -2,8 +2,12 @@ import Link from "next/link"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import ArchiveImport from "./archive-import"
+import ArchiveSite from "./archive-site"
+import { getSignedImageUrl } from "@/lib/r2"
+import { SITE_IMAGES } from "@/lib/archive-site"
 
 // Databases → Lot Archive: the pre-BC lot history (1999 → the BC switch), searchable.
+// Photos: our R2 copy when the photo job has run, else the site's own picture.
 // Server-rendered from query params so a twenty-year table is never sent to the
 // browser — 100 rows a page. Admins get the import panel on top.
 const PAGE = 100
@@ -40,6 +44,11 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
     ])
     rows = r; total = t
     stats = { n: agg._count._all, from: agg._min.auctionDate, to: agg._max.auctionDate, hammer: agg._sum.hammerPrice ?? 0 }
+    // A picture per row: our copy (signed) first, else the site's medium-size image.
+    await Promise.all(rows.map(async row => {
+      row.photo = row.photoKey ? await getSignedImageUrl(row.photoKey, 3600).catch(() => null)
+        : row.sitePhoto ? SITE_IMAGES + String(row.sitePhoto).replace("/large/", "/medium/") : null
+    }))
   } catch (e: any) {
     tableError = /does not exist|relation/i.test(String(e?.message)) ? "The archive table isn't there yet — Run Migrations on this environment first." : (e?.message ?? "Couldn't read the archive")
   }
@@ -58,7 +67,7 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
           <div>
             <Link href="/databases" className="text-sm text-gray-500 hover:text-gray-300">← Databases</Link>
             <h1 className="text-xl font-bold mt-1">Lot Archive</h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Every lot sold before Business Central, from the old system's export — descriptions, estimates and hammer prices.</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">Every lot sold before Business Central — descriptions, estimates and hammer prices from the old system's export, with LotIDs and photos matched from the website.</p>
           </div>
           {stats && stats.n > 0 && (
             <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -68,6 +77,7 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
         </div>
 
         {isAdmin && <ArchiveImport />}
+        {isAdmin && <ArchiveSite />}
 
         <form method="get" className="grid gap-2 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]">
           <input name="q" defaultValue={q} placeholder="Search descriptions — e.g. Dinky 105, Steiff, Palitoy Leia" className={input} />
@@ -81,7 +91,7 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
         {tableError ? (
           <p className="rounded-lg border border-red-300 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-800 dark:text-red-300">⚠ {tableError}</p>
         ) : stats && stats.n === 0 ? (
-          <p className="text-sm text-gray-600 dark:text-gray-400">The archive is empty. {isAdmin ? "Import the spreadsheet above to fill it." : "An admin needs to import the spreadsheet."}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">The archive is empty. {isAdmin ? "Import the spreadsheet or pull from the website above to fill it." : "An admin needs to fill it first."}</p>
         ) : (
           <>
             <p className="text-sm text-gray-600 dark:text-gray-400">{total.toLocaleString()} {total === 1 ? "lot" : "lots"}{(q || sale || year || one(sp.min) || one(sp.max)) ? " match" : ""} · page {page} of {pages}</p>
@@ -89,19 +99,25 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
               <table className="w-full text-sm">
                 <thead className="text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#141416]">
                   <tr>
-                    <th className="px-3 py-2">Date</th><th className="px-3 py-2">Sale</th><th className="px-3 py-2 text-right">Lot</th>
+                    <th className="px-3 py-2"></th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Sale</th><th className="px-3 py-2 text-right">Lot</th>
                     <th className="px-3 py-2">Description</th><th className="px-3 py-2 text-right">Estimate</th><th className="px-3 py-2 text-right">Hammer</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={r.id} className={`border-t border-gray-100 dark:border-gray-800/70 align-top ${i % 2 ? "bg-white dark:bg-[#141416]/40" : ""}`}>
+                      <td className="px-2 py-2 w-16">
+                        {r.photo ? <a href={r.photo} target="_blank" rel="noreferrer"><img src={r.photo} alt="" loading="lazy" className="h-14 w-14 object-cover rounded-md bg-gray-100 dark:bg-gray-800" /></a> : <div className="h-14 w-14 rounded-md bg-gray-100 dark:bg-gray-800/60" />}
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{fmtDate(r.auctionDate)}</td>
-                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[220px]">{r.saleTitle || `Sale ${r.auctionId}`}</td>
-                      <td className="px-3 py-2 text-right font-mono">{r.lot}</td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[220px]">{r.saleTitle || `Sale ${r.auctionId}`}<div className="text-xs text-gray-400">sale {r.auctionId}</div></td>
+                      <td className="px-3 py-2 text-right font-mono">{r.lot}{r.lotId && <div className="text-xs text-gray-400 font-mono" title="The old system's LotID">{r.lotId}</div>}</td>
                       <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{r.description}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap text-gray-600 dark:text-gray-400">{r.estimateLow == null && r.estimateHigh == null ? "—" : `${fmtGBP(r.estimateLow)} – ${fmtGBP(r.estimateHigh)}`}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap font-semibold">{fmtGBP(r.hammerPrice)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap font-semibold">
+                        {fmtGBP(r.hammerPrice)}
+                        {r.siteHammerPrice != null && r.siteHammerPrice !== r.hammerPrice && <div className="text-xs font-normal text-amber-600 dark:text-amber-400" title="The website shows a different hammer price for this lot">site {fmtGBP(r.siteHammerPrice)}</div>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

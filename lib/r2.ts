@@ -76,6 +76,12 @@ export async function objectExistsInR2(key: string): Promise<boolean> {
   }
 }
 
+/** The object as a Node stream — for files too big to hold in memory (the archive spreadsheet). */
+export async function getObjectStream(key: string): Promise<import("node:stream").Readable> {
+  const res = await r2.send(new GetObjectCommand({ Bucket: process.env.CLOUDFLARE_R2_BUCKET!, Key: key }))
+  return res.Body as unknown as import("node:stream").Readable
+}
+
 export async function getObjectBuffer(key: string): Promise<Buffer> {
   const res = await r2.send(new GetObjectCommand({
     Bucket: process.env.CLOUDFLARE_R2_BUCKET!,

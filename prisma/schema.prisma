@@ -1400,12 +1400,55 @@ model ArchiveLot {
   estimateLow  Float?
   estimateHigh Float?
   hammerPrice  Float?
-  imageKeys    String[]  @default([]) // R2 keys once the site's photos have been matched
+  imageKeys    String[]  @default([]) // (unused — see photoKey)
+  // ── Filled by the website pull (lib/archive-site.ts) ──
+  // The old system's LotID is what the website calls a lot's unique_id, and its
+  // photos are filed under it: lot_images/large/{lotId}/{lotId}.webp. The site's
+  // own row id (the number at the end of a lot URL) is siteLotId. Rows the sheet
+  // never had are created from the site with source "site".
+  lotId           String?
+  siteLotId       Int?
+  sitePhoto       String?   // the site's main photo path
+  photoKey        String?   // our R2 copy of that photo (archive-photos/{lotId}.webp)
+  siteHammerPrice Float?    // the site's hammer, kept beside the sheet's where they differ
+  source          String    @default("sheet")
   importedAt   DateTime  @default(now())
 
   @@unique([auctionId, lot])
   @@index([auctionDate])
   @@index([hammerPrice])
+  @@index([lotId])
+}
+
+// One sale as the website lists it: its own sequential id, the AuctionID it shares
+// with the sheet, and whether it has finished (only finished sales are pulled).
+model ArchiveSale {
+  siteId    Int       @id
+  auctionId Int?
+  title     String
+  saleDate  DateTime?
+  lots      Int       @default(0)
+  finished  Boolean   @default(false)
+  pulledAt  DateTime  @default(now())
+
+  @@index([auctionId])
+}
+
+// The two long-running archive jobs ("site" = pull lots/LotIDs/photo paths from the
+// website; "photos" = copy those photos into R2), resumable from cursor.
+model ArchiveJob {
+  id        String   @id
+  cursor    Int      @default(0)
+  total     Int      @default(0)
+  sales     Int      @default(0)
+  matched   Int      @default(0)
+  added     Int      @default(0)
+  done      Boolean  @default(false)
+  error     String?
+  note      String?
+  startedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // One upload of the archive spreadsheet, worked through in chunks so a twenty-year
