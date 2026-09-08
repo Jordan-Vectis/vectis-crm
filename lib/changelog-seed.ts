@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"5ccb38483765ed46ed83411ae4cea0eb2e669e14","author":"Jordan Orange","date":"2026-09-08T12:24:57+01:00","subject":"Vendor Locations: the country lookup was looping for ever on the same forty"},
   {"sha":"80746319422494ccf1775ccd46f239ecdf954168","author":"Jordan Orange","date":"2026-09-08T11:50:51+01:00","subject":"Vendor Locations: receipts, percentages, and PDF + Excel"},
   {"sha":"3791bd82714c52ec8d8214242380b56ee016f1b0","author":"Jordan Orange","date":"2026-09-08T11:36:03+01:00","subject":"Vendor Locations: work out the last countries, and let them be put right by hand"},
   {"sha":"0e8c0e558e12413fb05842932edc10fc4368e90a","author":"Jordan Orange","date":"2026-09-08T11:28:09+01:00","subject":"Vendor Locations: a hyphen in a postcode was sending Middlesbrough abroad"},

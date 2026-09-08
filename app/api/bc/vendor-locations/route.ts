@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { COUNTRY_NAMES } from "@/lib/country-names"
 import { computeVendorLocations } from "@/lib/vendor-locations"
@@ -10,12 +10,16 @@ export const maxDuration = 60
 //
 // ⚠ The figures come from lib/vendor-locations.ts, which the PDF and the spreadsheet also use, so
 // a printed report can never disagree with the screen it was printed from.
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await auth()
     if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-    const d = await computeVendorLocations()
+    const { searchParams } = req.nextUrl
+    const d = await computeVendorLocations({
+      from: searchParams.get("from"),
+      to:   searchParams.get("to"),
+    })
 
     return NextResponse.json({
       ok: true,

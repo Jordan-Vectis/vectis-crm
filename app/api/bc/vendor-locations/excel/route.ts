@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import * as XLSX from "xlsx"
 import { computeVendorLocations } from "@/lib/vendor-locations"
@@ -13,12 +13,13 @@ export const maxDuration = 120
 //
 // ⚠ The spreadsheet carries EVERY unplaced vendor, not the 500 the screen shows, because this is
 // the copy someone works through to put them right.
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await auth()
     if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-    const d = await computeVendorLocations()
+    const { searchParams } = req.nextUrl
+    const d = await computeVendorLocations({ from: searchParams.get("from"), to: searchParams.get("to") })
     const wb = XLSX.utils.book_new()
 
     // ── Sheet 1: by country ──────────────────────────────────────────────────
@@ -65,6 +66,8 @@ export async function GET() {
 
     // ── Sheet 3: how it was decided ──────────────────────────────────────────
     const s3 = XLSX.utils.json_to_sheet([
+      { "How the country was decided": "Period", "Vendors": (d.range.from || d.range.to ? `Goods received ${d.range.from ?? "start"} to ${d.range.to ?? "today"}` : "Everything we hold") as any },
+      ...(d.undated ? [{ "How the country was decided": "Lots with no goods received date in BC (not in a dated report)", "Vendors": d.undated }] : []),
       ...d.reasons.map(r => ({ "How the country was decided": r.reason, "Vendors": r.count })),
       { "How the country was decided": "Could not be decided", "Vendors": d.totals.unknown },
     ])
@@ -72,7 +75,7 @@ export async function GET() {
     XLSX.utils.book_append_sheet(wb, s3, "How it was decided")
 
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer
-    const stamp = new Date().toISOString().slice(0, 10)
+    const stamp = d.range.from || d.range.to ? `${d.range.from ?? "start"}_to_${d.range.to ?? "today"}` : new Date().toISOString().slice(0, 10)
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {

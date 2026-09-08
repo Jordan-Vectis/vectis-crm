@@ -2220,6 +2220,8 @@ Where items are now in the warehouse — <span className="font-medium">Shipped</
 type VendorRow = { code: string; name: string; isoNumeric: string | null; vendors: number; receipts: number; lots: number; vendorPct: number; receiptPct: number; lotPct: number; worked: number; noAddress: number }
 type VendorData = {
   ok: boolean
+  range: { from: string | null; to: string | null }
+  undated: number
   rows: VendorRow[]
   totals: { vendors: number; receipts: number; lots: number; countries: number; workedOut: number; unknown: number; notInBc: number; noAddress: number; unknownWithAddress: number }
   reasons: { reason: string; count: number }[]
@@ -2238,14 +2240,24 @@ function VendorLocationsTab() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [progress, setProgress] = useState<string | null>(null)
   const [showUnknown, setShowUnknown] = useState(false)
+  // Blank = everything we hold, which is how the report behaved before the filter existed.
+  const [from, setFrom] = useState("")
+  const [to,   setTo]   = useState("")
   const cancelPull = useRef(false)
   const [resolving, setResolving] = useState(false)
   const cancelResolve = useRef(false)
 
+  const query = () => {
+    const p = new URLSearchParams()
+    if (from) p.set("from", from)
+    if (to)   p.set("to", to)
+    return p.toString() ? `?${p.toString()}` : ""
+  }
+
   async function load() {
     setLoading(true); setError(null)
     try {
-      const res = await fetch("/api/bc/vendor-locations", { cache: "no-store" })
+      const res = await fetch(`/api/bc/vendor-locations${query()}`, { cache: "no-store" })
       const d   = await res.json()
       if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
       setData(d)
@@ -2255,7 +2267,8 @@ function VendorLocationsTab() {
       setLoading(false)
     }
   }
-  useEffect(() => { void load() }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [from, to])
 
   // ⚠ The CLIENT drives the paging, one page per request, so the count on screen actually moves.
   // A single long request could only ever say "working…", which is indistinguishable from a hang —
@@ -2381,11 +2394,11 @@ function VendorLocationsTab() {
                 Stop
               </button>
             )}
-            <a href="/api/bc/vendor-locations/pdf"
+            <a href={`/api/bc/vendor-locations/pdf${query()}`}
               className="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-amber-500 hover:text-amber-400 transition-colors">
               PDF
             </a>
-            <a href="/api/bc/vendor-locations/excel"
+            <a href={`/api/bc/vendor-locations/excel${query()}`}
               className="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-emerald-500 hover:text-emerald-400 transition-colors">
               Excel
             </a>
@@ -2421,8 +2434,54 @@ function VendorLocationsTab() {
         </p>
       )}
 
+      {/* ⚠ Filters on the GOODS RECEIVED date — when the consignment came in. Not the date a row was
+          last touched by a sync, which would drop old lots into recent months. */}
+      <div className="flex flex-wrap items-end gap-3 border-y border-gray-200 dark:border-gray-800 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { label: "All time",       f: "",                to: "" },
+            { label: "This year",      f: startOfYear(),      to: today() },
+            { label: "Last 12 months", f: last12Months(),     to: today() },
+            { label: "This month",     f: startOfMonth(),     to: today() },
+            { label: "Last month",     f: lastMonthRange()[0], to: lastMonthRange()[1] },
+          ].map(p => {
+            const on = from === p.f && to === p.to
+            return (
+              <button key={p.label} onClick={() => { setFrom(p.f); setTo(p.to) }}
+                className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+                  on ? "bg-amber-600 text-white border-amber-600"
+                     : "bg-gray-100 dark:bg-[#1C1C1E] text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700 hover:border-amber-500"}`}>
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="text-xs text-gray-500">
+            <span className="block mb-1">Goods received from</span>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+              className="bg-gray-100 dark:bg-[#1C1C1E] border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300" />
+          </label>
+          <label className="text-xs text-gray-500">
+            <span className="block mb-1">to</span>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)}
+              className="bg-gray-100 dark:bg-[#1C1C1E] border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300" />
+          </label>
+          {(from || to) && (
+            <button onClick={() => { setFrom(""); setTo("") }} className="px-3 py-1.5 text-xs text-gray-500 hover:text-red-400 underline">
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
       {data && !loading && (
         <>
+          {!!data.undated && (from || to) && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {data.undated.toLocaleString()} lots have no goods received date in Business Central, so they are not in these figures.
+            </p>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
               { n: data.totals.vendors,   l: "Vendors on receipts" },

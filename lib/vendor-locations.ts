@@ -35,7 +35,13 @@ export type VendorLeftover = {
   hasAddress: boolean
 }
 
+export type VendorRange = { from?: string | null; to?: string | null }
+
 export type VendorLocations = {
+  /** The window this was worked out for. Both null means everything we hold. */
+  range:  { from: string | null; to: string | null }
+  /** Lots BC has no goods-received date for. They cannot be in a dated report — shown, not hidden. */
+  undated: number
   rows:   VendorCountryRow[]
   totals: {
     vendors: number; receipts: number; lots: number; countries: number; workedOut: number
@@ -48,15 +54,51 @@ export type VendorLocations = {
   lastSync:           string | null
 }
 
-export async function computeVendorLocations(): Promise<VendorLocations> {
+// ⚠ THE DATE IS **EVA_GoodsReceivedDate** — when the goods came in. Not bcModifiedAt, which is
+// just when the row was last touched by a sync and would drop a lot from 2019 into "last month"
+// (the recurring date-window bug this codebase has been bitten by before). Not the auction date
+// either: this report is about consignors sending things in, not about when they sold.
+//
+// Boundaries are built in UTC on purpose. A goods-received date is a DATE, stored as midnight, and
+// building the window from the server's own clock would move it by an hour under BST.
+function dayStartUtc(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number)
+  return new Date(Date.UTC(y, (m || 1) - 1, d || 1, 0, 0, 0, 0))
+}
+function dayEndUtc(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number)
+  return new Date(Date.UTC(y, (m || 1) - 1, d || 1, 23, 59, 59, 999))
+}
+
+export async function computeVendorLocations(range?: VendorRange): Promise<VendorLocations> {
+  const from = (range?.from ?? "").trim() || null
+  const to   = (range?.to   ?? "").trim() || null
+  const dated = !!(from || to)
+
+  const whereDate = dated
+    ? {
+        goodsReceivedDate: {
+          ...(from ? { gte: dayStartUtc(from) } : {}),
+          ...(to   ? { lte: dayEndUtc(to) }     : {}),
+        },
+      }
+    : {}
   // ⚠ Grouped by vendor AND receipt in one pass, so a single query gives both figures: the lots
   // are the summed counts, and the receipts are the number of rows. Counting them separately would
   // be two scans of a 220,000-row table for the same answer.
   const perVendorReceipt = await prisma.warehouseItem.groupBy({
     by:     ["vendorNo", "receiptNo"],
-    where:  { vendorNo: { not: null }, receiptNo: { not: null } },
+    where:  { vendorNo: { not: null }, receiptNo: { not: null }, ...whereDate },
     _count: { _all: true },
   })
+
+  // How many lots BC has no goods-received date for. A dated report cannot include them, and
+  // saying so is the difference between a filtered report and a wrong one.
+  const undated = dated
+    ? await prisma.warehouseItem.count({
+        where: { vendorNo: { not: null }, receiptNo: { not: null }, goodsReceivedDate: null },
+      })
+    : 0
 
   const lotsByVendor     = new Map<string, number>()
   const receiptsByVendor = new Map<string, number>()
@@ -168,6 +210,8 @@ export async function computeVendorLocations(): Promise<VendorLocations> {
   })
 
   return {
+    range: { from, to },
+    undated,
     rows,
     totals: {
       vendors:   totalVendors,
