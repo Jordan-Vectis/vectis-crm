@@ -26,6 +26,20 @@ export type VendorCountryRow = {
   noAddress:  number
 }
 
+/** One line per vendor, for the "check the numbers yourself" sheet in the export. */
+export type VendorDetail = {
+  vendorNo: string
+  name:     string | null
+  city:     string | null
+  county:   string | null
+  postCode: string | null
+  country:  string
+  code:     string
+  reason:   string
+  receipts: number
+  lots:     number
+}
+
 export type VendorLeftover = {
   vendorNo:   string
   name:       string | null
@@ -54,6 +68,9 @@ export type VendorLocations = {
   }
   reasons:            { reason: string; count: number }[]
   unknownSample:      VendorLeftover[]
+  /** Every vendor with the country it was given and why. Only built when asked for — it is 6,000
+   *  rows and the screen does not need it. The spreadsheet does, so the figures can be checked. */
+  detail?:            VendorDetail[]
   vendorTableMissing: boolean
   vendorsKnown:       number
   lastSync:           string | null
@@ -82,7 +99,7 @@ function dayEndUtc(ymd: string): Date {
   return new Date(Date.UTC(y, (m || 1) - 1, d || 1, 23, 59, 59, 999))
 }
 
-export async function computeVendorLocations(range?: VendorRange): Promise<VendorLocations> {
+export async function computeVendorLocations(range?: VendorRange, opts?: { detail?: boolean }): Promise<VendorLocations> {
   const from  = (range?.from ?? "").trim() || null
   const to    = (range?.to   ?? "").trim() || null
   const basis: DateBasis = range?.basis ?? "auction"
@@ -181,6 +198,7 @@ export async function computeVendorLocations(range?: VendorRange): Promise<Vendo
   let totalVendors = 0, totalLots = 0, totalReceipts = 0, workedOut = 0, unknown = 0, notInBc = 0, noAddress = 0
   const reasons = new Map<string, number>()
   const unknownRows: VendorLeftover[] = []
+  const detail: VendorDetail[] = []
 
   for (const [vendorNo, lots] of lotsByVendor) {
     const receipts = receiptsByVendor.get(vendorNo) ?? 0
@@ -219,6 +237,12 @@ export async function computeVendorLocations(range?: VendorRange): Promise<Vendo
         postCode: v?.postCode ?? null,
         hasAddress: hasAnyAddress,
       })
+      if (opts?.detail) detail.push({
+        vendorNo, name: v?.name ?? null, city: v?.city ?? null, county: v?.county ?? null,
+        postCode: v?.postCode ?? null, country: "Not known", code: "",
+        reason: hasAnyAddress ? "Address could not be matched" : "No address in Business Central",
+        receipts, lots,
+      })
       continue
     }
 
@@ -228,6 +252,12 @@ export async function computeVendorLocations(range?: VendorRange): Promise<Vendo
     b.lots += lots
     b.receipts += receipts
     if (guess.reason !== "Country held in Business Central") { b.worked++; workedOut++ }
+    if (opts?.detail) detail.push({
+      vendorNo, name: v?.name ?? null, city: v?.city ?? null, county: v?.county ?? null,
+      postCode: v?.postCode ?? null,
+      country: COUNTRY_NAMES[guess.code] ?? guess.code, code: guess.code,
+      reason: guess.reason, receipts, lots,
+    })
   }
 
   // Percentages of the whole, to one decimal. Worked out once here so the screen, the PDF and the
@@ -268,6 +298,9 @@ export async function computeVendorLocations(range?: VendorRange): Promise<Vendo
     // Ones you could actually act on first, then the ones with no address at all.
     unknownSample: unknownRows.sort((a, b) =>
       Number(b.hasAddress) - Number(a.hasAddress) || a.vendorNo.localeCompare(b.vendorNo)),
+    ...(opts?.detail
+      ? { detail: detail.sort((a, b) => a.country.localeCompare(b.country) || b.lots - a.lots) }
+      : {}),
     vendorTableMissing,
     vendorsKnown: vendors.length,
     lastSync: lastSync?.completedAt?.toISOString() ?? null,

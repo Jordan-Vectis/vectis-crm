@@ -19,6 +19,8 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"5e6ded85e311c829c683083c9d0c221c4a2b64f6","author":"Jordan Orange","date":"2026-09-08T16:55:51+01:00","subject":"Merge staging into main: vendor fixes, Vendor Locations report, nightly full sync"},
+  {"sha":"2838266e38170dc86c949542603d90a65e30eed2","author":"Jordan Orange","date":"2026-09-08T14:45:35+01:00","subject":"Full warehouse re-sync every morning at 5am, an hour after the macro"},
   {"sha":"0d2e4612bbd153758f6e7f50be109314f77ebb2a","author":"Jordan Orange","date":"2026-09-08T12:41:36+01:00","subject":"Vendor Locations: the goods received date is empty, so pick which date to use"},
   {"sha":"a6d65a1b503f00bf54d3c61069b34923e371a29d","author":"Jordan Orange","date":"2026-09-08T12:29:23+01:00","subject":"Vendor Locations: filter by when the goods came in"},
   {"sha":"5ccb38483765ed46ed83411ae4cea0eb2e669e14","author":"Jordan Orange","date":"2026-09-08T12:24:57+01:00","subject":"Vendor Locations: the country lookup was looping for ever on the same forty"},
@@ -30,6 +32,7 @@ export const CHANGELOG_SEED: SeedCommit[] = [
   {"sha":"08ecc80779f8de71435fc3c38d279b9b94ed8f2b","author":"Jordan Orange","date":"2026-09-08T10:40:22+01:00","subject":"Remember the tote per sale, and say when an update has broken the page"},
   {"sha":"e175b8824d033096068cf743bd5ec9fad2c86fa7","author":"Jordan Orange","date":"2026-09-08T10:13:39+01:00","subject":"Keep every receipt a tote is on, and let the wizard show the choice"},
   {"sha":"a7d447b70ee64cd85f5ac74831de376a0c507dce","author":"Jordan Orange","date":"2026-09-08T09:56:35+01:00","subject":"Wrong vendors: confirm the customer, and stop corrections being undone"},
+  {"sha":"991c7af7314fff00157ba8c7f450778f6a1680c9","author":"Jordan Orange","date":"2026-09-07T16:59:01+01:00","subject":"Merge staging into main: ABC + BC databases (Lot Archive), full-size photo backups, exports"},
   {"sha":"0cf4f6725d8b72d32ab99aa677e2f12aa34789c1","author":"Jordan Orange","date":"2026-09-07T16:58:53+01:00","subject":"Memory: opening message covers the ABC and BC databases"},
   {"sha":"b13b7b0ab61bdf448916ae3a1058308fd9c049f0","author":"Jordan Orange","date":"2026-09-07T16:52:59+01:00","subject":"Databases: BC Database — Business Central lots, built like the ABC one"},
   {"sha":"1e99988fa04b77059c052689c1822fb34d479c2c","author":"Jordan Orange","date":"2026-09-07T16:41:28+01:00","subject":"Databases: the Lot Archive is the ABC Database (the system the lots came from)"},
