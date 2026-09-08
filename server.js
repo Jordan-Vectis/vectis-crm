@@ -128,6 +128,49 @@ app.prepare().then(async () => {
       setInterval(runWarehouseSync, SYNC_INTERVAL_MS)
     }, SYNC_INITIAL_DELAY_MS)
 
+    // Full warehouse re-sync — 05:00 UK, an hour after the overnight BC macro finishes.
+    //
+    // ⚠⚠ WHY THIS EXISTS SEPARATELY FROM THE 12-HOURLY RUN. That one is INCREMENTAL: it only asks
+    // Business Central for rows BC says have changed, and BC does not always say. A lot given its
+    // number in BC does not get its SystemModifiedAt bumped, which is how 94 lots sat with no lot
+    // number until a top-up was bolted on. Only a full walk closes that class of gap.
+    //
+    // ⚠ Scheduled in EUROPE/LONDON and re-armed after every run, not on a fixed 24-hour interval.
+    // A fixed interval drifts an hour each way at the clock changes, and the 12-hourly job's
+    // "every N ms from boot" means its timing follows whenever Railway last deployed.
+    function msUntilLondonHour(hour) {
+      const now = new Date()
+      // What time is it in London right now, as plain numbers.
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London', hour12: false,
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      }).formatToParts(now).reduce((a, p) => (a[p.type] = p.value, a), {})
+      const h = Number(parts.hour) % 24, m = Number(parts.minute), sec = Number(parts.second)
+      const secsNow    = h * 3600 + m * 60 + sec
+      const secsTarget = hour * 3600
+      const delta = secsTarget - secsNow
+      return (delta > 0 ? delta : delta + 24 * 3600) * 1000
+    }
+    function runFullWarehouseSync() {
+      const secret = process.env.CRON_SECRET
+      if (!secret) { console.warn('[cron] CRON_SECRET not set — skipping full warehouse sync') ; return }
+      console.log('[cron/bc-warehouse] starting FULL sync')
+      fetch(`http://localhost:${port}/api/cron/bc-warehouse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+        body: JSON.stringify({ full: true }),
+      })
+        .then(r => r.json())
+        .then(d => console.log('[cron/bc-warehouse] FULL complete', JSON.stringify(d.results ?? d)))
+        .catch(e => console.warn('[cron/bc-warehouse] FULL error:', e.message))
+        .finally(() => setTimeout(runFullWarehouseSync, msUntilLondonHour(5)))
+    }
+    {
+      const wait = msUntilLondonHour(5)
+      console.log(`[cron/bc-warehouse] next FULL sync in ${Math.round(wait / 1000 / 60)} minutes`)
+      setTimeout(runFullWarehouseSync, wait)
+    }
+
     // Daily database backup — runs once at midnight UTC, then every 24 hours.
     function runDbBackup() {
       const secret = process.env.CRON_SECRET
