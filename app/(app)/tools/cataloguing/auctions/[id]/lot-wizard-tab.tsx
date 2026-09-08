@@ -11,6 +11,7 @@ import { DEFAULT_CATEGORY_MAP } from "@/lib/lot-categories"
 import { useCategoryMap } from "@/lib/use-category-map"
 import { buildCondition as buildConditionStr, type BoxPrefixMode } from "@/lib/condition"
 import { useConditionWordings } from "@/lib/use-condition-wordings"
+import { identityWarning, checkIdentityTrio } from "@/lib/lot-identity"
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -904,12 +905,25 @@ export default function LotWizardTab({
   // On first open, pre-fill Tote / Vendor / Receipt from the user's account so they survive
   // closing the app and follow the user across devices. Only fills blank fields, so it never
   // clobbers a pinned value or something the user has already started typing.
+  // True while the trio on screen is the one carried over from last time rather than one chosen
+  // for this batch. Cleared as soon as the tote is touched or the fields are cleared.
+  const [restoredFromLast, setRestoredFromLast] = useState(false)
+
+  // ⚠ These are remembered on the USER, not the sale, so they follow the person to a different
+  // sale and a different iPad. Restoring them silently is how a batch gets catalogued under
+  // yesterday's customer, so the banner says plainly that they were carried over until a tote is
+  // actually chosen. The hintOnly lookup still labels them, and the warnings under Vendor/Receipt
+  // compare the restored values against what BC says for that tote NOW.
   useEffect(() => {
     getLastLotFields().then(f => {
-      setVendor(v => v || f.vendor)
+      let filled = false
+      setVendor(v => { if (!v && f.vendor) filled = true; return v || f.vendor })
       setTote(t => t || f.tote)
       setReceipt(r => r || f.receipt)
-      if (f.tote) lookupVendorFromBC({ tote: f.tote, hintOnly: true })   // name label only — values already correct
+      if (f.tote) {
+        setRestoredFromLast(filled || !!f.tote)
+        lookupVendorFromBC({ tote: f.tote, hintOnly: true })   // labels + freshness only; never writes over the boxes
+      }
     }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -972,33 +986,65 @@ export default function LotWizardTab({
   const [toteIgnored,   setToteIgnored]   = useState(false)
   const [vendorHint,    setVendorHint]    = useState<string | null>(null)   // name hint from BC lookup
 
+  // ── Which tote does `toteInfo` actually describe? ────────────────────────────
+  // ⚠⚠ This exists to stop a hand correction being silently undone. `searchTotes` used to begin
+  // `setToteInfo(null)`, and it runs on FOCUS as well as on change — so a bare tap into the tote
+  // box and back out again (zero keystrokes) satisfied the old `!toteInfo` blur guard and re-ran
+  // the BC lookup, overwriting whatever the cataloguer had just typed into Vendor/Receipt with the
+  // cached values they were deliberately correcting. toteInfo is now cleared only where the tote
+  // TEXT actually changes, and the blur only looks the tote up when it describes a different one.
+  const [toteInfoFor,   setToteInfoFor]   = useState("")
+  // Freshness / provenance of the BC answer, so a stale or already-catalogued row can be shown as
+  // amber rather than painted in the same confident teal as a fresh one. All of it comes from
+  // columns that were always in WarehouseTote and simply were not being returned.
+  const [toteMeta,      setToteMeta]      = useState<{ catalogued: boolean | null; syncedAt: string | null; source: string | null; knownTote?: boolean } | null>(null)
+  // ⚠ Did a PERSON type this value, or did BC fill it in? Without this the app cannot tell a
+  // cached guess from someone reading the paper docket, and every automatic refill silently wins.
+  // Reset to false whenever the tote changes (which clears both fields anyway).
+  const [vendorTyped,   setVendorTyped]   = useState(false)
+  const [receiptTyped,  setReceiptTyped]  = useState(false)
+  // Only the newest lookup may write. Cheap guard against a slow reply landing on a tote that has
+  // since been changed.
+  const lookupSeq = useRef(0)
+
   // (The "Resume an unfinished lot" draft feature — CatalogueLotDraft autosave
   // + banner, built 2026-07-31 — was REMOVED on Jordan's instruction 2026-08-07
   // ("it seems very buggy"). The table remains in the DB, inert. Don't rebuild
   // without discussing it.)
 
+  // ⚠ No longer clears toteInfo. This runs on FOCUS too, and clearing the BC match just because
+  // somebody tapped the box is what armed the blur lookup to undo their correction. The tote's
+  // onChange clears it, which is the only place the tote can actually become a different tote.
   async function searchTotes(q: string) {
-    setToteInfo(null)
-    setToteIgnored(false)
+    const seq = ++lookupSeq.current
     if (!q.trim()) { setToteResults([]); setToteOpen(false); return }
     const res = await fetch(`/api/warehouse/tote-search?q=${encodeURIComponent(q)}`)
     if (!res.ok) return
     const data = await res.json()
+    if (seq !== lookupSeq.current) return   // a newer keystroke has already answered
     setToteResults(data)
     setToteOpen(data.length > 0)
   }
 
   function selectTote(item: any) {
+    lookupSeq.current++          // any in-flight lookup is now stale
     setTote(item.toteNo)
     setToteInfo(item)
+    setToteInfoFor(item.toteNo)
+    setToteMeta({ catalogued: item.catalogued ?? null, syncedAt: item.syncedAt ?? null, source: "tote" })
     setToteResults([])
     setToteOpen(false)
+    setToteIgnored(false)
     // Always overwrite vendor + receipt from the selected tote (the old "only if
     // blank" guard meant changing the tote kept the PREVIOUS vendor/receipt — the
-    // mismatch bug this rework fixes).
+    // mismatch bug this rework fixes). Picking a tote is a deliberate act, so it
+    // outranks anything previously typed and resets the typed flags with it.
     setVendor(item.vendorNo ?? "")
     setVendorHint(item.vendorName ?? null)
     setReceipt(item.receiptNo ?? "")
+    setVendorTyped(false)
+    setReceiptTyped(false)
+    setRestoredFromLast(false)
   }
 
   // Look up vendor/receipt for a tote (or vendor for a receipt) from the BC-synced
@@ -1009,17 +1055,35 @@ export default function LotWizardTab({
     const q = params.receipt
       ? `receipt=${encodeURIComponent(params.receipt)}`
       : `tote=${encodeURIComponent(params.tote ?? "")}`
+    const seq = ++lookupSeq.current
     try {
       const res  = await fetch(`/api/warehouse/vendor-lookup?${q}`)
       const data = await res.json()
+      // The tote may have been retyped while this was in flight — writing now would put one
+      // tote's customer against another tote's number.
+      if (seq !== lookupSeq.current) return
+      // A tote BC knows about but has not put on a receipt yet (a Totes_Excel shell). Record it
+      // so the screen can say exactly that, instead of the old empty " ()" label with the
+      // "not found" warning suppressed — which told the cataloguer nothing at all.
+      if (params.tote && data.source === "tote-shell") {
+        setToteMeta({ catalogued: null, syncedAt: null, source: "tote-shell", knownTote: true })
+        setToteInfoFor(params.tote)
+        return
+      }
       if (data.vendorNo) {
         setVendorHint(data.vendorName ?? null)
         // A tote that resolves in BC is "found" — record it so the false
         // "Tote not found in BC warehouse" warning doesn't show (incl. on prefill).
-        if (params.tote) setToteInfo({ vendorNo: data.vendorNo, vendorName: data.vendorName ?? "", receiptNo: data.receiptNo ?? "", location: "" })
+        if (params.tote) {
+          setToteInfo({ vendorNo: data.vendorNo, vendorName: data.vendorName ?? "", receiptNo: data.receiptNo ?? "", location: data.location ?? "" })
+          setToteInfoFor(params.tote)
+        }
+        setToteMeta({ catalogued: data.catalogued ?? null, syncedAt: data.syncedAt ?? null, source: data.source ?? null })
         if (!params.hintOnly) {
-          setVendor(data.vendorNo)
-          if (data.receiptNo) setReceipt(data.receiptNo)
+          // ⚠ Never overwrite a value a PERSON typed. They are usually reading the paper docket,
+          // and the cached row they are correcting is exactly what would be written back here.
+          if (!vendorTyped) setVendor(data.vendorNo)
+          if (data.receiptNo && !receiptTyped) setReceipt(data.receiptNo)
         }
       }
     } catch { /* silent — lookup is best-effort */ }
@@ -1074,8 +1138,10 @@ export default function LotWizardTab({
     const err = validateStep(1)
     if (err) { setValidErr(err); return }
     setValidErr("")
-    const short = tote.trim().length !== 7 || vendor.trim().length !== 7 || receipt.trim().length !== 7
-    if (short) { setStep1LengthWarning(true); return }   // its "Continue anyway" resumes via afterStartChecks
+    // Length AND shape. All three are always 7 characters in a fixed form, so a wrong leading
+    // letter is as certainly an error as a short entry — and it is the one that catches a receipt
+    // number typed into the Vendor box, which passed every gate before.
+    if (checkIdentityTrio({ tote, vendor, receipt }).length > 0) { setStep1LengthWarning(true); return }   // its "Continue anyway" resumes via afterStartChecks
     afterStartChecks()
   }
   // Empty the tote/vendor/receipt trio and everything derived from them (the BC
@@ -1086,8 +1152,11 @@ export default function LotWizardTab({
   // `locked` is deliberately NOT cleared: switching batch must still go through
   // the confirmation, which needs to show what you're moving away from.
   function clearVendorFields() {
+    lookupSeq.current++
     setTote(""); setVendor(""); setReceipt("")
     setToteInfo(null); setToteResults([]); setToteOpen(false); setToteIgnored(false); setVendorHint(null)
+    setToteInfoFor(""); setToteMeta(null); setVendorTyped(false); setReceiptTyped(false)
+    setRestoredFromLast(false)
     setStep1LengthWarning(false); setValidErr("")
   }
 
@@ -1109,10 +1178,7 @@ export default function LotWizardTab({
     setValidErr("")
     // Warn if Tote/Vendor/Receipt aren't exactly 7 characters
     if (step === 1) {
-      const shortTote    = tote.trim().length !== 7
-      const shortVendor  = vendor.trim().length !== 7
-      const shortReceipt = receipt.trim().length !== 7
-      if (shortTote || shortVendor || shortReceipt) {
+      if (checkIdentityTrio({ tote, vendor, receipt }).length > 0) {
         setStep1LengthWarning(true)
         return
       }
@@ -1331,6 +1397,18 @@ export default function LotWizardTab({
       setStep(2)
       onCreated()
     })
+  }
+
+  // How old our copy of BC's tote data is. The tote sync runs at boot and every 12 hours, so a
+  // tote booked in this morning is invisible until the next run — the cataloguer needs to know
+  // whether the customer name they are being shown could possibly be current.
+  function fmtSyncAge(iso: string) {
+    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+    if (!isFinite(mins) || mins < 0) return "just now"
+    if (mins < 60) return `pulled ${mins} min ago`
+    const h = Math.round(mins / 60)
+    if (h < 48) return `pulled ${h} hour${h === 1 ? "" : "s"} ago`
+    return `pulled ${Math.round(h / 24)} days ago`
   }
 
   // Whole minutes, ROUNDED UP — the popup deliberately shows no seconds
@@ -1631,6 +1709,47 @@ export default function LotWizardTab({
         </div>
       </div>
 
+      {/* ── Who this batch belongs to — visible on EVERY step ────────────────────
+          It used to appear only on step 2, as 11px grey text, so from the key points onwards
+          nothing on screen said whose lot was being catalogued. A batch started against the wrong
+          customer was then never seen again until Tote Check — which cannot see it either, because
+          the lot agrees with the tote it was filled from. The customer NAME leads: it is the only
+          part a person can check against the paperwork in their hand. */}
+      {step > 1 && (vendor || tote || receipt) && (() => {
+        const overridden = (vendorTyped && !!toteInfo?.vendorNo && vendor.trim().toUpperCase() !== toteInfo.vendorNo.toUpperCase())
+          || (receiptTyped && !!toteInfo?.receiptNo && receipt.trim().toUpperCase() !== toteInfo.receiptNo.toUpperCase())
+        const flagged = overridden || restoredFromLast || !!toteMeta?.catalogued || toteMeta?.source === "item" || toteIgnored
+        return (
+          <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 rounded-xl border px-4 ${tablet ? "py-3" : "py-2.5"} ${
+            flagged ? "border-amber-500/60 bg-amber-500/10" : "border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-[#2C2C2E]"}`}>
+            <div className="min-w-0">
+              <p className={`font-bold leading-tight ${tablet ? "text-lg" : "text-base"} ${flagged ? "text-amber-700 dark:text-amber-300" : "text-gray-900 dark:text-white"}`}>
+                {vendorHint || toteInfo?.vendorName || "No customer name"}
+              </p>
+              <p className={`font-mono text-gray-600 dark:text-gray-400 mt-0.5 ${tablet ? "text-sm" : "text-xs"}`}>
+                {vendor || "no vendor"} · {tote || "no tote"} · {receipt || "no receipt"}
+              </p>
+              {overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">Typed by hand, not taken from BC.</p>}
+              {toteMeta?.catalogued && !overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">BC has this tote ticked catalogued.</p>}
+              {toteIgnored && !overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">This tote is not in our copy of BC.</p>}
+              {restoredFromLast && !overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">Carried over from your last batch — check it is still the tote in front of you.</p>}
+            </div>
+            {/* Was a text-xs chip. This is the only clean way to start a different tote, and the
+                wrong door (← Back, which leaves the whole trio in place) was far easier to hit. */}
+            <button type="button" onClick={changeVendor}
+              style={{
+                touchAction: tablet ? "manipulation" : undefined,
+                minHeight:   tablet ? 44 : undefined,
+                color:       CAT_ACCENT,
+                border:      `1px solid ${CAT_ACCENT}66`,
+              }}
+              className={`ml-auto flex-shrink-0 font-semibold rounded-lg transition-colors hover:bg-[#2AB4A6]/10 ${tablet ? "px-5 py-3 text-base" : "px-3.5 py-2 text-sm"}`}>
+              Different tote
+            </button>
+          </div>
+        )
+      })()}
+
       {/* Step indicator */}
       <div className="flex mb-5 border-b border-gray-200 dark:border-gray-800">
         {STEP_LABELS.map((label, i) => (
@@ -1714,80 +1833,189 @@ export default function LotWizardTab({
                       // so a not-in-BC tote can't keep the previous batch's vendor/receipt (mismatch).
                       // selectTote / a successful blur lookup re-populate them for a real BC tote.
                       setTote(e.target.value); setVendor(""); setReceipt(""); setVendorHint(null)
+                      setToteInfo(null); setToteInfoFor(""); setToteMeta(null); setToteIgnored(false)
+                      setVendorTyped(false); setReceiptTyped(false); setRestoredFromLast(false)
                       searchTotes(e.target.value); setStep1LengthWarning(false)
                     }}
-                    onFocus={e => { if (e.target.value) searchTotes(e.target.value) }}
+                    // ⚠ select() matters because the box is ALWAYS full: a tote is always exactly
+                    // 7 characters and maxLength is 7 (deliberately). Without this, tapping in and
+                    // typing is silently refused by the browser — no character appears, no onChange
+                    // fires — and the box reads as broken.
+                    onFocus={e => { e.target.select(); if (e.target.value) searchTotes(e.target.value) }}
                     onBlur={e => {
                       setTimeout(() => setToteOpen(false), 150)
-                      if (e.target.value.trim() && !toteInfo) lookupVendorFromBC({ tote: e.target.value.trim() })
+                      const v = e.target.value.trim()
+                      // Look up only when this is a DIFFERENT tote from the one already described.
+                      if (v && v.toUpperCase() !== toteInfoFor.toUpperCase()) lookupVendorFromBC({ tote: v })
                     }}
                     className={`flex-1 ${inpFocus}`}
-                    placeholder="Search BC tote ID…"
+                    placeholder="Type the BC tote number…"
                     autoComplete="off"
+                    autoCapitalize="characters"
                     autoFocus
                     maxLength={7}
                   />
-                  {tote && <button type="button" onClick={() => { setTote(""); setToteInfo(null); setToteResults([]); setToteOpen(false); setToteIgnored(false); setVendorHint(null); setVendor(""); setReceipt("") }} className="px-3 py-2 bg-gray-100 dark:bg-[#2C2C2E] border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400" title="Clear tote, vendor and receipt">✕</button>}
+                  {/* ⚠ Calls the shared clearVendorFields() — this used to be a third hand-written
+                      copy of the same reset, which is exactly the drift that helper's own comment
+                      warns about, and it missed the new provenance/freshness state. */}
+                  {tote && <button type="button" onClick={clearVendorFields} className={`bg-gray-100 dark:bg-[#2C2C2E] border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-500 rounded hover:border-red-500 hover:text-red-400 ${tablet ? "px-4 py-3 text-sm min-w-[44px]" : "px-3 py-2 text-xs"}`} title="Clear tote, vendor and receipt">✕</button>}
                 </div>
                 {toteOpen && toteResults.length > 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-white dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-700 rounded shadow-xl max-h-52 overflow-y-auto">
+                    {/* ⚠ These rows list the typed tote's NEIGHBOURS (P005021, P005022, P005023…),
+                        which belong to different consignments, so the row has to carry enough to
+                        tell them apart — the receipt was already being fetched and simply never
+                        shown. Touch target raised to ~44px on the tablets (house rule). */}
                     {toteResults.map((item: any) => (
                       <button key={item.toteNo} type="button" onMouseDown={() => selectTote(item)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2E] transition-colors border-b border-gray-200 dark:border-gray-800 last:border-0">
-                        <span className="font-mono text-sm text-[#2AB4A6]">{item.toteNo}</span>
-                        {item.vendorName && <span className="text-gray-600 dark:text-gray-400 text-xs ml-2">· {item.vendorName}</span>}
-                        {item.location   && <span className="text-gray-600 dark:text-gray-500 text-xs ml-2">· {item.location}</span>}
+                        className={`w-full text-left hover:bg-gray-100 dark:hover:bg-[#2C2C2E] transition-colors border-b border-gray-200 dark:border-gray-800 last:border-0 ${tablet ? "px-4 py-3" : "px-3 py-2.5"}`}
+                        style={{ minHeight: tablet ? 48 : 40, touchAction: tablet ? "manipulation" : undefined }}>
+                        <span className={`font-mono text-[#2AB4A6] ${tablet ? "text-base" : "text-sm"}`}>{item.toteNo}</span>
+                        {item.receiptNo && <span className={`font-mono text-gray-700 dark:text-gray-300 ml-2 ${tablet ? "text-sm" : "text-xs"}`}>{item.receiptNo}</span>}
+                        {item.catalogued && <span className="text-amber-600 dark:text-amber-400 text-xs ml-2">· already catalogued</span>}
+                        <span className="block text-gray-600 dark:text-gray-400 text-xs mt-0.5">
+                          {item.vendorName || (item.vendorNo ? item.vendorNo : "No customer on this tote in BC")}
+                          {item.location && <span className="text-gray-500"> · {item.location}</span>}
+                        </span>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-              {toteInfo && (
-                <p className="text-xs text-[#2AB4A6] mt-1">
-                  {toteInfo.vendorName} <span className="text-gray-600 dark:text-gray-500">({toteInfo.vendorNo})</span>
-                  {toteInfo.receiptNo && <> · {toteInfo.receiptNo}</>}
+              {/* Live format warning — fires as they type, names THIS field, and says the rule is
+                  always, not "normally". Tote/vendor/receipt are always 7 characters in a fixed
+                  shape, so a wrong leading letter (a receipt typed into the vendor box) is a fact
+                  we can point out immediately rather than at the end. */}
+              {identityWarning("tote", tote) && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠ {identityWarning("tote", tote)}</p>
+              )}
+
+              {/* ⚠⚠ THE CUSTOMER NAME IS THE ONLY THING A PERSON CAN CHECK against the paperwork in
+                  their hand, so it is the biggest thing here — it used to be 11px grey-teal text.
+                  A mistyped but VALID tote number (P005023 for P005022) resolves perfectly and
+                  fills in a different consignment's customer; nothing else on this screen can
+                  catch that. */}
+              {toteInfo && toteInfo.vendorNo && (() => {
+                const stale = toteMeta?.syncedAt ? (Date.now() - new Date(toteMeta.syncedAt).getTime()) > 6 * 60 * 60 * 1000 : false
+                const flagged = !!toteMeta?.catalogued || stale || toteMeta?.source === "item"
+                return (
+                  <div className={`mt-2 rounded-lg border px-3 py-2.5 ${flagged
+                    ? "border-amber-500/60 bg-amber-500/10"
+                    : "border-[#2AB4A6]/50 bg-[#2AB4A6]/10"}`}>
+                    <p className={`font-semibold leading-tight ${tablet ? "text-lg" : "text-base"} ${flagged ? "text-amber-700 dark:text-amber-300" : "text-[#178F84] dark:text-[#2AB4A6]"}`}>
+                      {toteInfo.vendorName || "No customer name in BC"}
+                    </p>
+                    <p className={`font-mono text-gray-700 dark:text-gray-300 mt-0.5 ${tablet ? "text-sm" : "text-xs"}`}>
+                      {toteInfo.vendorNo}{toteInfo.receiptNo ? ` · ${toteInfo.receiptNo}` : ""}
+                    </p>
+                    {toteMeta?.catalogued && (
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mt-1.5">
+                        ⚠ BC has already ticked this tote catalogued. If it has been emptied and re-used, this is the
+                        previous customer — check the receipt on the paperwork.
+                      </p>
+                    )}
+                    {toteMeta?.source === "item" && (
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mt-1.5">
+                        ⚠ BC has no receipt for this tote. This customer comes from an older item that was in it, so it
+                        may not be who it belongs to now.
+                      </p>
+                    )}
+                    <p className="text-[11px] text-gray-600 dark:text-gray-500 mt-1.5">
+                      From our copy of BC{toteMeta?.syncedAt ? `, ${fmtSyncAge(toteMeta.syncedAt)}` : ""}
+                      {stale ? " · a tote booked in since then will still show its previous customer" : ""}
+                    </p>
+                  </div>
+                )
+              })()}
+
+              {/* The tote IS in BC but has no receipt or customer on it yet. This used to render as
+                  an empty "  ()" label with the not-found warning suppressed, which said nothing. */}
+              {toteMeta?.source === "tote-shell" && (!toteInfo || !toteInfo.vendorNo) && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                  ⚠ BC knows this tote but has not put it on a receipt yet, so there is no customer to fill in.
+                  Type the vendor and receipt from the paperwork.
                 </p>
               )}
-              {tote && !toteInfo && !toteIgnored && toteResults.length === 0 && (
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-xs text-yellow-400">Tote not found in BC warehouse</p>
-                  <button type="button" onClick={() => setToteIgnored(true)} className="text-xs text-gray-600 dark:text-gray-400 underline hover:text-white">Use anyway</button>
+
+              {tote && !toteInfo && !toteMeta && !toteIgnored && toteResults.length === 0 && (
+                <div className={`flex flex-wrap items-center gap-3 mt-2 rounded-lg border border-amber-500/60 bg-amber-500/10 ${tablet ? "px-4 py-3" : "px-3 py-2"}`}>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">This tote is not in our copy of BC. Check the number.</p>
+                  <button type="button" onClick={() => setToteIgnored(true)}
+                    style={{ touchAction: tablet ? "manipulation" : undefined }}
+                    className={`font-semibold rounded border border-amber-600/50 text-amber-700 dark:text-amber-200 hover:bg-amber-500/20 ${tablet ? "px-4 py-2.5 text-sm" : "px-3 py-1.5 text-xs"}`}>
+                    Use it anyway
+                  </button>
                 </div>
+              )}
+              {toteIgnored && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  Using a tote BC does not know. Nothing has been checked — type the vendor and receipt carefully.
+                </p>
               )}
             </div>
             <div>
               <label className={`${lbl} block mb-1`}>Vendor Number <span className="text-red-500">*</span> <span className="normal-case font-normal text-gray-500">— auto-filled from the tote</span></label>
               <div className="flex gap-2">
-                <input value={vendor} onChange={e => { setVendor(e.target.value); setVendorHint(null); setStep1LengthWarning(false) }} className={`flex-1 ${inpFocus}`} placeholder="e.g. C224521" maxLength={7} />
-                {vendor && <button type="button" onClick={() => { setVendor(""); setVendorHint(null) }} className="px-3 py-2 bg-gray-100 dark:bg-[#2C2C2E] border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
+                {/* ⚠ maxLength 7 is deliberate (a vendor number is always C + 6 digits), which is
+                    exactly why select-on-focus is needed: the box is ALWAYS full, so without it
+                    tapping in and typing is refused by the browser and nothing happens at all —
+                    which is what someone trying to correct a wrong vendor runs into. */}
+                <input value={vendor}
+                  onChange={e => { setVendor(e.target.value); setVendorHint(null); setVendorTyped(true); setStep1LengthWarning(false) }}
+                  onFocus={e => e.target.select()}
+                  className={`flex-1 ${inpFocus}`} placeholder="e.g. C224521" maxLength={7} autoCapitalize="characters" />
+                {vendor && <button type="button" onClick={() => { setVendor(""); setVendorHint(null); setVendorTyped(false) }} className={`bg-gray-100 dark:bg-[#2C2C2E] border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-500 rounded hover:border-red-500 hover:text-red-400 ${tablet ? "px-4 py-3 text-sm min-w-[44px]" : "px-3 py-2 text-xs"}`}>✕</button>}
               </div>
+              {identityWarning("vendor", vendor) && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠ {identityWarning("vendor", vendor)}</p>
+              )}
               {vendorHint && <p className="text-xs text-[#2AB4A6] mt-1">{vendorHint}</p>}
+              {vendor.trim() && toteInfo?.vendorNo && vendor.trim().toUpperCase() !== toteInfo.vendorNo.toUpperCase() && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  ⚠ BC has {toteInfo.vendorNo} for tote {tote}{toteInfo.vendorName ? ` (${toteInfo.vendorName})` : ""}.
+                  {vendorTyped ? " This will be saved as you typed it." : " This value was carried over, not taken from this tote."}
+                </p>
+              )}
             </div>
             <div>
               <label className={`${lbl} block mb-1`}>Receipt Number <span className="text-red-500">*</span> <span className="normal-case font-normal text-gray-500">— auto-filled from the tote</span></label>
               <div className="flex gap-2">
                 <input
                   value={receipt}
-                  onChange={e => { setReceipt(e.target.value); setStep1LengthWarning(false) }}
+                  onChange={e => { setReceipt(e.target.value); setReceiptTyped(true); setStep1LengthWarning(false) }}
+                  onFocus={e => e.target.select()}
                   onBlur={e => { if (e.target.value.trim() && !tote.trim()) lookupVendorFromBC({ receipt: e.target.value.trim() }) }}
                   className={`flex-1 ${inpFocus}`}
                   placeholder="e.g. R007523"
                   maxLength={7}
+                  autoCapitalize="characters"
                 />
-                {receipt && <button type="button" onClick={() => setReceipt("")} className="px-3 py-2 bg-gray-100 dark:bg-[#2C2C2E] border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-500 text-xs rounded hover:border-red-500 hover:text-red-400">✕</button>}
+                {receipt && <button type="button" onClick={() => { setReceipt(""); setReceiptTyped(false) }} className={`bg-gray-100 dark:bg-[#2C2C2E] border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-500 rounded hover:border-red-500 hover:text-red-400 ${tablet ? "px-4 py-3 text-sm min-w-[44px]" : "px-3 py-2 text-xs"}`}>✕</button>}
               </div>
-              {receipt && (
-                <p className="text-xs text-gray-600 dark:text-gray-500 mt-1">
-                  Unique ID will be auto-assigned (e.g. <span className="text-gray-600 dark:text-gray-400">{receipt.toUpperCase()}-N</span>)
+              {identityWarning("receipt", receipt) && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠ {identityWarning("receipt", receipt)}</p>
+              )}
+              {/* ⚠ The old line here promised "Unique ID will be auto-assigned (R007523-N)". The Hub
+                  has minted no unique IDs since 2026-08-06 — BC's numbering is the only source, and
+                  🔗 BC Match imports it later — so that text was both untrue and implied the receipt
+                  had been validated. Removed rather than reworded; the box needs no caption. */}
+              {receipt.trim() && toteInfo?.receiptNo && receipt.trim().toUpperCase() !== toteInfo.receiptNo.toUpperCase() && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  ⚠ BC has {toteInfo.receiptNo} for tote {tote}.
+                  {receiptTyped ? " This will be saved as you typed it." : " This value was carried over, not taken from this tote."}
                 </p>
               )}
             </div>
 
             {step1LengthWarning && (
-              <div className="rounded-xl border border-amber-600/50 bg-amber-950/40 px-4 py-3 space-y-3">
-                <p className="text-sm text-amber-300">
-                  ⚠ Tote, Vendor and Receipt numbers are normally exactly 7 characters. Please double-check before continuing.
-                </p>
+              <div className="rounded-xl border border-amber-600/50 bg-amber-500/10 dark:bg-amber-950/40 px-4 py-3 space-y-3">
+                {/* ⚠ Was "normally exactly 7 characters", which reads as a suggestion. They are
+                    ALWAYS 7 in a fixed shape (Jordan, 2026-09-08), and the warning now names which
+                    field is wrong instead of leaving the person to work it out. */}
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">⚠ Check this before you carry on</p>
+                <ul className="text-sm text-amber-700 dark:text-amber-300 list-disc pl-5 space-y-1">
+                  {checkIdentityTrio({ tote, vendor, receipt }).map((m, i) => <li key={i}>{m}</li>)}
+                </ul>
                 <button type="button"
                   onClick={() => { setStep1LengthWarning(false); afterStartChecks() }}
                   className="px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-700/40 hover:bg-amber-700/60 text-amber-200 border border-amber-600/40 transition-colors">
@@ -1801,20 +2029,8 @@ export default function LotWizardTab({
         {step === 2 && (
           <div className="max-w-lg space-y-4">
             <p className="text-xs text-gray-600 dark:text-gray-500">Scan the internal barcode or type it manually.</p>
-            {(vendor || tote) && (
-              <div className="flex items-center justify-between bg-gray-100 dark:bg-[#2C2C2E] border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2">
-                <span className="text-xs text-gray-600 dark:text-gray-400 flex flex-wrap gap-x-3 gap-y-0.5">
-                  {tote    && <span><span className="text-gray-600 dark:text-gray-500">Tote </span><span className="text-gray-700 dark:text-gray-200 font-mono">{tote}</span></span>}
-                  {vendor  && <span><span className="text-gray-600 dark:text-gray-500">Vendor </span><span className="text-gray-700 dark:text-gray-200 font-mono">{vendor}</span>{vendorHint && <span className="text-gray-600 dark:text-gray-500"> · {vendorHint}</span>}</span>}
-                  {receipt && <span><span className="text-gray-600 dark:text-gray-500">Receipt </span><span className="text-gray-700 dark:text-gray-200 font-mono">{receipt}</span></span>}
-                </span>
-                <button type="button" onClick={changeVendor}
-                  className="text-xs font-semibold px-3 py-1 rounded transition-colors"
-                  style={{ color: CAT_ACCENT, border: `1px solid ${CAT_ACCENT}66` }}>
-                  Change Tote / Vendor
-                </button>
-              </div>
-            )}
+            {/* The tote / vendor / receipt strip that used to sit here has moved above the step
+                indicator, so it shows on every step rather than only this one. */}
             <div>
               <label className={`${lbl} block mb-1`}>Internal Barcode <span className="text-red-500">*</span></label>
               <input value={barcode}

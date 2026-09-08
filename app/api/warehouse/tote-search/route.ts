@@ -4,7 +4,16 @@ import { prisma } from "@/lib/prisma"
 
 // GET /api/warehouse/tote-search?q=T025
 // Searches WarehouseTote (BC-synced) by toteNo — used by the lot wizard tote field.
-
+//
+// ⚠ PREFIX FIRST, "anywhere" only as a fallback (2026-09-08). Tote numbers are typed by hand, one
+// character at a time, so an unanchored `contains` answers a half-typed "P0050" with every tote
+// whose number contains those digits anywhere — a list of unrelated consignments presented in the
+// same ascending order as the real neighbours. Matching from the START is what somebody typing a
+// number from the start actually means. The `contains` search is kept as a second try so a
+// deliberate partial search still finds something rather than returning nothing.
+//
+// ⚠ `catalogued` and `syncedAt` are returned so the wizard can tell a fresh row from a stale one
+// and a tote BC has already finished with from one it has not. They were in the table and unused.
 export async function GET(req: NextRequest) {
   try {
     const session = await auth()
@@ -13,12 +22,31 @@ export async function GET(req: NextRequest) {
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
     if (!q) return NextResponse.json([])
 
-    const totes = await prisma.warehouseTote.findMany({
-      where:   { toteNo: { contains: q, mode: "insensitive" } },
-      select:  { toteNo: true, vendorNo: true, vendorName: true, receiptNo: true, location: true },
+    const select = {
+      toteNo:     true,
+      vendorNo:   true,
+      vendorName: true,
+      receiptNo:  true,
+      location:   true,
+      catalogued: true,
+      syncedAt:   true,
+    } as const
+
+    let totes = await prisma.warehouseTote.findMany({
+      where:   { toteNo: { startsWith: q, mode: "insensitive" } },
+      select,
       orderBy: { toteNo: "asc" },
       take:    20,
     })
+
+    if (totes.length === 0) {
+      totes = await prisma.warehouseTote.findMany({
+        where:   { toteNo: { contains: q, mode: "insensitive" } },
+        select,
+        orderBy: { toteNo: "asc" },
+        take:    20,
+      })
+    }
 
     return NextResponse.json(totes)
   } catch (e: any) {

@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"0cf4f6725d8b72d32ab99aa677e2f12aa34789c1","author":"Jordan Orange","date":"2026-09-07T16:58:53+01:00","subject":"Memory: opening message covers the ABC and BC databases"},
   {"sha":"b13b7b0ab61bdf448916ae3a1058308fd9c049f0","author":"Jordan Orange","date":"2026-09-07T16:52:59+01:00","subject":"Databases: BC Database — Business Central lots, built like the ABC one"},
   {"sha":"1e99988fa04b77059c052689c1822fb34d479c2c","author":"Jordan Orange","date":"2026-09-07T16:41:28+01:00","subject":"Databases: the Lot Archive is the ABC Database (the system the lots came from)"},
   {"sha":"120880b4203631452d89078b294690b3ceea4623","author":"Jordan Orange","date":"2026-09-07T16:12:35+01:00","subject":"Lot Archive: export data (streamed CSV) + handover panel for a future website"},

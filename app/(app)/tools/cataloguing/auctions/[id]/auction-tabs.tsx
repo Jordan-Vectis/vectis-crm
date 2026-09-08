@@ -6,6 +6,7 @@ import { updateAuction, updateLot, deleteLot, deleteAuction, uploadLotPhoto, del
 import { actionErrorText } from "@/lib/action-error"
 import { grantAuctionAccess, revokeAuctionAccess } from "@/lib/actions/admin"
 import LotWizardTab, { BRANDS_LIST } from "./lot-wizard-tab"
+import { identityWarning } from "@/lib/lot-identity"
 import { useCategoryMap } from "@/lib/use-category-map"
 import { parseCondition, buildCondition, withConditionSentence, type BoxPrefixMode } from "@/lib/condition"
 import { useConditionWordings } from "@/lib/use-condition-wordings"
@@ -2962,6 +2963,10 @@ function LotEditView({ lot, auctionId, allLots, entryDir, onDone, onEdit }: { lo
   }
 
   const [titleVal, setTitleVal] = useState(lot?.title ?? "")
+  // Controlled so the shared identity warnings can react as the value is typed.
+  const [vendorVal,  setVendorVal]  = useState(lot?.vendor ?? "")
+  const [toteVal,    setToteVal]    = useState(lot?.tote ?? "")
+  const [receiptVal, setReceiptVal] = useState(lot?.receipt ?? "")
   const [descVal,  setDescVal]  = useState(lot?.description ?? "")
 
   // Parse the stored condition into the item condition + optional box/packaging condition
@@ -3268,18 +3273,38 @@ function LotEditView({ lot, auctionId, allLots, entryDir, onDone, onEdit }: { lo
               </div>
               <div />
             </div>
+            {/* ⚠ Vendor / Tote / Receipt had NO character cap, NO length warning and NO format
+                check here, while this editor ALSO auto-saves 800ms after the last keystroke — so
+                pausing part-way through retyping a vendor saved a half-finished number, silently.
+                Same shared rule as the wizard now (lib/lot-identity.ts): always 7 characters in a
+                fixed shape, warned rather than blocked. */}
             <div>
               <label className={lbl}>Vendor</label>
-              <input name="vendor" defaultValue={lot.vendor ?? ""} className={input} onChange={triggerAutoSave} />
+              <input name="vendor" value={vendorVal} maxLength={7} autoCapitalize="characters"
+                onFocus={e => e.target.select()}
+                onChange={e => { setVendorVal(e.target.value); triggerAutoSave() }} className={input} />
+              {identityWarning("vendor", vendorVal) && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠ {identityWarning("vendor", vendorVal)}</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Tote</label>
-                <input name="tote" defaultValue={lot.tote ?? ""} className={input} onChange={triggerAutoSave} />
+                <input name="tote" value={toteVal} maxLength={7} autoCapitalize="characters"
+                  onFocus={e => e.target.select()}
+                  onChange={e => { setToteVal(e.target.value); triggerAutoSave() }} className={input} />
+                {identityWarning("tote", toteVal) && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠ {identityWarning("tote", toteVal)}</p>
+                )}
               </div>
               <div>
                 <label className={lbl}>Receipt</label>
-                <input name="receipt" defaultValue={lot.receipt ?? ""} className={input} onChange={triggerAutoSave} />
+                <input name="receipt" value={receiptVal} maxLength={7} autoCapitalize="characters"
+                  onFocus={e => e.target.select()}
+                  onChange={e => { setReceiptVal(e.target.value); triggerAutoSave() }} className={input} />
+                {identityWarning("receipt", receiptVal) && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠ {identityWarning("receipt", receiptVal)}</p>
+                )}
               </div>
             </div>
             <div>
