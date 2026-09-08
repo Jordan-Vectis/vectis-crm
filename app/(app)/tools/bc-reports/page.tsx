@@ -2310,14 +2310,24 @@ function VendorLocationsTab() {
     cancelResolve.current = false
     let placed = 0, unsure = 0
     try {
+      // ⚠ A belt-and-braces stop, on top of the server now remembering what it could not place.
+      // This loop ran for half an hour placing nothing because every pass got handed the same forty
+      // vendors back. Any pass that fails to reduce the work left ends it.
+      let lastRemaining = Infinity
       while (!cancelResolve.current) {
         const res: Response = await fetch("/api/bc/vendor-locations/resolve", { method: "POST" })
         const d: any = await res.json()
         if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
         placed += d.written ?? 0
         unsure += d.refused ?? 0
-        setProgress(`Working out the missing countries — ${placed.toLocaleString()} placed, ${(d.remaining ?? 0).toLocaleString()} to go`)
+        const remaining = d.remaining ?? 0
+        setProgress(`Working out the missing countries — ${placed.toLocaleString()} placed, ${remaining.toLocaleString()} to go`)
         if (d.done) break
+        if (remaining >= lastRemaining) {
+          setSyncMsg("Stopped: it stopped making progress, so the rest are left as not known.")
+          break
+        }
+        lastRemaining = remaining
       }
       setSyncMsg(`${placed.toLocaleString()} placed from the address.${unsure ? ` ${unsure.toLocaleString()} the assistant was not sure about, and those are left alone.` : ""}`)
       await load()

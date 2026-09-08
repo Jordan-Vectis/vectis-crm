@@ -44,17 +44,38 @@ export async function POST(req: NextRequest) {
       if (body?.redo === true) onlyMissing = false
     } catch { /* no body */ }
 
-    // Everyone BC gave an address but no country, that the rules could not place.
+    if (!onlyMissing) {
+      // Starting again: forget the "not sure" marks so they get another go.
+      await prisma.bcVendor.updateMany({
+        where: { resolvedBy: "ai-unsure" },
+        data:  { resolvedBy: null, resolvedNote: null, resolvedAt: null },
+      })
+    }
+
+    // ⚠⚠ ONLY VENDORS ON RECEIPTS. Business Central holds 57,908 vendor records; the report is
+    // about the ~6,000 that have actually sent us something. Without this the button worked through
+    // every supplier BC has ever had — 1,771 of them needing a look instead of about 90.
+    const onReceipts = await prisma.warehouseItem.groupBy({
+      by:    ["vendorNo"],
+      where: { vendorNo: { not: null }, receiptNo: { not: null } },
+    })
+    const wanted = new Set(onReceipts.map(r => (r.vendorNo ?? "").trim().toUpperCase()).filter(Boolean))
+
     const all = await prisma.bcVendor.findMany({
       where:  { countryCode: null },
       select: {
         vendorNo: true, address: true, address2: true, city: true, county: true,
-        postCode: true, countryCode: true, resolvedCountry: true,
+        postCode: true, countryCode: true, resolvedCountry: true, resolvedBy: true,
       },
     })
 
     const todo = all.filter(v => {
-      if (onlyMissing && v.resolvedCountry) return false
+      if (!wanted.has(v.vendorNo.trim().toUpperCase())) return false
+      // ⚠⚠ A vendor the model has already said it cannot place is REMEMBERED as unsure and skipped.
+      // Without this the same forty came back every pass — they are never given a country, so they
+      // never leave the list — and the loop ran for ever placing nothing. That is exactly what
+      // happened live: stuck on 79 placed with the remaining count never moving.
+      if (onlyMissing && (v.resolvedCountry || v.resolvedBy === "ai-unsure")) return false
       if (guessCountry(v).code) return false                       // the rules already placed them
       return !!((v.city ?? "").trim() || (v.county ?? "").trim() || (v.postCode ?? "").trim())
     })
@@ -103,7 +124,16 @@ export async function POST(req: NextRequest) {
       const code = String(a?.country ?? "").trim().toUpperCase()
       // ⚠ Only a code we recognise is accepted. A model that answers "Belgium" or "EU" or invents
       // "XX" must not be able to create a country row that then looks like data.
-      if (!code || !COUNTRY_NAMES[code]) { refused++; continue }
+      if (!code || !COUNTRY_NAMES[code]) {
+        // Remember that it could not be placed, so the next pass moves past it instead of asking
+        // the same question again. `redo` clears these and tries the lot afresh.
+        refused++
+        await prisma.bcVendor.update({
+          where: { vendorNo: v.vendorNo },
+          data:  { resolvedBy: "ai-unsure", resolvedNote: "The assistant was not sure", resolvedAt: new Date() },
+        })
+        continue
+      }
       await prisma.bcVendor.update({
         where: { vendorNo: v.vendorNo },
         data:  {
@@ -136,7 +166,7 @@ export async function DELETE() {
     const session = await auth()
     if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
     const r = await prisma.bcVendor.updateMany({
-      where: { resolvedBy: "ai" },
+      where: { resolvedBy: { in: ["ai", "ai-unsure"] } },
       data:  { resolvedCountry: null, resolvedBy: null, resolvedNote: null, resolvedAt: null },
     })
     return NextResponse.json({ ok: true, cleared: r.count })
