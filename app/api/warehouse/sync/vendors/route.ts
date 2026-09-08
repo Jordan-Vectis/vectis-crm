@@ -11,53 +11,32 @@ export const maxDuration = 300
 // BC Reports → Vendor Locations. Nothing else in the Hub had a vendor address —
 // the warehouse feeds carry vendorNo and vendorName and nothing else.
 //
-// ⚠⚠ TWO ENDPOINTS, AND NEITHER IS PERFECT ON ITS OWN.
+// ⚠⚠ ONE PAGE PER CALL, AND THE CLIENT DRIVES THE LOOP. This is the same shape as the tote syncs
+// and it is deliberate: a button that walks thousands of rows inside a single request can only ever
+// say "working…", which tells the person nothing and is indistinguishable from a hang. Each call
+// does one page, writes it, and hands back a cursor plus a running count, so the screen can show
+// real numbers going up. It also keeps every request short, which matters on Railway.
+//
+// ⚠⚠ TWO ENDPOINTS, AND NEITHER IS ENOUGH ON ITS OWN.
 //   • Microsoft's STANDARD `api/v2.0` vendors entity carries the address as a complex object
 //     including `countryLetterCode` — the only place BC gives us a country. It is NOT filtered to
 //     auction vendors, so it also returns suppliers.
 //   • Evo's own `api/evo/base/v1.0` vendors page (AL page 75608 EVA_VendorAPI) IS filtered to
 //     auction vendors (`SourceTableView = where(EVA_AuctionVendor = const(true))`) but exposes
 //     address / city / county / postCode and NO country at all.
-// So the standard one is read first for the country, and Evo's fills in anyone it missed. Which
-// answered is recorded per row in `source`, so a report that looks wrong can be traced back.
+// Phase "standard" runs first for the country; phase "evo" then fills in anyone it missed.
 //
-// ⚠ Scoping to "the C numbers actually on receipts" is NOT done here. It is done in the report,
-// against the receipt data we already sync. Storing every vendor BC knows costs nothing and means
-// the report can change its mind about scope without a re-sync.
+// ⚠ The evo phase deliberately does NOT write `countryCode` or `source` on an UPDATE. Its country
+// is always null, so including it would wipe the one thing the standard phase was run for.
 //
 // ⚠ NO COUNTRY IS INFERRED HERE. A blank countryCode is stored blank. The report decides what a
 // blank means (a UK-shaped postcode is treated as GB there, visibly).
 
-type VendorRow = {
-  vendorNo: string
-  name?: string | null
-  address?: string | null
-  address2?: string | null
-  city?: string | null
-  county?: string | null
-  postCode?: string | null
-  countryCode?: string | null
-  source: string
-}
+type Phase = "standard" | "evo"
 
 const str = (v: unknown): string | null => {
   const s = String(v ?? "").trim()
   return s || null
-}
-
-/** Walk every page of an entity set, following @odata.nextLink. */
-async function walk(token: string, startUrl: string, budgetMs: number): Promise<any[]> {
-  const out: any[] = []
-  const started = Date.now()
-  let link: string | null = startUrl
-  while (link) {
-    if (Date.now() - started > budgetMs) break
-    const { rows, nextLink }: { rows: any[]; nextLink: string | null } = await bcPageWithNext(token, link)
-    out.push(...rows)
-    link = nextLink
-    if (!rows.length) break
-  }
-  return out
 }
 
 export async function POST(req: NextRequest) {
@@ -66,97 +45,117 @@ export async function POST(req: NextRequest) {
   const token = await getBCTokenAny()
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
 
-  const syncLog = await prisma.warehouseSyncLog.create({ data: { source: "vendors", status: "running" } })
-  const notes: string[] = []
-  const byNo = new Map<string, VendorRow>()
+  let phase: Phase = "standard"
+  let nextLink: string | null = null
+  let seen = 0
+  try {
+    const body = await req.json()
+    if (body?.phase === "evo" || body?.phase === "standard") phase = body.phase
+    if (body?.nextLink) nextLink = String(body.nextLink)
+    if (typeof body?.seen === "number") seen = body.seen
+  } catch { /* first call, no body */ }
+
+  // One log row per whole run, opened on the first call of the first phase.
+  let logId: string | null = null
+  if (phase === "standard" && !nextLink) {
+    const l = await prisma.warehouseSyncLog.create({ data: { source: "vendors", status: "running" } })
+    logId = l.id
+  }
 
   try {
-    // ── 1. Microsoft's standard vendors entity — the only source of a country ────────────────
-    try {
-      const url  = await bcApiUrl(token, "api/v2.0", "vendors")
-      const rows = await walk(token, url, 90_000)
-      for (const r of rows) {
-        const vendorNo = str(r.number)
-        if (!vendorNo) continue
-        const a = r.address ?? {}
-        byNo.set(vendorNo.toUpperCase(), {
-          vendorNo,
-          name:        str(r.displayName),
-          address:     str(a.street),
-          address2:    null,
-          city:        str(a.city),
-          county:      str(a.state),
-          postCode:    str(a.postalCode),
-          countryCode: str(a.countryLetterCode),
-          source:      "standard",
-        })
-      }
-      notes.push(`standard api: ${rows.length} vendors`)
-    } catch (e: any) {
-      // Not fatal — Evo's page below still gives us everything except the country.
-      notes.push(`standard api unavailable: ${e?.message ?? "unknown"}`)
+    const url = nextLink ?? await bcApiUrl(
+      token,
+      phase === "standard" ? "api/v2.0" : "api/evo/base/v1.0",
+      "vendors",
+    )
+    const { rows, nextLink: nl } = await bcPageWithNext(token, url)
+
+    let written = 0
+    let withCountry = 0
+
+    for (let i = 0; i < rows.length; i += 20) {
+      await Promise.all(rows.slice(i, i + 20).map(async (r: any) => {
+        if (phase === "standard") {
+          const vendorNo = str(r.number)
+          if (!vendorNo) return
+          const a = r.address ?? {}
+          const country = str(a.countryLetterCode)
+          if (country) withCountry++
+          const data = {
+            vendorNo,
+            name:        str(r.displayName),
+            address:     str(a.street),
+            city:        str(a.city),
+            county:      str(a.state),
+            postCode:    str(a.postalCode),
+            countryCode: country,
+            source:      "standard",
+          }
+          await prisma.bcVendor.upsert({ where: { vendorNo }, update: { ...data, syncedAt: new Date() }, create: data })
+          written++
+        } else {
+          const vendorNo = str(r.no)
+          if (!vendorNo) return
+          // ⚠ No countryCode and no source here — this feed has no country, so writing it would
+          // null out what the standard phase just found.
+          const data = {
+            vendorNo,
+            name:     str(r.name),
+            address:  str(r.address),
+            address2: str(r.address2),
+            city:     str(r.city),
+            county:   str(r.county),
+            postCode: str(r.postCode),
+          }
+          await prisma.bcVendor.upsert({
+            where:  { vendorNo },
+            update: { ...data, syncedAt: new Date() },
+            create: { ...data, source: "evo" },
+          })
+          written++
+        }
+      }))
     }
 
-    // ── 2. Evo's auction-vendor page — richer address, no country ────────────────────────────
-    try {
-      const url  = await bcApiUrl(token, "api/evo/base/v1.0", "vendors")
-      const rows = await walk(token, url, 90_000)
-      for (const r of rows) {
-        const vendorNo = str(r.no)
-        if (!vendorNo) continue
-        const key  = vendorNo.toUpperCase()
-        const prev = byNo.get(key)
-        byNo.set(key, {
-          vendorNo,
-          name:     str(r.name) ?? prev?.name ?? null,
-          address:  str(r.address)  ?? prev?.address  ?? null,
-          address2: str(r.address2) ?? prev?.address2 ?? null,
-          city:     str(r.city)     ?? prev?.city     ?? null,
-          county:   str(r.county)   ?? prev?.county   ?? null,
-          postCode: str(r.postCode) ?? prev?.postCode ?? null,
-          // Evo's page has no country field at all — keep whatever the standard one found.
-          countryCode: prev?.countryCode ?? null,
-          source:      prev ? "standard+evo" : "evo",
-        })
-      }
-      notes.push(`evo api: ${rows.length} auction vendors`)
-    } catch (e: any) {
-      notes.push(`evo api unavailable: ${e?.message ?? "unknown"}`)
-    }
+    const total = seen + written
+    const morePages = !!nl
+    const done = !morePages && phase === "evo"
 
-    if (byNo.size === 0) {
-      const msg = `No vendors returned. ${notes.join(" · ")}`
-      await prisma.warehouseSyncLog.update({
-        where: { id: syncLog.id },
-        data:  { status: "failed", completedAt: new Date(), error: msg, itemsProcessed: 0 },
+    if (done) {
+      await prisma.warehouseSyncLog.updateMany({
+        where: { source: "vendors", status: "running" },
+        data:  { status: "complete", completedAt: new Date(), itemsProcessed: total },
       })
-      return NextResponse.json({ error: msg, notes }, { status: 502 })
     }
 
-    // ── 3. Write ─────────────────────────────────────────────────────────────────────────────
-    const all = [...byNo.values()]
-    for (let i = 0; i < all.length; i += 20) {
-      await Promise.all(all.slice(i, i + 20).map(v => prisma.bcVendor.upsert({
-        where:  { vendorNo: v.vendorNo },
-        update: { ...v, syncedAt: new Date() },
-        create: v,
-      })))
-    }
-
-    const withCountry = all.filter(v => v.countryCode).length
-    await prisma.warehouseSyncLog.update({
-      where: { id: syncLog.id },
-      data:  { status: "complete", completedAt: new Date(), itemsProcessed: all.length },
-    })
     return NextResponse.json({
-      ok: true, itemsProcessed: all.length, withCountry, notes,
+      ok: true,
+      phase,
+      written,
+      total,
+      withCountry,
+      // What to send back next. null/null means this phase is finished.
+      nextPhase: morePages ? phase : (phase === "standard" ? "evo" : null),
+      nextLink:  morePages ? nl : null,
+      done,
+      logId,
     })
   } catch (e: any) {
-    await prisma.warehouseSyncLog.update({
-      where: { id: syncLog.id },
-      data:  { status: "failed", completedAt: new Date(), error: e.message, itemsProcessed: 0 },
+    // ⚠ The standard endpoint may simply not be published on this tenant. That is not a failure of
+    // the whole run — it means no countries, and the evo phase can still supply every address. Tell
+    // the client to carry on rather than stopping with an error it cannot act on.
+    if (phase === "standard") {
+      return NextResponse.json({
+        ok: true, phase, written: 0, total: seen, withCountry: 0,
+        nextPhase: "evo", nextLink: null, done: false,
+        note: `Business Central's standard vendor list is not available (${e?.message ?? "unknown"}), so no countries could be read. Carrying on with the auction vendor list.`,
+      })
+    }
+    await prisma.warehouseSyncLog.updateMany({
+      where: { source: "vendors", status: "running" },
+      data:  { status: "failed", completedAt: new Date(), error: e.message },
     })
-    return NextResponse.json({ error: e.message, notes }, { status: 500 })
+    return NextResponse.json({ error: e.message, phase }, { status: 500 })
   }
 }
 
@@ -171,9 +170,9 @@ export async function GET() {
   if (!token) return NextResponse.json({ error: "BC_NOT_CONNECTED" }, { status: 503 })
 
   const out: Record<string, any> = {}
-  for (const [key, path, set] of [["standard", "api/v2.0", "vendors"], ["evo", "api/evo/base/v1.0", "vendors"]] as const) {
+  for (const [key, path] of [["standard", "api/v2.0"], ["evo", "api/evo/base/v1.0"]] as const) {
     try {
-      const url = await bcApiUrl(token, path, set)
+      const url = await bcApiUrl(token, path, "vendors")
       const { rows } = await bcPageWithNext(token, `${url}?$top=1`)
       out[key] = { ok: true, fields: rows[0] ? Object.keys(rows[0]) : [], sample: rows[0] ?? null }
     } catch (e: any) {

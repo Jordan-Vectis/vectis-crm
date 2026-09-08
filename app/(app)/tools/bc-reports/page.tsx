@@ -2217,11 +2217,12 @@ Where items are now in the warehouse — <span className="font-medium">Shipped</
 // so a blank country on a UK-shaped postcode is counted as United Kingdom. That is an assumption,
 // so the screen says how many rows it was applied to rather than burying it in the headline.
 
-type VendorRow = { code: string; name: string; isoNumeric: string | null; vendors: number; lots: number; assumedUk: number; noAddress: number }
+type VendorRow = { code: string; name: string; isoNumeric: string | null; vendors: number; lots: number; worked: number; noAddress: number }
 type VendorData = {
   ok: boolean
   rows: VendorRow[]
-  totals: { vendors: number; lots: number; countries: number; assumedUk: number; unknown: number; notInBc: number }
+  totals: { vendors: number; lots: number; countries: number; workedOut: number; unknown: number; notInBc: number }
+  reasons: { reason: string; count: number }[]
   unknownSample: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null }[]
   vendorTableMissing: boolean
   vendorsKnown: number
@@ -2234,7 +2235,9 @@ function VendorLocationsTab() {
   const [error,   setError]   = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [progress, setProgress] = useState<string | null>(null)
   const [showUnknown, setShowUnknown] = useState(false)
+  const cancelPull = useRef(false)
 
   async function load() {
     setLoading(true); setError(null)
@@ -2251,18 +2254,48 @@ function VendorLocationsTab() {
   }
   useEffect(() => { void load() }, [])
 
+  // ⚠ The CLIENT drives the paging, one page per request, so the count on screen actually moves.
+  // A single long request could only ever say "working…", which is indistinguishable from a hang —
+  // and this walks thousands of vendors across two endpoints.
   async function pullVendors() {
-    setSyncing(true); setSyncMsg(null)
+    setSyncing(true); setSyncMsg(null); setProgress("Starting…")
+    cancelPull.current = false
+    let phase: string | null = "standard"
+    let link: string | null = null
+    let total = 0
+    let withCountry = 0
+    const notes: string[] = []
     try {
-      const res = await fetch("/api/warehouse/sync/vendors", { method: "POST" })
-      const d   = await res.json()
-      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
-      setSyncMsg(`Pulled ${(d.itemsProcessed ?? 0).toLocaleString()} vendors from Business Central, ${(d.withCountry ?? 0).toLocaleString()} with a country on file.`)
+      while (phase && !cancelPull.current) {
+        const res: Response = await fetch("/api/warehouse/sync/vendors", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ phase, nextLink: link, seen: total }),
+        })
+        const d: any = await res.json()
+        if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
+        total       = d.total ?? total
+        withCountry += d.withCountry ?? 0
+        if (d.note) notes.push(d.note)
+        const where = d.phase === "standard" ? "the main vendor list" : "the auction vendor list"
+        setProgress(`Reading ${where} — ${total.toLocaleString()} vendors so far`)
+        phase = d.nextPhase ?? null
+        link  = d.nextLink ?? null
+      }
+      if (cancelPull.current) {
+        setSyncMsg(`Stopped. ${total.toLocaleString()} vendors were saved before you stopped it, and the report below uses them.`)
+      } else {
+        setSyncMsg([
+          `Done. ${total.toLocaleString()} vendors saved, ${withCountry.toLocaleString()} with a country on file in Business Central.`,
+          ...notes,
+        ].join(" "))
+      }
       await load()
     } catch (e: any) {
-      setSyncMsg(`Could not pull vendors: ${e?.message ?? "unknown error"}`)
+      setSyncMsg(`Stopped after ${total.toLocaleString()} vendors: ${e?.message ?? "unknown error"}`)
+      await load()
     } finally {
-      setSyncing(false)
+      setSyncing(false); setProgress(null)
     }
   }
 
@@ -2279,10 +2312,18 @@ function VendorLocationsTab() {
           </p>
         </div>
         <div className="text-right">
-          <button onClick={pullVendors} disabled={syncing}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white transition-colors">
-            {syncing ? "Pulling…" : "Pull vendor addresses from BC"}
-          </button>
+          <div className="flex items-center gap-2 justify-end">
+            <button onClick={pullVendors} disabled={syncing}
+              className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white transition-colors">
+              {syncing ? "Pulling…" : "Pull vendor addresses from BC"}
+            </button>
+            {syncing && (
+              <button onClick={() => { cancelPull.current = true }}
+                className="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-red-500 hover:text-red-400 transition-colors">
+                Stop
+              </button>
+            )}
+          </div>
           <p className="text-xs text-gray-500 mt-1">
             {data?.lastSync
               ? `Last pulled ${new Date(data.lastSync).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
@@ -2291,6 +2332,12 @@ function VendorLocationsTab() {
         </div>
       </div>
 
+      {progress && (
+        <div className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2">
+          <span className="inline-block h-4 w-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" aria-hidden />
+          <span aria-live="polite">{progress}</span>
+        </div>
+      )}
       {syncMsg && <p className="text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2">{syncMsg}</p>}
       {error && <p className="text-sm text-red-500 bg-red-500/10 border border-red-500/40 rounded-lg px-3 py-2">{error}</p>}
       {loading && <p className="text-sm text-gray-500">Working it out…</p>}
@@ -2309,7 +2356,7 @@ function VendorLocationsTab() {
               { n: data.totals.vendors,   l: "Vendors on receipts" },
               { n: data.totals.countries, l: "Countries" },
               { n: data.totals.lots,      l: "Lots sent in" },
-              { n: data.totals.unknown,   l: "Country not known" },
+              { n: data.totals.unknown,   l: "Country not worked out" },
             ].map(t => (
               <div key={t.l} className="bg-white dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-800 rounded-xl p-4">
                 <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{t.n.toLocaleString()}</div>
@@ -2318,11 +2365,21 @@ function VendorLocationsTab() {
             ))}
           </div>
 
-          {data.totals.assumedUk > 0 && (
-            <p className="text-xs text-gray-600 dark:text-gray-400">
-              Business Central leaves the country blank on UK records, so {data.totals.assumedUk.toLocaleString()} vendors
-              were counted as United Kingdom because their postcode is a UK one. Everything else is the country BC holds.
-            </p>
+          {data.totals.workedOut > 0 && (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1C1C1E] px-4 py-3">
+              <p className="text-sm text-gray-800 dark:text-gray-200">
+                <strong>Business Central holds no country for any vendor</strong>, so the country is worked out from the
+                address. {data.totals.workedOut.toLocaleString()} were placed this way and{" "}
+                {data.totals.unknown.toLocaleString()} could not be, and are listed below rather than counted as UK.
+              </p>
+              {data.reasons.length > 0 && (
+                <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-600 dark:text-gray-400">
+                  {data.reasons.map(r => (
+                    <li key={r.reason}><span className="tabular-nums font-semibold text-gray-800 dark:text-gray-200">{r.count.toLocaleString()}</span> {r.reason.toLowerCase()}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
 
           {data.rows.some(r => r.code !== "??") && (
@@ -2348,7 +2405,7 @@ function VendorLocationsTab() {
                   <tr key={r.code} className="border-t border-gray-200 dark:border-gray-800">
                     <td className="px-3 py-2 text-gray-900 dark:text-gray-100">
                       {r.name}
-                      {r.assumedUk > 0 && <span className="text-xs text-gray-500 ml-2">{r.assumedUk.toLocaleString()} from the postcode</span>}
+                      {r.worked > 0 && <span className="text-xs text-gray-500 ml-2">worked out from the address</span>}
                       {r.code === "??" && r.noAddress > 0 && <span className="text-xs text-gray-500 ml-2">{r.noAddress.toLocaleString()} not in the vendor list</span>}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-900 dark:text-gray-100">{r.vendors.toLocaleString()}</td>

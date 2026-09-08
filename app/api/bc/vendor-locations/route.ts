@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { COUNTRY_NAMES, COUNTRY_ALIASES, ISO_NUMERIC } from "@/lib/country-names"
+import { COUNTRY_NAMES, ISO_NUMERIC } from "@/lib/country-names"
+import { guessCountry } from "@/lib/vendor-country"
 
 export const maxDuration = 60
 
@@ -22,15 +23,6 @@ export const maxDuration = 60
 // counted as United Kingdom and reported separately in `assumedUk` so the figure is never presented
 // as something BC actually said. A blank country with no usable postcode stays Unknown — never
 // quietly folded into the UK, which would make the headline look tidier than the data is.
-
-/** A UK postcode, allowing the space to be missing or doubled. Deliberately strict about the
- *  shape rather than "starts with letters", so a foreign code is not swept in. */
-const UK_POSTCODE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i
-
-function normCode(raw: string | null | undefined): string {
-  const c = (raw ?? "").trim().toUpperCase()
-  return COUNTRY_ALIASES[c] ?? c
-}
 
 export async function GET() {
   try {
@@ -62,18 +54,19 @@ export async function GET() {
     }
     const byNo = new Map(vendors.map(v => [v.vendorNo.trim().toUpperCase(), v]))
 
-    type Bucket = { code: string; name: string; isoNumeric: string | null; vendors: number; lots: number; assumedUk: number; noAddress: number }
+    type Bucket = { code: string; name: string; isoNumeric: string | null; vendors: number; lots: number; worked: number; noAddress: number }
     const buckets = new Map<string, Bucket>()
     const bucket = (code: string, name: string) => {
       let b = buckets.get(code)
       if (!b) {
-        b = { code, name, isoNumeric: ISO_NUMERIC[code] ?? null, vendors: 0, lots: 0, assumedUk: 0, noAddress: 0 }
+        b = { code, name, isoNumeric: ISO_NUMERIC[code] ?? null, vendors: 0, lots: 0, worked: 0, noAddress: 0 }
         buckets.set(code, b)
       }
       return b
     }
 
     let totalVendors = 0, totalLots = 0, assumedUk = 0, unknown = 0, notInBc = 0
+    const reasons = new Map<string, number>()
     const unknownSample: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null }[] = []
 
     for (const [vendorNo, lots] of lotsByVendor) {
@@ -81,11 +74,11 @@ export async function GET() {
       totalLots += lots
       const v = byNo.get(vendorNo)
 
-      let code = normCode(v?.countryCode)
-      let inferred = false
-      if (!code) {
-        if (v && UK_POSTCODE.test((v.postCode ?? "").trim())) { code = "GB"; inferred = true }
-      }
+      // ⚠ BC holds NO country for any vendor (measured: 28,998 pulled, 0 with one), so this is
+      // worked out from the address. Every answer carries the rule that decided it, and anything
+      // the rules cannot place stays Not known rather than being folded into the UK.
+      const guess = v ? guessCountry(v) : { code: null, reason: "Not in the vendor list" }
+      const code  = guess.code
 
       if (!code) {
         unknown++
@@ -93,7 +86,7 @@ export async function GET() {
         const b = bucket("??", "Not known")
         b.vendors++; b.lots += lots
         if (!v) b.noAddress++
-        if (unknownSample.length < 200) {
+        if (unknownSample.length < 500) {
           unknownSample.push({
             vendorNo,
             name:     v?.name ?? null,
@@ -105,10 +98,11 @@ export async function GET() {
         continue
       }
 
+      reasons.set(guess.reason, (reasons.get(guess.reason) ?? 0) + 1)
       const b = bucket(code, COUNTRY_NAMES[code] ?? code)
       b.vendors++
       b.lots += lots
-      if (inferred) { b.assumedUk++; assumedUk++ }
+      if (guess.reason !== "Country held in Business Central") { b.worked++; assumedUk++ }
     }
 
     const rows = [...buckets.values()].sort((a, b) =>
@@ -127,11 +121,12 @@ export async function GET() {
         vendors: totalVendors,
         lots:    totalLots,
         countries: rows.filter(r => r.code !== "??").length,
-        assumedUk,
+        workedOut: assumedUk,
         unknown,
         notInBc,
       },
       unknownSample,
+      reasons: [...reasons.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
       vendorTableMissing,
       vendorsKnown: vendors.length,
       lastSync: lastSync?.completedAt?.toISOString() ?? null,
