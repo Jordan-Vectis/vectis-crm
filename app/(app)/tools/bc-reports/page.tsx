@@ -69,7 +69,7 @@ type ShipData = {
   }
 }
 
-type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "shipping"
+type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "shipping" | "vendors"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -2208,6 +2208,453 @@ Where items are now in the warehouse — <span className="font-medium">Shipped</
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Vendor Locations ─────────────────────────────────────────────────────────
+// Where our consignors are based, by country, and how many lots each country sends.
+//
+// "Vendors" here is the C numbers that actually appear on receipts, not every vendor record in BC.
+//
+// ⚠ Business Central leaves the country blank on home-country records, which is most of the book,
+// so a blank country on a UK-shaped postcode is counted as United Kingdom. That is an assumption,
+// so the screen says how many rows it was applied to rather than burying it in the headline.
+
+type VendorRow = { code: string; name: string; isoNumeric: string | null; vendors: number; receipts: number; lots: number; vendorPct: number; receiptPct: number; lotPct: number; worked: number; noAddress: number }
+type VendorData = {
+  ok: boolean
+  range: { from: string | null; to: string | null; basis: string }
+  undated: number
+  coverage: { auction: number; catalogued: number; received: number; total: number }
+  rows: VendorRow[]
+  totals: { vendors: number; receipts: number; lots: number; countries: number; workedOut: number; unknown: number; notInBc: number; noAddress: number; unknownWithAddress: number }
+  reasons: { reason: string; count: number }[]
+  unknownSample: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null; hasAddress: boolean }[]
+  countryOptions?: { code: string; name: string }[]
+  vendorTableMissing: boolean
+  vendorsKnown: number
+  lastSync: string | null
+}
+
+function VendorLocationsTab() {
+  const [data,    setData]    = useState<VendorData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [progress, setProgress] = useState<string | null>(null)
+  const [showUnknown, setShowUnknown] = useState(false)
+  // Blank = everything we hold, which is how the report behaved before the filter existed.
+  const [from, setFrom] = useState("")
+  const [to,   setTo]   = useState("")
+  // ⚠ Defaults to the sale date. The goods-received date looked like the right answer and is empty
+  // for 220,146 of 221,274 lots — BC does not fill it. The coverage figures below say so on screen.
+  const [basis, setBasis] = useState<"auction" | "catalogued" | "received">("auction")
+  const cancelPull = useRef(false)
+  const [resolving, setResolving] = useState(false)
+  const cancelResolve = useRef(false)
+
+  const query = () => {
+    const p = new URLSearchParams()
+    if (from) p.set("from", from)
+    if (to)   p.set("to", to)
+    if (basis !== "auction") p.set("basis", basis)
+    return p.toString() ? `?${p.toString()}` : ""
+  }
+
+  async function load() {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch(`/api/bc/vendor-locations${query()}`, { cache: "no-store" })
+      const d   = await res.json()
+      if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
+      setData(d)
+    } catch (e: any) {
+      setError(e?.message ?? "Could not load the report")
+    } finally {
+      setLoading(false)
+    }
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [from, to, basis])
+
+  // ⚠ The CLIENT drives the paging, one page per request, so the count on screen actually moves.
+  // A single long request could only ever say "working…", which is indistinguishable from a hang —
+  // and this walks thousands of vendors across two endpoints.
+  async function pullVendors() {
+    setSyncing(true); setSyncMsg(null); setProgress("Starting…")
+    cancelPull.current = false
+    let phase: string | null = "standard"
+    let link: string | null = null
+    let total = 0
+    let withCountry = 0
+    const notes: string[] = []
+    try {
+      while (phase && !cancelPull.current) {
+        const res: Response = await fetch("/api/warehouse/sync/vendors", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ phase, nextLink: link, seen: total }),
+        })
+        const d: any = await res.json()
+        if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
+        total       = d.total ?? total
+        withCountry += d.withCountry ?? 0
+        if (d.note) notes.push(d.note)
+        const where = d.phase === "standard" ? "the main vendor list" : "the auction vendor list"
+        setProgress(`Reading ${where} — ${total.toLocaleString()} vendors so far`)
+        phase = d.nextPhase ?? null
+        link  = d.nextLink ?? null
+      }
+      if (cancelPull.current) {
+        setSyncMsg(`Stopped. ${total.toLocaleString()} vendors were saved before you stopped it, and the report below uses them.`)
+      } else {
+        setSyncMsg([
+          `Done. ${total.toLocaleString()} vendors saved, ${withCountry.toLocaleString()} with a country on file in Business Central.`,
+          ...notes,
+        ].join(" "))
+      }
+      await load()
+    } catch (e: any) {
+      setSyncMsg(`Stopped after ${total.toLocaleString()} vendors: ${e?.message ?? "unknown error"}`)
+      await load()
+    } finally {
+      setSyncing(false); setProgress(null)
+    }
+  }
+
+  // Ask the assistant to place the ones the address rules could not. One batch of 40 per request
+  // so the count moves (RULES §7b), and it only ever fills a gap — it can never overrule a country
+  // Business Central holds or one the rules worked out.
+  async function resolveMissing() {
+    setResolving(true); setSyncMsg(null); setProgress("Working out the missing countries…")
+    cancelResolve.current = false
+    let placed = 0, unsure = 0
+    try {
+      // ⚠ A belt-and-braces stop, on top of the server now remembering what it could not place.
+      // This loop ran for half an hour placing nothing because every pass got handed the same forty
+      // vendors back. Any pass that fails to reduce the work left ends it.
+      let lastRemaining = Infinity
+      while (!cancelResolve.current) {
+        const res: Response = await fetch("/api/bc/vendor-locations/resolve", { method: "POST" })
+        const d: any = await res.json()
+        if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
+        placed += d.written ?? 0
+        unsure += d.refused ?? 0
+        const remaining = d.remaining ?? 0
+        setProgress(`Working out the missing countries — ${placed.toLocaleString()} placed, ${remaining.toLocaleString()} to go`)
+        if (d.done) break
+        if (remaining >= lastRemaining) {
+          setSyncMsg("Stopped: it stopped making progress, so the rest are left as not known.")
+          break
+        }
+        lastRemaining = remaining
+      }
+      setSyncMsg(`${placed.toLocaleString()} placed from the address.${unsure ? ` ${unsure.toLocaleString()} the assistant was not sure about, and those are left alone.` : ""}`)
+      await load()
+    } catch (e: any) {
+      setSyncMsg(`Stopped after placing ${placed.toLocaleString()}: ${e?.message ?? "unknown error"}`)
+      await load()
+    } finally {
+      setResolving(false); setProgress(null)
+    }
+  }
+
+  async function clearResolved() {
+    setSyncMsg(null)
+    const res = await fetch("/api/bc/vendor-locations/resolve", { method: "DELETE" })
+    const d   = await res.json()
+    setSyncMsg(res.ok ? `Cleared ${(d.cleared ?? 0).toLocaleString()} countries the assistant had worked out.` : (d.error ?? "Could not clear"))
+    await load()
+  }
+
+  async function setCountryByHand(vendorNo: string, country: string) {
+    const res = await fetch("/api/bc/vendor-locations/resolve", {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ vendorNo, country }),
+    })
+    if (!res.ok) { const d = await res.json(); setSyncMsg(d.error ?? "Could not save"); return }
+    await load()
+  }
+
+  const maxVendors = Math.max(1, ...(data?.rows ?? []).map(r => r.vendors))
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Vendor Locations</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Which country our consignors are based in, and how many lots each country has sent in.
+            It counts the C numbers that appear on receipts.
+          </p>
+        </div>
+        <div className="text-right">
+          <div className="flex items-center gap-2 justify-end">
+            <button onClick={pullVendors} disabled={syncing}
+              className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white transition-colors">
+              {syncing ? "Pulling…" : "Pull vendor addresses from BC"}
+            </button>
+            {(syncing || resolving) && (
+              <button onClick={() => { cancelPull.current = true; cancelResolve.current = true }}
+                className="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-red-500 hover:text-red-400 transition-colors">
+                Stop
+              </button>
+            )}
+            <a href={`/api/bc/vendor-locations/pdf${query()}`}
+              className="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-amber-500 hover:text-amber-400 transition-colors">
+              PDF
+            </a>
+            <a href={`/api/bc/vendor-locations/excel${query()}`}
+              className="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-emerald-500 hover:text-emerald-400 transition-colors">
+              Excel
+            </a>
+            {!!data?.totals.unknownWithAddress && (
+              <button onClick={resolveMissing} disabled={syncing || resolving}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors">
+                {resolving ? "Working…" : `Work out the last ${data.totals.unknownWithAddress.toLocaleString()}`}
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            {data?.lastSync
+              ? `Last pulled ${new Date(data.lastSync).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+              : "Never pulled"}
+          </p>
+        </div>
+      </div>
+
+      {progress && (
+        <div className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2">
+          <span className="inline-block h-4 w-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" aria-hidden />
+          <span aria-live="polite">{progress}</span>
+        </div>
+      )}
+      {syncMsg && <p className="text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2">{syncMsg}</p>}
+      {error && <p className="text-sm text-red-500 bg-red-500/10 border border-red-500/40 rounded-lg px-3 py-2">{error}</p>}
+      {loading && <p className="text-sm text-gray-500">Working it out…</p>}
+
+      {data?.vendorTableMissing && (
+        <p className="text-sm text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/50 rounded-lg px-3 py-2">
+          No vendor addresses have been stored yet. Press <strong>Run Migrations</strong> on the Admin page if this is a
+          new deployment, then <strong>Pull vendor addresses from BC</strong> above.
+        </p>
+      )}
+
+      {/* ⚠ Filters on the GOODS RECEIVED date — when the consignment came in. Not the date a row was
+          last touched by a sync, which would drop old lots into recent months. */}
+      <div className="flex flex-wrap items-end gap-3 border-y border-gray-200 dark:border-gray-800 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { label: "All time",       f: "",                to: "" },
+            { label: "This year",      f: startOfYear(),      to: today() },
+            { label: "Last 12 months", f: last12Months(),     to: today() },
+            { label: "This month",     f: startOfMonth(),     to: today() },
+            { label: "Last month",     f: lastMonthRange()[0], to: lastMonthRange()[1] },
+          ].map(p => {
+            const on = from === p.f && to === p.to
+            return (
+              <button key={p.label} onClick={() => { setFrom(p.f); setTo(p.to) }}
+                className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+                  on ? "bg-amber-600 text-white border-amber-600"
+                     : "bg-gray-100 dark:bg-[#1C1C1E] text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700 hover:border-amber-500"}`}>
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="text-xs text-gray-500">
+            <span className="block mb-1">Date to use</span>
+            <select value={basis} onChange={e => setBasis(e.target.value as any)}
+              className="bg-gray-100 dark:bg-[#1C1C1E] border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300">
+              <option value="auction">Date sold</option>
+              <option value="catalogued">Date catalogued</option>
+              <option value="received">Date goods received</option>
+            </select>
+          </label>
+          <label className="text-xs text-gray-500">
+            <span className="block mb-1">From</span>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+              className="bg-gray-100 dark:bg-[#1C1C1E] border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300" />
+          </label>
+          <label className="text-xs text-gray-500">
+            <span className="block mb-1">to</span>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)}
+              className="bg-gray-100 dark:bg-[#1C1C1E] border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300" />
+          </label>
+          {(from || to) && (
+            <button onClick={() => { setFrom(""); setTo("") }} className="px-3 py-1.5 text-xs text-gray-500 hover:text-red-400 underline">
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {data && !loading && (
+        <>
+          {/* ⚠ Coverage for all three, always. This is what made the empty goods-received date
+              obvious instead of the report just showing zeros. */}
+          <p className="text-xs text-gray-600 dark:text-gray-400">
+            Business Central has a date for:{" "}
+            <span className={data.coverage.auction ? "" : "text-amber-500"}>{data.coverage.auction.toLocaleString()} sold</span>,{" "}
+            <span className={data.coverage.catalogued ? "" : "text-amber-500"}>{data.coverage.catalogued.toLocaleString()} catalogued</span>,{" "}
+            <span className={data.coverage.received ? "" : "text-amber-500"}>{data.coverage.received.toLocaleString()} goods received</span>
+            {" "}of {data.coverage.total.toLocaleString()} lots.
+          </p>
+          {!!data.undated && (from || to) && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {data.undated.toLocaleString()} lots have no date of that kind in Business Central, so they are not in these figures.
+              {data.undated > data.coverage.total / 2 && " Try a different date above."}
+            </p>
+          )}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              { n: data.totals.vendors,   l: "Vendors on receipts" },
+              { n: data.totals.receipts,  l: "Receipts" },
+              { n: data.totals.lots,      l: "Lots sent in" },
+              { n: data.totals.countries, l: "Countries" },
+              { n: data.totals.unknown,   l: "Country not worked out" },
+            ].map(t => (
+              <div key={t.l} className="bg-white dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{t.n.toLocaleString()}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{t.l}</div>
+              </div>
+            ))}
+          </div>
+
+          {data.totals.workedOut > 0 && (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1C1C1E] px-4 py-3">
+              <p className="text-sm text-gray-800 dark:text-gray-200">
+                <strong>Business Central holds no country for any vendor</strong>, so the country is worked out from the
+                address. {data.totals.workedOut.toLocaleString()} were placed this way.{" "}
+                {data.totals.unknown.toLocaleString()} could not be:{" "}
+                <strong>{data.totals.noAddress.toLocaleString()}</strong> have no address in Business Central at all,
+                so no rule could ever place them, and{" "}
+                <strong>{data.totals.unknownWithAddress.toLocaleString()}</strong> have an address we could not match.
+                Both are listed below rather than counted as UK.
+              </p>
+              {data.reasons.length > 0 && (
+                <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-600 dark:text-gray-400">
+                  {data.reasons.map(r => (
+                    <li key={r.reason}><span className="tabular-nums font-semibold text-gray-800 dark:text-gray-200">{r.count.toLocaleString()}</span> {r.reason.toLowerCase()}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {data.rows.some(r => r.code !== "??") && (
+            <WorldMap
+              byCountry={data.rows.filter(r => r.code !== "??").map(r => ({ country: r.code, count: r.vendors }))}
+              total={data.totals.vendors}
+            />
+          )}
+
+          <div className="overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-xl">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-100 dark:bg-[#1C1C1E]">
+                  <th className="text-left px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Country</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Vendors</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">%</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Receipts</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">%</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Lots</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">%</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs w-1/5">Share</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Lots per vendor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map(r => (
+                  <tr key={r.code} className="border-t border-gray-200 dark:border-gray-800">
+                    <td className="px-3 py-2 text-gray-900 dark:text-gray-100">
+                      {r.name}
+                      {r.worked > 0 && <span className="text-xs text-gray-500 ml-2">worked out from the address</span>}
+                      {r.code === "??" && r.noAddress > 0 && <span className="text-xs text-gray-500 ml-2">{r.noAddress.toLocaleString()} not in the vendor list</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-900 dark:text-gray-100">{r.vendors.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-400">{r.vendorPct.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{r.receipts.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-400">{r.receiptPct.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{r.lots.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-400">{r.lotPct.toFixed(1)}%</td>
+                    <td className="px-3 py-2">
+                      <div className="h-2 rounded bg-gray-200 dark:bg-[#2C2C2E]">
+                        <div className="h-2 rounded bg-amber-500" style={{ width: `${Math.round((r.vendors / maxVendors) * 100)}%` }} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-400">
+                      {r.vendors ? Math.round(r.lots / r.vendors).toLocaleString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {data.unknownSample.length > 0 && (
+            <div>
+              <div className="flex flex-wrap items-center gap-4">
+                <button onClick={() => setShowUnknown(v => !v)} className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                  {showUnknown ? "Hide" : "Show"} the {data.totals.unknown.toLocaleString()} vendors with no country
+                </button>
+                <button onClick={clearResolved} className="text-xs text-gray-500 hover:text-red-400 underline">
+                  Clear the countries the assistant worked out
+                </button>
+              </div>
+              {showUnknown && (
+                <div className="mt-2 overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-xl">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-100 dark:bg-[#1C1C1E]">
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Vendor</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Town</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">County</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Postcode</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Put it right</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.unknownSample.map(u => (
+                        <tr key={u.vendorNo} className="border-t border-gray-200 dark:border-gray-800">
+                          <td className="px-3 py-2 font-mono text-gray-900 dark:text-gray-100">
+                            {u.vendorNo}
+                            {!u.hasAddress && <span className="ml-2 text-xs font-sans text-gray-500">no address in BC</span>}
+                          </td>
+                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{u.name ?? "—"}</td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{u.city ?? "—"}</td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{u.county ?? "—"}</td>
+                          <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400">{u.postCode ?? "—"}</td>
+                          <td className="px-3 py-2">
+                            {/* Set it by hand where you know better than the rules or the assistant.
+                                Saved in the Hub only — Business Central is never written to. */}
+                            <select defaultValue="" aria-label={`Country for ${u.vendorNo}`}
+                              onChange={e => { if (e.target.value) void setCountryByHand(u.vendorNo, e.target.value) }}
+                              className="bg-gray-100 dark:bg-[#2C2C2E] border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs text-gray-700 dark:text-gray-300">
+                              <option value="">Set country…</option>
+                              {(data.countryOptions ?? []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {data.totals.unknown > data.unknownSample.length && (
+                    <p className="text-xs text-gray-500 px-3 py-2">
+                      Showing the first {data.unknownSample.length.toLocaleString()} of {data.totals.unknown.toLocaleString()}.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 type NavItem = { id: Report; label: string; activeColor: string; icon: string }
 
 const reports: NavItem[] = [
@@ -2226,6 +2673,10 @@ const reports: NavItem[] = [
   {
     id: "shipping", label: "Shipping", activeColor: "text-cyan-400",
     icon: "M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0zM13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0",
+  },
+  {
+    id: "vendors", label: "Vendor Locations", activeColor: "text-amber-400",
+    icon: "M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z",
   },
 ]
 const toolReports: NavItem[] = [
@@ -2367,6 +2818,7 @@ export default function BCReportsPage() {
             {activeReport === "warehouse"   && <WarehouseTab />}
             {activeReport === "explorer"    && <DataExplorerTab />}
             {activeReport === "shipping"    && <ShippingTab />}
+            {activeReport === "vendors"     && <VendorLocationsTab />}
           </div>
         )}
       </main>

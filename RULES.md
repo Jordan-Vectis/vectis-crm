@@ -138,6 +138,27 @@ On the Copier specifically:
 - If something genuinely must sit above the card, **ask first** — it means re-recording the
   macro.
 
+### 7b. A button that takes more than a moment must show REAL progress
+**Jordan, 2026-09-08: "just says pulling, no idea of progress or if its working — this is a
+repeated issue you have."** A spinner and a present participle are not progress. They are
+indistinguishable from a hang, and on a slow job people press the button again or give up.
+
+- **Show a number that moves.** "Reading the auction vendor list — 1,240 vendors so far" tells you
+  it is alive and roughly how far along. "Pulling…" tells you nothing.
+- **Page the work and let the CLIENT drive the loop**, the way the BC Warehouse Data Sync stages
+  and `/api/warehouse/sync/vendors` do: one page per request, each returning a cursor and a running
+  count. A single long request *cannot* report progress, and it risks a proxy timeout as well.
+- **Say which stage it is on** when there is more than one, so a long pause is explainable.
+- **Give it a Stop**, and say plainly what was kept when it is stopped.
+- **Never invent a percentage** from a total you have not actually counted. A rising count is
+  honest; a fake bar that sticks at 90% is worse than no bar.
+- Finish with what happened in numbers, not "Done" — how many were saved, and how many were
+  missing whatever the job was for.
+
+*Related failures already recorded:* the Accounts tablet "dead-feeling Reconcile button" (fixed
+with `useLinkStatus` spinners) and the pipeline runs that looked finished while every apply was
+silently failing. Same root cause: the screen not telling the truth about what is happening.
+
 ### 7. Never let "nothing happened" look like success
 - *The failure:* Change Vendor reported "✓ Changed 0 lots" when it had changed nothing, so a real
   problem read as done. If a count is zero, say so plainly and say why.

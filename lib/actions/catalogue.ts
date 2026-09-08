@@ -426,9 +426,38 @@ export async function applyAiEstimateOne(
 
 // Lot Wizard "remember last" — the user's last Tote / Vendor / Receipt, stored on their
 // account so they follow them across devices (shared iPads). Any signed-in user; their own row.
-export async function getLastLotFields() {
+// The tote / vendor / receipt a cataloguer was last working on, remembered PER SALE.
+//
+// ⚠⚠ These lived on the User row as three columns — ONE slot per person, shared by every sale,
+// every browser tab and every iPad. Whichever tab saved a lot last overwrote it for all the
+// others, so coming back to cataloguing could hand back a tote from a different sale. That is
+// what was reported as "the numbers reset to an older version"; a deploy only made it obvious,
+// because it reloads every open tab at once and they all re-read the one shared value.
+//
+// ⚠ A sale the person has never catalogued in returns BLANK, deliberately. There is nothing to
+// carry over, and carrying another sale's tote in is the fault being fixed.
+//
+// ⚠ MIGRATION-SAFE. Code reaches Railway before Run Migrations is clicked, so a missing
+// CatalogueLastBatch table falls back to the old User columns and behaves exactly as before.
+// Those columns are still written for the same reason; they can be dropped once every environment
+// has migrated.
+export async function getLastLotFields(auctionId?: string) {
   const session = await auth()
   if (!session) return { tote: "", vendor: "", receipt: "" }
+
+  if (auctionId) {
+    try {
+      const row = await prisma.catalogueLastBatch.findUnique({
+        where:  { userId_auctionId: { userId: session.user.id, auctionId } },
+        select: { tote: true, vendor: true, receipt: true },
+      })
+      // Table is there — its answer is authoritative, including "nothing for this sale".
+      return { tote: row?.tote ?? "", vendor: row?.vendor ?? "", receipt: row?.receipt ?? "" }
+    } catch {
+      // Table not migrated yet — fall through to the old per-user columns.
+    }
+  }
+
   const u = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { lastTote: true, lastVendor: true, lastReceipt: true },
@@ -436,17 +465,42 @@ export async function getLastLotFields() {
   return { tote: u?.lastTote ?? "", vendor: u?.lastVendor ?? "", receipt: u?.lastReceipt ?? "" }
 }
 
-export async function saveLastLotFields(fields: { tote?: string; vendor?: string; receipt?: string }) {
-  const session = await auth()
-  if (!session) return
-  await prisma.user.update({
-    where: { id: session.user.id },
-    data: {
-      lastTote:    (fields.tote ?? "").trim()    || null,
-      lastVendor:  (fields.vendor ?? "").trim()  || null,
-      lastReceipt: (fields.receipt ?? "").trim() || null,
-    },
-  })
+/**
+ * ⚠ RETURNS its outcome rather than throwing. The wizard used to call this fire-and-forget with
+ * `.catch(() => {})`, so when it failed — a stale deploy, a dropped connection, a backgrounded
+ * iPad tab — nothing was recorded anywhere and the next visit silently restored older numbers.
+ */
+export async function saveLastLotFields(
+  fields: { tote?: string; vendor?: string; receipt?: string; auctionId?: string },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const session = await auth()
+    if (!session) return { ok: false, error: "Not signed in" }
+
+    const tote    = (fields.tote ?? "").trim()    || null
+    const vendor  = (fields.vendor ?? "").trim()  || null
+    const receipt = (fields.receipt ?? "").trim() || null
+
+    if (fields.auctionId) {
+      try {
+        await prisma.catalogueLastBatch.upsert({
+          where:  { userId_auctionId: { userId: session.user.id, auctionId: fields.auctionId } },
+          update: { tote, vendor, receipt },
+          create: { userId: session.user.id, auctionId: fields.auctionId, tote, vendor, receipt },
+        })
+      } catch {
+        // Table not migrated yet — the User columns below still carry it.
+      }
+    }
+
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data:  { lastTote: tote, lastVendor: vendor, lastReceipt: receipt },
+    })
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Could not remember these numbers" }
+  }
 }
 
 // ── Change Vendor (Manage Lots → Tools) ─────────────────────────────────────

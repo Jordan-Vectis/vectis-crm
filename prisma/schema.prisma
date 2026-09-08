@@ -1582,6 +1582,112 @@ model TicketComment {
   @@index([ticketId])
 }
 
+// ⚠⚠ BC's OWN TRUTH ABOUT WHICH RECEIPT A TOTE IS ON (added 2026-09-08).
+//
+// In Business Central the receipt-tote table (EVA_TOT_ReceiptTote, Tote Management) is keyed on
+// **(Receipt No., Line No.)** — the tote number is only a secondary key. So one tote NUMBER can
+// legitimately sit on several receipts: physical totes are re-used over time, and a customer can
+// end up with two receipts sharing a tote.
+//
+// `WarehouseTote` below is UNIQUE on toteNo, so its upsert keeps exactly ONE receipt per tote
+// number — whichever the walk wrote last — and every screen reading it gets a single confident
+// answer to a question that sometimes has two. That is what put a whole batch under the previous
+// customer.
+//
+// ⚠ This table is DELIBERATELY SEPARATE rather than a change to WarehouseTote. Tote Check,
+// Locking Check, End of Day, BC Corrections and Match BC all read WarehouseTote and build a
+// tote-keyed map from it; making that table multi-row per tote would silently change what all of
+// them report, and the noisy flagging they do now is what Jordan asked to be left alone
+// (the 2026-08-20 revert). Nothing in this model is read by any of those. Only the lot wizard's
+// lookups use it, so the wizard can say "this tote is on two receipts, pick one" instead of
+// guessing — see lib/receipt-totes.ts.
+// The tote / vendor / receipt a cataloguer was last working on, PER SALE.
+//
+// ⚠⚠ These used to be three columns on User — ONE slot per person, shared by every sale, every
+// browser tab and every iPad they touch. Whichever tab saved a lot last overwrote it for all the
+// others, so coming back to a sale could restore a tote from a different sale entirely, and it
+// read as "the numbers reset to an older version". Keyed on the person AND the sale, coming back
+// to a sale gives back that sale's batch and nothing else.
+//
+// ⚠ A sale with no row here starts BLANK on purpose. If they have never catalogued in this sale
+// there is nothing to carry over, and carrying another sale's tote in is the bug.
+// User.lastTote / lastVendor / lastReceipt are kept as the fallback for the window between this
+// code deploying and Run Migrations being clicked — see getLastLotFields.
+model CatalogueLastBatch {
+  id        String   @id @default(cuid())
+  userId    String
+  auctionId String
+  tote      String?
+  vendor    String?
+  receipt   String?
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([userId, auctionId])
+  @@index([userId])
+}
+
+// A vendor (consignor) as Business Central holds them — the C-number customers who send us goods.
+//
+// Built for BC Reports → Vendor Locations. Nothing else in the Hub had a vendor address: the
+// warehouse feeds carry vendorNo and vendorName and nothing more.
+//
+// ⚠ COUNTRY IS THE AWKWARD FIELD. Evo's own Vendor API (page 75608 EVA_VendorAPI, publisher
+// evo/base) is already scoped to auction vendors, which is exactly who we want, but it exposes
+// address / city / county / postCode and NO country. Microsoft's standard api/v2.0 vendors entity
+// does carry a country letter code but is not auction-scoped. The sync reads the standard one
+// first for the country and falls back to Evo's; `source` records which answered, and a blank
+// country on a UK-shaped postcode is resolved to GB by the report, never by this table.
+model BcVendor {
+  id           String    @id @default(cuid())
+  /// BC's vendor "No." — the C###### the receipts carry.
+  vendorNo     String    @unique
+  name         String?
+  address      String?
+  address2     String?
+  city         String?
+  county       String?
+  postCode     String?
+  /// ISO alpha-2 as BC gave it, blank when BC holds none. Never inferred here.
+  countryCode  String?
+  /// Which endpoint answered: "standard" | "evo". Kept so a wrong-looking report can be traced.
+  source       String?
+  syncedAt     DateTime  @default(now())
+
+  /// ⚠ A country the HUB worked out, never something Business Central said. Written by the
+  /// "work out the missing countries" button (AI) or by hand on the report. It is used only where
+  /// BC has no country AND the address rules could not place them, and the report always shows it
+  /// as worked out rather than held. Clearing it is one button.
+  resolvedCountry String?
+  /// "ai" | "manual" — how it was decided, so an odd-looking country can be traced and undone.
+  resolvedBy      String?
+  /// What the model or the person gave as the reason. Shown on the row.
+  resolvedNote    String?
+  resolvedAt      DateTime?
+
+  @@index([countryCode])
+  @@index([postCode])
+}
+
+model WarehouseReceiptTote {
+  id          String    @id @default(cuid())
+  /// BC's SystemId for the receipt-tote row — the API page's ODataKeyFields, stable across syncs.
+  bcSystemId  String    @unique
+  receiptNo   String
+  toteNo      String
+  lineNo      Int?
+  vendorNo    String?
+  /// The eva/tot API page carries no vendor name; filled from WarehouseItem by vendorNo after a
+  /// completed walk. Refreshed when the vendor number changes, unlike WarehouseTote's copy.
+  vendorName  String?
+  catalogued  Boolean   @default(false)
+  bcCreatedAt DateTime?
+  syncedAt    DateTime  @default(now())
+
+  @@index([toteNo])
+  @@index([receiptNo])
+  @@index([toteNo, catalogued])
+}
+
 model WarehouseTote {
   id          String    @id @default(cuid())
   toteNo      String    @unique

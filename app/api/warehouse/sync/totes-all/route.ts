@@ -67,6 +67,20 @@ export async function POST(req: NextRequest) {
     hasBcCreatedAt = !!row?.exists
   } catch { hasBcCreatedAt = false }
 
+  // ⚠ Same deploy-before-migration guard for the NEW receipt-tote table (2026-09-08). Writing to
+  // a table that is not there yet would throw inside the batch and take the WHOLE tote sync down —
+  // exactly the failure the bcCreatedAt guard above exists to prevent. Absent table = we simply
+  // skip it and everything behaves as it did before.
+  let hasReceiptTotes = false
+  try {
+    const [row] = await prisma.$queryRaw<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_name = 'WarehouseReceiptTote'
+      ) AS "exists"`
+    hasReceiptTotes = !!row?.exists
+  } catch { hasReceiptTotes = false }
+
   // Same guard for the category columns (added 2026-08-18 for the Admin Centre's totes table).
   let hasCategory = false
   try {
@@ -98,9 +112,15 @@ export async function POST(req: NextRequest) {
       if (rows.length === 0) break
 
       const upserts: Promise<any>[] = []
+      // ⚠ Count TOTE ROWS, not database writes. Each row now produces up to two upserts (the
+      // tote-keyed cache and BC's receipt-tote row), and counting the writes would double the
+      // figure on the Data Sync screen and halve how much each pass gets through before the
+      // maxItems budget stops it.
+      let rowsSeen = 0
       for (const r of rows) {
         const toteNo = String(r.toteNo ?? "").trim()
         if (!toteNo) continue
+        rowsSeen++
         const location = String(r.toteLocation ?? "").trim()
         const created  = bcDate(r.systemCreatedAt)
         // ⚠ Field names confirmed against a live receiptTotes row, not guessed:
@@ -122,12 +142,35 @@ export async function POST(req: NextRequest) {
           update: { ...common, syncedAt: new Date() },
           create: { toteNo, ...common },
         }))
+
+        // ⚠⚠ AND the row as BC actually holds it — one per (receipt, tote), not one per tote.
+        // The upsert above is unique on toteNo, so when a tote is on several receipts it keeps
+        // only the last one written and the wizard gets a single confident answer to a question
+        // with two answers. This keeps them all. Nothing that exists today reads this table; it
+        // feeds the wizard's lookups only (lib/receipt-totes.ts).
+        const bcSystemId = String(r.systemId ?? "").trim()
+        const receiptNo  = String(r.receiptNo ?? "").trim()
+        if (hasReceiptTotes && bcSystemId && receiptNo) {
+          const rtCommon = {
+            receiptNo,
+            toteNo,
+            lineNo:      typeof r.lineNo === "number" ? r.lineNo : null,
+            vendorNo:    r.vendorNo ?? null,
+            catalogued:  r.catalogued === true,
+            ...(created ? { bcCreatedAt: created } : {}),
+          }
+          upserts.push(prisma.warehouseReceiptTote.upsert({
+            where:  { bcSystemId },
+            update: { ...rtCommon, syncedAt: new Date() },
+            create: { bcSystemId, ...rtCommon },
+          }))
+        }
       }
 
       for (let i = 0; i < upserts.length; i += 20) {
         await Promise.all(upserts.slice(i, i + 20))
       }
-      itemsProcessed += upserts.length
+      itemsProcessed += rowsSeen
       if (!nl) break
     }
 
@@ -136,6 +179,25 @@ export async function POST(req: NextRequest) {
     // Walk finished — fill vendor names for totes totes-active never saw
     // (catalogued before the Hub existed), using names the receipt-lines sync
     // already holds per vendorNo. Best-effort: a miss just leaves the name null.
+    if (!more && hasReceiptTotes) {
+      // Names for the new table. ⚠ Unlike WarehouseTote's backfill this also REFRESHES a name that
+      // no longer matches its vendor number — the reason a tote row could show one customer's name
+      // beside another customer's number was that the old backfill only ever filled NULLs.
+      try {
+        await prisma.$executeRaw`
+          UPDATE "WarehouseReceiptTote" t
+          SET "vendorName" = i."vendorName"
+          FROM (
+            SELECT DISTINCT ON ("vendorNo") "vendorNo", "vendorName"
+            FROM "WarehouseItem"
+            WHERE "vendorName" IS NOT NULL AND "vendorNo" IS NOT NULL
+            ORDER BY "vendorNo"
+          ) i
+          WHERE t."vendorNo" = i."vendorNo"
+            AND (t."vendorName" IS NULL OR t."vendorName" <> i."vendorName")`
+      } catch {}
+    }
+
     if (!more) {
       try {
         await prisma.$executeRaw`

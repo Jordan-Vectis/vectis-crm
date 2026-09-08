@@ -17,6 +17,7 @@ import { useConditionWordings } from "@/lib/use-condition-wordings"
 import PhotoOnlyTab from "../../../auctions/[id]/photo-only-tab"
 import ReviewTab from "../../../auctions/[id]/review-tab"
 import AnnouncementBanner from "@/components/announcement-banner"
+import { identityWarning } from "@/lib/lot-identity"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -479,6 +480,10 @@ function TabletLotEdit({ lot, allLots, auctionId, entryDir, onDone, onNavigate }
   }
 
   const [titleVal, setTitleVal] = useState(lot?.title ?? "")
+  // Controlled so the shared identity warnings can react as the value is typed.
+  const [vendorVal,  setVendorVal]  = useState(lot?.vendor ?? "")
+  const [toteVal,    setToteVal]    = useState(lot?.tote ?? "")
+  const [receiptVal, setReceiptVal] = useState(lot?.receipt ?? "")
 
   // Condition — item condition + optional separate box/packaging condition
   const initCond = parseCondition(lot?.condition)
@@ -626,19 +631,35 @@ function TabletLotEdit({ lot, allLots, auctionId, entryDir, onDone, onNavigate }
           </div>
         </div>
 
-        {/* Vendor / Tote / Receipt */}
+        {/* Vendor / Tote / Receipt
+            ⚠ These are the boxes someone uses to CORRECT a wrong vendor, and until 2026-09-08 they
+            had no character cap, no length warning and no format check at all — less validation
+            than the wizard that created the lot. Same shared rule as the wizard now
+            (lib/lot-identity.ts): always 7 characters, fixed leading letter, warned not blocked. */}
         <div>
           <label className={lbl}>Vendor</label>
-          <input name="vendor" defaultValue={lot.vendor ?? ""} className={inp} />
+          <input name="vendor" value={vendorVal} onChange={e => setVendorVal(e.target.value)}
+            onFocus={e => e.target.select()} maxLength={7} autoCapitalize="characters" className={inp} />
+          {identityWarning("vendor", vendorVal) && (
+            <p className="text-sm text-amber-400 mt-1">⚠ {identityWarning("vendor", vendorVal)}</p>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={lbl}>Tote</label>
-            <input name="tote" defaultValue={lot.tote ?? ""} className={`${inp} font-mono`} />
+            <input name="tote" value={toteVal} onChange={e => setToteVal(e.target.value)}
+              onFocus={e => e.target.select()} maxLength={7} autoCapitalize="characters" className={`${inp} font-mono`} />
+            {identityWarning("tote", toteVal) && (
+              <p className="text-sm text-amber-400 mt-1">⚠ {identityWarning("tote", toteVal)}</p>
+            )}
           </div>
           <div>
             <label className={lbl}>Receipt</label>
-            <input name="receipt" defaultValue={lot.receipt ?? ""} className={inp} />
+            <input name="receipt" value={receiptVal} onChange={e => setReceiptVal(e.target.value)}
+              onFocus={e => e.target.select()} maxLength={7} autoCapitalize="characters" className={inp} />
+            {identityWarning("receipt", receiptVal) && (
+              <p className="text-sm text-amber-400 mt-1">⚠ {identityWarning("receipt", receiptVal)}</p>
+            )}
           </div>
         </div>
 

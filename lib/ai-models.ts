@@ -35,6 +35,7 @@ export const AI_TOOLS: AiTool[] = [
   { slot: "catalogue_chat",         group: "Auction AI",   label: "Chat",                                 default: "gemini-3-flash-preview" },
   { slot: "catalogue_chat_grounded",group: "Auction AI",   label: "Chat with Google Search",              default: "gemini-3-flash-preview" },
   // ── BC Marketing ──
+  { slot: "vendor_country",         group: "BC Reports",   label: "Vendor Locations (work out the country from an address)", default: "gemini-3-flash-preview", claudeOk: true },
   { slot: "marketing_article",      group: "BC Marketing", label: "Content Generator (articles)",         default: "gemini-2.5-flash-preview-04-17" },
   { slot: "marketing_article_text", group: "BC Marketing", label: "Paste & Generate",                     default: "gemini-2.5-flash-preview-04-17" },
   { slot: "marketing_web",          group: "BC Marketing", label: "Web descriptions",                     default: "gemini-2.5-flash-preview-04-17" },

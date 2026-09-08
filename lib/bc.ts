@@ -332,6 +332,47 @@ export async function bcFetchAllWithProgress(
 const BC_TOT_API_BASE =
   "https://api.businesscentral.dynamics.com/v2.0/{tenantId}/{environment}/api/eva/tot/v1.0/"
 
+// ⚠ The API PATH IS PER PUBLISHER — it is not always "eva". The receipt-tote page above publishes
+// under eva/tot, while the Vendor API (page 75608 EVA_VendorAPI, Evo-auction - Base) publishes
+// under **evo/base**, and Microsoft's own vendor entity lives under the standard api/v2.0. Read
+// APIPublisher / APIGroup / APIVersion off the AL page before building a URL; guessing "eva"
+// silently 404s.
+function bcApiRoot(path: string): string {
+  return `https://api.businesscentral.dynamics.com/v2.0/{tenantId}/{environment}/${path}/`
+    .replace("{tenantId}",    process.env.BC_TENANT_ID ?? "")
+    .replace("{environment}", process.env.BC_ENVIRONMENT ?? "production")
+}
+
+// Company ids are per API root, so they are cached per root rather than globally.
+const cachedApiCompanyId = new Map<string, string>()
+
+async function companyIdFor(root: string, token: string): Promise<string> {
+  const hit = cachedApiCompanyId.get(root)
+  if (hit) return hit
+  const res = await fetch(`${root}companies`, {
+    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    signal:  AbortSignal.timeout(30_000),
+  })
+  if (!res.ok) throw new Error(`BC API companies ${res.status}: ${await res.text()}`)
+  const companies: { id: string; name: string }[] = (await res.json()).value ?? []
+  const wanted  = process.env.BC_COMPANY ?? "Vectis"
+  const company = companies.find(c => c.name === wanted)
+  if (!company) throw new Error(`BC company "${wanted}" not found in API companies list`)
+  cachedApiCompanyId.set(root, company.id)
+  return company.id
+}
+
+/**
+ * URL for any BC API page, standard or custom.
+ * `apiPath` is the bit after the environment — "api/evo/base/v1.0" for the Evo Vendor API,
+ * "api/v2.0" for Microsoft's standard one. Company is addressed by GUID here, not by name.
+ */
+export async function bcApiUrl(token: string, apiPath: string, entitySet: string): Promise<string> {
+  const root = bcApiRoot(apiPath)
+  const id   = await companyIdFor(root, token)
+  return `${root}companies(${id})/${entitySet}`
+}
+
 let cachedTotCompanyId: string | null = null
 
 export async function bcTotApiUrl(token: string, entitySet: string): Promise<string> {
