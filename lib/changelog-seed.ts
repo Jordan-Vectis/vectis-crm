@@ -1,4 +1,4 @@
-// The commit history from 1 July 2026 up to 2026-09-07, committed into the repo.
+// The commit history from 1 July 2026 up to 2026-09-08, committed into the repo.
 //
 // ⚠ THIS IS THE ONLY COMPLETE HISTORY THE RUNNING APP CAN SEE. Railway's build
 // has no .git, so scripts/capture-changelog.mjs falls back to the deploy
@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"a7d447b70ee64cd85f5ac74831de376a0c507dce","author":"Jordan Orange","date":"2026-09-08T09:56:35+01:00","subject":"Wrong vendors: confirm the customer, and stop corrections being undone"},
   {"sha":"0cf4f6725d8b72d32ab99aa677e2f12aa34789c1","author":"Jordan Orange","date":"2026-09-07T16:58:53+01:00","subject":"Memory: opening message covers the ABC and BC databases"},
   {"sha":"b13b7b0ab61bdf448916ae3a1058308fd9c049f0","author":"Jordan Orange","date":"2026-09-07T16:52:59+01:00","subject":"Databases: BC Database — Business Central lots, built like the ABC one"},
   {"sha":"1e99988fa04b77059c052689c1822fb34d479c2c","author":"Jordan Orange","date":"2026-09-07T16:41:28+01:00","subject":"Databases: the Lot Archive is the ABC Database (the system the lots came from)"},

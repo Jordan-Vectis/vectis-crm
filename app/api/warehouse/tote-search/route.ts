@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { searchReceiptTotes } from "@/lib/receipt-totes"
 
 // GET /api/warehouse/tote-search?q=T025
 // Searches WarehouseTote (BC-synced) by toteNo — used by the lot wizard tote field.
@@ -21,6 +22,23 @@ export async function GET(req: NextRequest) {
 
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
     if (!q) return NextResponse.json([])
+
+    // ⚠⚠ BC's own receipt-tote rows first: ONE ENTRY PER RECEIPT-TOTE PAIR. A tote booked onto two
+    // receipts appears twice, each with its own receipt and customer, so the cataloguer picks the
+    // right one instead of being handed whichever the tote-keyed cache happened to keep. Falls back
+    // to WarehouseTote when the table is not migrated/populated yet, which is the old behaviour.
+    const rt = await searchReceiptTotes(q)
+    if (rt) {
+      return NextResponse.json(rt.map(r => ({
+        toteNo:     r.toteNo,
+        vendorNo:   r.vendorNo,
+        vendorName: r.vendorName,
+        receiptNo:  r.receiptNo,
+        location:   null,
+        catalogued: r.catalogued,
+        syncedAt:   r.syncedAt,
+      })))
+    }
 
     const select = {
       toteNo:     true,

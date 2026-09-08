@@ -1582,6 +1582,45 @@ model TicketComment {
   @@index([ticketId])
 }
 
+// ⚠⚠ BC's OWN TRUTH ABOUT WHICH RECEIPT A TOTE IS ON (added 2026-09-08).
+//
+// In Business Central the receipt-tote table (EVA_TOT_ReceiptTote, Tote Management) is keyed on
+// **(Receipt No., Line No.)** — the tote number is only a secondary key. So one tote NUMBER can
+// legitimately sit on several receipts: physical totes are re-used over time, and a customer can
+// end up with two receipts sharing a tote.
+//
+// `WarehouseTote` below is UNIQUE on toteNo, so its upsert keeps exactly ONE receipt per tote
+// number — whichever the walk wrote last — and every screen reading it gets a single confident
+// answer to a question that sometimes has two. That is what put a whole batch under the previous
+// customer.
+//
+// ⚠ This table is DELIBERATELY SEPARATE rather than a change to WarehouseTote. Tote Check,
+// Locking Check, End of Day, BC Corrections and Match BC all read WarehouseTote and build a
+// tote-keyed map from it; making that table multi-row per tote would silently change what all of
+// them report, and the noisy flagging they do now is what Jordan asked to be left alone
+// (the 2026-08-20 revert). Nothing in this model is read by any of those. Only the lot wizard's
+// lookups use it, so the wizard can say "this tote is on two receipts, pick one" instead of
+// guessing — see lib/receipt-totes.ts.
+model WarehouseReceiptTote {
+  id          String    @id @default(cuid())
+  /// BC's SystemId for the receipt-tote row — the API page's ODataKeyFields, stable across syncs.
+  bcSystemId  String    @unique
+  receiptNo   String
+  toteNo      String
+  lineNo      Int?
+  vendorNo    String?
+  /// The eva/tot API page carries no vendor name; filled from WarehouseItem by vendorNo after a
+  /// completed walk. Refreshed when the vendor number changes, unlike WarehouseTote's copy.
+  vendorName  String?
+  catalogued  Boolean   @default(false)
+  bcCreatedAt DateTime?
+  syncedAt    DateTime  @default(now())
+
+  @@index([toteNo])
+  @@index([receiptNo])
+  @@index([toteNo, catalogued])
+}
+
 model WarehouseTote {
   id          String    @id @default(cuid())
   toteNo      String    @unique

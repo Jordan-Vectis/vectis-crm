@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { resolveTote, resolveReceipt } from "@/lib/receipt-totes"
 
 // GET /api/warehouse/vendor-lookup?receipt=R007523
 // GET /api/warehouse/vendor-lookup?tote=T024801
@@ -37,6 +38,40 @@ export async function GET(req: NextRequest) {
 
     // ── Tote lookup ─────────────────────────────────────────────────────────────
     if (tote) {
+      // ⚠⚠ FIRST: BC's own receipt-tote rows, where a tote is allowed to be on more than one
+      // receipt — because in BC it can be. WarehouseTote below is unique on toteNo and therefore
+      // answers with only one of them, chosen by whatever the sync wrote last. When BC has two,
+      // we say so and fill NOTHING: the wizard shows the choice. Reporting the doubt is the whole
+      // point; silently picking is what put a batch under the previous customer.
+      const rt = await resolveTote(tote)
+      if (rt) {
+        if (rt.ambiguous) {
+          return NextResponse.json({
+            vendorNo: null, vendorName: null, receiptNo: null,
+            catalogued: null, syncedAt: rt.rows[0]?.syncedAt?.toISOString() ?? null,
+            source: "receipt-tote", ambiguous: true,
+            options: rt.rows.map(r => ({
+              receiptNo:  r.receiptNo,
+              vendorNo:   r.vendorNo,
+              vendorName: r.vendorName,
+              catalogued: r.catalogued,
+            })),
+          })
+        }
+        const c = rt.chosen
+        if (c?.vendorNo) {
+          return NextResponse.json({
+            vendorNo:   c.vendorNo,
+            vendorName: c.vendorName ?? null,
+            receiptNo:  c.receiptNo,
+            catalogued: c.catalogued,
+            syncedAt:   c.syncedAt?.toISOString() ?? null,
+            source:     "receipt-tote",
+            ambiguous:  false,
+          })
+        }
+      }
+
       // Primary: WarehouseTote (BC-synced, vendor lives here)
       const wt = await prisma.warehouseTote.findFirst({
         where:  { toteNo: { equals: tote, mode: "insensitive" } },
@@ -80,6 +115,22 @@ export async function GET(req: NextRequest) {
 
     // ── Receipt lookup ───────────────────────────────────────────────────────────
     if (receipt) {
+      // Same order: BC's receipt-tote rows first, WarehouseTote after.
+      const rr = await resolveReceipt(receipt)
+      if (rr?.vendorNo) {
+        if (rr.vendors.length > 1) {
+          return NextResponse.json({
+            vendorNo: null, vendorName: null, receiptNo: receipt,
+            catalogued: null, syncedAt: null, source: "receipt-tote",
+            ambiguous: true, vendors: rr.vendors,
+          })
+        }
+        return NextResponse.json({
+          vendorNo: rr.vendorNo, vendorName: rr.vendorName, receiptNo: receipt,
+          catalogued: null, syncedAt: null, source: "receipt-tote", ambiguous: false,
+        })
+      }
+
       // Primary: WarehouseTote (has receiptNo + vendor)
       const wt = await prisma.warehouseTote.findFirst({
         where:  { receiptNo: { equals: receipt, mode: "insensitive" } },

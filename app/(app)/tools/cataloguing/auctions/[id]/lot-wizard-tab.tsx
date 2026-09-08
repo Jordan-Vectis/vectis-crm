@@ -998,6 +998,9 @@ export default function LotWizardTab({
   // amber rather than painted in the same confident teal as a fresh one. All of it comes from
   // columns that were always in WarehouseTote and simply were not being returned.
   const [toteMeta,      setToteMeta]      = useState<{ catalogued: boolean | null; syncedAt: string | null; source: string | null; knownTote?: boolean } | null>(null)
+  // ⚠⚠ BC has this tote on MORE THAN ONE receipt. Nothing is filled in — the choice is shown and a
+  // person picks. Guessing here is what put four correct lots onto the wrong receipt on F109.
+  const [toteChoices,   setToteChoices]   = useState<{ receiptNo: string; vendorNo: string | null; vendorName: string | null; catalogued: boolean }[] | null>(null)
   // ⚠ Did a PERSON type this value, or did BC fill it in? Without this the app cannot tell a
   // cached guess from someone reading the paper docket, and every automatic refill silently wins.
   // Reset to false whenever the tote changes (which clears both fields anyway).
@@ -1045,6 +1048,7 @@ export default function LotWizardTab({
     setVendorTyped(false)
     setReceiptTyped(false)
     setRestoredFromLast(false)
+    setToteChoices(null)
   }
 
   // Look up vendor/receipt for a tote (or vendor for a receipt) from the BC-synced
@@ -1065,12 +1069,21 @@ export default function LotWizardTab({
       // A tote BC knows about but has not put on a receipt yet (a Totes_Excel shell). Record it
       // so the screen can say exactly that, instead of the old empty " ()" label with the
       // "not found" warning suppressed — which told the cataloguer nothing at all.
+      if (params.tote && data.ambiguous && Array.isArray(data.options) && data.options.length > 1) {
+        setToteChoices(data.options)
+        setToteInfo(null)
+        setToteInfoFor(params.tote)
+        setToteMeta({ catalogued: null, syncedAt: data.syncedAt ?? null, source: "receipt-tote" })
+        // Deliberately leaves vendor/receipt exactly as they are rather than filling one in.
+        return
+      }
       if (params.tote && data.source === "tote-shell") {
         setToteMeta({ catalogued: null, syncedAt: null, source: "tote-shell", knownTote: true })
         setToteInfoFor(params.tote)
         return
       }
       if (data.vendorNo) {
+        setToteChoices(null)
         setVendorHint(data.vendorName ?? null)
         // A tote that resolves in BC is "found" — record it so the false
         // "Tote not found in BC warehouse" warning doesn't show (incl. on prefill).
@@ -1156,7 +1169,7 @@ export default function LotWizardTab({
     setTote(""); setVendor(""); setReceipt("")
     setToteInfo(null); setToteResults([]); setToteOpen(false); setToteIgnored(false); setVendorHint(null)
     setToteInfoFor(""); setToteMeta(null); setVendorTyped(false); setReceiptTyped(false)
-    setRestoredFromLast(false)
+    setRestoredFromLast(false); setToteChoices(null)
     setStep1LengthWarning(false); setValidErr("")
   }
 
@@ -1834,7 +1847,7 @@ export default function LotWizardTab({
                       // selectTote / a successful blur lookup re-populate them for a real BC tote.
                       setTote(e.target.value); setVendor(""); setReceipt(""); setVendorHint(null)
                       setToteInfo(null); setToteInfoFor(""); setToteMeta(null); setToteIgnored(false)
-                      setVendorTyped(false); setReceiptTyped(false); setRestoredFromLast(false)
+                      setVendorTyped(false); setReceiptTyped(false); setRestoredFromLast(false); setToteChoices(null)
                       searchTotes(e.target.value); setStep1LengthWarning(false)
                     }}
                     // ⚠ select() matters because the box is ALWAYS full: a tote is always exactly
@@ -1867,7 +1880,7 @@ export default function LotWizardTab({
                         tell them apart — the receipt was already being fetched and simply never
                         shown. Touch target raised to ~44px on the tablets (house rule). */}
                     {toteResults.map((item: any) => (
-                      <button key={item.toteNo} type="button" onMouseDown={() => selectTote(item)}
+                      <button key={`${item.toteNo}|${item.receiptNo ?? ""}`} type="button" onMouseDown={() => selectTote(item)}
                         className={`w-full text-left hover:bg-gray-100 dark:hover:bg-[#2C2C2E] transition-colors border-b border-gray-200 dark:border-gray-800 last:border-0 ${tablet ? "px-4 py-3" : "px-3 py-2.5"}`}
                         style={{ minHeight: tablet ? 48 : 40, touchAction: tablet ? "manipulation" : undefined }}>
                         <span className={`font-mono text-[#2AB4A6] ${tablet ? "text-base" : "text-sm"}`}>{item.toteNo}</span>
@@ -1888,6 +1901,37 @@ export default function LotWizardTab({
                   we can point out immediately rather than at the end. */}
               {identityWarning("tote", tote) && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠ {identityWarning("tote", tote)}</p>
+              )}
+
+              {/* ⚠⚠ BC has this tote on more than one receipt. Show BOTH and let a person choose —
+                  vendor and receipt are left empty until they do. This is the case that used to be
+                  invisible: the tote-keyed cache kept whichever receipt the sync wrote last, so the
+                  screen gave one confident answer to a question with two. */}
+              {toteChoices && toteChoices.length > 1 && (
+                <div className="mt-2 rounded-lg border border-amber-500/60 bg-amber-500/10 px-3 py-3">
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                    BC has tote {tote} on {toteChoices.length} receipts. Which one is in front of you?
+                  </p>
+                  <div className="mt-2 flex flex-col gap-2">
+                    {toteChoices.map(o => (
+                      <button key={o.receiptNo} type="button"
+                        onClick={() => selectTote({ toteNo: tote, receiptNo: o.receiptNo, vendorNo: o.vendorNo, vendorName: o.vendorName, catalogued: o.catalogued })}
+                        style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 48 : 40 }}
+                        className={`w-full text-left rounded-lg border border-amber-600/40 bg-white/60 dark:bg-[#1C1C1E]/60 hover:border-amber-500 ${tablet ? "px-4 py-3" : "px-3 py-2"}`}>
+                        <span className={`font-semibold text-gray-900 dark:text-white ${tablet ? "text-base" : "text-sm"}`}>
+                          {o.vendorName || o.vendorNo || "No customer name"}
+                        </span>
+                        <span className="block font-mono text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                          {o.receiptNo}{o.vendorNo ? ` · ${o.vendorNo}` : ""}
+                          {o.catalogued ? " · already catalogued" : ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+                    Nothing has been filled in until you pick one.
+                  </p>
+                </div>
               )}
 
               {/* ⚠⚠ THE CUSTOMER NAME IS THE ONLY THING A PERSON CAN CHECK against the paperwork in
