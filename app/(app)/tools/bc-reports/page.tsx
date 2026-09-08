@@ -2217,11 +2217,11 @@ Where items are now in the warehouse — <span className="font-medium">Shipped</
 // so a blank country on a UK-shaped postcode is counted as United Kingdom. That is an assumption,
 // so the screen says how many rows it was applied to rather than burying it in the headline.
 
-type VendorRow = { code: string; name: string; isoNumeric: string | null; vendors: number; lots: number; worked: number; noAddress: number }
+type VendorRow = { code: string; name: string; isoNumeric: string | null; vendors: number; receipts: number; lots: number; vendorPct: number; receiptPct: number; lotPct: number; worked: number; noAddress: number }
 type VendorData = {
   ok: boolean
   rows: VendorRow[]
-  totals: { vendors: number; lots: number; countries: number; workedOut: number; unknown: number; notInBc: number; noAddress: number; unknownWithAddress: number }
+  totals: { vendors: number; receipts: number; lots: number; countries: number; workedOut: number; unknown: number; notInBc: number; noAddress: number; unknownWithAddress: number }
   reasons: { reason: string; count: number }[]
   unknownSample: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null; hasAddress: boolean }[]
   countryOptions?: { code: string; name: string }[]
@@ -2371,6 +2371,14 @@ function VendorLocationsTab() {
                 Stop
               </button>
             )}
+            <a href="/api/bc/vendor-locations/pdf"
+              className="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-amber-500 hover:text-amber-400 transition-colors">
+              PDF
+            </a>
+            <a href="/api/bc/vendor-locations/excel"
+              className="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-emerald-500 hover:text-emerald-400 transition-colors">
+              Excel
+            </a>
             {!!data?.totals.unknownWithAddress && (
               <button onClick={resolveMissing} disabled={syncing || resolving}
                 className="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors">
@@ -2405,11 +2413,12 @@ function VendorLocationsTab() {
 
       {data && !loading && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
               { n: data.totals.vendors,   l: "Vendors on receipts" },
-              { n: data.totals.countries, l: "Countries" },
+              { n: data.totals.receipts,  l: "Receipts" },
               { n: data.totals.lots,      l: "Lots sent in" },
+              { n: data.totals.countries, l: "Countries" },
               { n: data.totals.unknown,   l: "Country not worked out" },
             ].map(t => (
               <div key={t.l} className="bg-white dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-800 rounded-xl p-4">
@@ -2453,8 +2462,12 @@ function VendorLocationsTab() {
                 <tr className="bg-gray-100 dark:bg-[#1C1C1E]">
                   <th className="text-left px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Country</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Vendors</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs w-1/3">Share</th>
-                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Lots sent in</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">%</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Receipts</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">%</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Lots</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">%</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs w-1/5">Share</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Lots per vendor</th>
                 </tr>
               </thead>
@@ -2467,12 +2480,16 @@ function VendorLocationsTab() {
                       {r.code === "??" && r.noAddress > 0 && <span className="text-xs text-gray-500 ml-2">{r.noAddress.toLocaleString()} not in the vendor list</span>}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-900 dark:text-gray-100">{r.vendors.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-400">{r.vendorPct.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{r.receipts.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-400">{r.receiptPct.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{r.lots.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-400">{r.lotPct.toFixed(1)}%</td>
                     <td className="px-3 py-2">
                       <div className="h-2 rounded bg-gray-200 dark:bg-[#2C2C2E]">
                         <div className="h-2 rounded bg-amber-500" style={{ width: `${Math.round((r.vendors / maxVendors) * 100)}%` }} />
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{r.lots.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-400">
                       {r.vendors ? Math.round(r.lots / r.vendors).toLocaleString() : "—"}
                     </td>
