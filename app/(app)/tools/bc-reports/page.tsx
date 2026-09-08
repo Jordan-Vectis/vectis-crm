@@ -2224,6 +2224,7 @@ type VendorData = {
   totals: { vendors: number; lots: number; countries: number; workedOut: number; unknown: number; notInBc: number; noAddress: number; unknownWithAddress: number }
   reasons: { reason: string; count: number }[]
   unknownSample: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null; hasAddress: boolean }[]
+  countryOptions?: { code: string; name: string }[]
   vendorTableMissing: boolean
   vendorsKnown: number
   lastSync: string | null
@@ -2238,6 +2239,8 @@ function VendorLocationsTab() {
   const [progress, setProgress] = useState<string | null>(null)
   const [showUnknown, setShowUnknown] = useState(false)
   const cancelPull = useRef(false)
+  const [resolving, setResolving] = useState(false)
+  const cancelResolve = useRef(false)
 
   async function load() {
     setLoading(true); setError(null)
@@ -2299,6 +2302,51 @@ function VendorLocationsTab() {
     }
   }
 
+  // Ask the assistant to place the ones the address rules could not. One batch of 40 per request
+  // so the count moves (RULES §7b), and it only ever fills a gap — it can never overrule a country
+  // Business Central holds or one the rules worked out.
+  async function resolveMissing() {
+    setResolving(true); setSyncMsg(null); setProgress("Working out the missing countries…")
+    cancelResolve.current = false
+    let placed = 0, unsure = 0
+    try {
+      while (!cancelResolve.current) {
+        const res: Response = await fetch("/api/bc/vendor-locations/resolve", { method: "POST" })
+        const d: any = await res.json()
+        if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
+        placed += d.written ?? 0
+        unsure += d.refused ?? 0
+        setProgress(`Working out the missing countries — ${placed.toLocaleString()} placed, ${(d.remaining ?? 0).toLocaleString()} to go`)
+        if (d.done) break
+      }
+      setSyncMsg(`${placed.toLocaleString()} placed from the address.${unsure ? ` ${unsure.toLocaleString()} the assistant was not sure about, and those are left alone.` : ""}`)
+      await load()
+    } catch (e: any) {
+      setSyncMsg(`Stopped after placing ${placed.toLocaleString()}: ${e?.message ?? "unknown error"}`)
+      await load()
+    } finally {
+      setResolving(false); setProgress(null)
+    }
+  }
+
+  async function clearResolved() {
+    setSyncMsg(null)
+    const res = await fetch("/api/bc/vendor-locations/resolve", { method: "DELETE" })
+    const d   = await res.json()
+    setSyncMsg(res.ok ? `Cleared ${(d.cleared ?? 0).toLocaleString()} countries the assistant had worked out.` : (d.error ?? "Could not clear"))
+    await load()
+  }
+
+  async function setCountryByHand(vendorNo: string, country: string) {
+    const res = await fetch("/api/bc/vendor-locations/resolve", {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ vendorNo, country }),
+    })
+    if (!res.ok) { const d = await res.json(); setSyncMsg(d.error ?? "Could not save"); return }
+    await load()
+  }
+
   const maxVendors = Math.max(1, ...(data?.rows ?? []).map(r => r.vendors))
 
   return (
@@ -2317,10 +2365,16 @@ function VendorLocationsTab() {
               className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white transition-colors">
               {syncing ? "Pulling…" : "Pull vendor addresses from BC"}
             </button>
-            {syncing && (
-              <button onClick={() => { cancelPull.current = true }}
+            {(syncing || resolving) && (
+              <button onClick={() => { cancelPull.current = true; cancelResolve.current = true }}
                 className="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-red-500 hover:text-red-400 transition-colors">
                 Stop
+              </button>
+            )}
+            {!!data?.totals.unknownWithAddress && (
+              <button onClick={resolveMissing} disabled={syncing || resolving}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors">
+                {resolving ? "Working…" : `Work out the last ${data.totals.unknownWithAddress.toLocaleString()}`}
               </button>
             )}
           </div>
@@ -2430,9 +2484,14 @@ function VendorLocationsTab() {
 
           {data.unknownSample.length > 0 && (
             <div>
-              <button onClick={() => setShowUnknown(v => !v)} className="text-sm font-semibold text-amber-600 dark:text-amber-400">
-                {showUnknown ? "Hide" : "Show"} the {data.totals.unknown.toLocaleString()} vendors with no country
-              </button>
+              <div className="flex flex-wrap items-center gap-4">
+                <button onClick={() => setShowUnknown(v => !v)} className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                  {showUnknown ? "Hide" : "Show"} the {data.totals.unknown.toLocaleString()} vendors with no country
+                </button>
+                <button onClick={clearResolved} className="text-xs text-gray-500 hover:text-red-400 underline">
+                  Clear the countries the assistant worked out
+                </button>
+              </div>
               {showUnknown && (
                 <div className="mt-2 overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-xl">
                   <table className="w-full text-sm">
@@ -2443,6 +2502,7 @@ function VendorLocationsTab() {
                         <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Town</th>
                         <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">County</th>
                         <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Postcode</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Put it right</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2456,6 +2516,16 @@ function VendorLocationsTab() {
                           <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{u.city ?? "—"}</td>
                           <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{u.county ?? "—"}</td>
                           <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400">{u.postCode ?? "—"}</td>
+                          <td className="px-3 py-2">
+                            {/* Set it by hand where you know better than the rules or the assistant.
+                                Saved in the Hub only — Business Central is never written to. */}
+                            <select defaultValue="" aria-label={`Country for ${u.vendorNo}`}
+                              onChange={e => { if (e.target.value) void setCountryByHand(u.vendorNo, e.target.value) }}
+                              className="bg-gray-100 dark:bg-[#2C2C2E] border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs text-gray-700 dark:text-gray-300">
+                              <option value="">Set country…</option>
+                              {(data.countryOptions ?? []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                            </select>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

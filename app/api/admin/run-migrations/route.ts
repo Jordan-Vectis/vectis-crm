@@ -1963,6 +1963,12 @@ const MIGRATIONS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "BcVendor_vendorNo_key" ON "BcVendor"("vendorNo")`,
   `CREATE INDEX IF NOT EXISTS "BcVendor_countryCode_idx" ON "BcVendor"("countryCode")`,
   `CREATE INDEX IF NOT EXISTS "BcVendor_postCode_idx" ON "BcVendor"("postCode")`,
+
+  // A country the HUB worked out for a vendor BC has none for — AI or set by hand on the report.
+  `ALTER TABLE "BcVendor" ADD COLUMN IF NOT EXISTS "resolvedCountry" TEXT`,
+  `ALTER TABLE "BcVendor" ADD COLUMN IF NOT EXISTS "resolvedBy"      TEXT`,
+  `ALTER TABLE "BcVendor" ADD COLUMN IF NOT EXISTS "resolvedNote"    TEXT`,
+  `ALTER TABLE "BcVendor" ADD COLUMN IF NOT EXISTS "resolvedAt"      TIMESTAMP(3)`,
   `CREATE TABLE IF NOT EXISTS "ArchiveJob" (
     "id"        TEXT NOT NULL,
     "cursor"    INTEGER NOT NULL DEFAULT 0,

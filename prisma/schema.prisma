@@ -1653,6 +1653,17 @@ model BcVendor {
   source       String?
   syncedAt     DateTime  @default(now())
 
+  /// ⚠ A country the HUB worked out, never something Business Central said. Written by the
+  /// "work out the missing countries" button (AI) or by hand on the report. It is used only where
+  /// BC has no country AND the address rules could not place them, and the report always shows it
+  /// as worked out rather than held. Clearing it is one button.
+  resolvedCountry String?
+  /// "ai" | "manual" — how it was decided, so an odd-looking country can be traced and undone.
+  resolvedBy      String?
+  /// What the model or the person gave as the reason. Shown on the row.
+  resolvedNote    String?
+  resolvedAt      DateTime?
+
   @@index([countryCode])
   @@index([postCode])
 }

@@ -43,11 +43,20 @@ export async function GET() {
       lotsByVendor.set(key, (lotsByVendor.get(key) ?? 0) + row._count._all)
     }
 
-    let vendors: { vendorNo: string; name: string | null; postCode: string | null; countryCode: string | null; city: string | null; county: string | null }[] = []
+    type VendorRow = {
+      vendorNo: string; name: string | null; postCode: string | null; countryCode: string | null
+      city: string | null; county: string | null; address: string | null; address2: string | null
+      resolvedCountry: string | null; resolvedBy: string | null; resolvedNote: string | null
+    }
+    let vendors: VendorRow[] = []
     let vendorTableMissing = false
     try {
       vendors = await prisma.bcVendor.findMany({
-        select: { vendorNo: true, name: true, postCode: true, countryCode: true, city: true, county: true },
+        select: {
+          vendorNo: true, name: true, postCode: true, countryCode: true, city: true, county: true,
+          address: true, address2: true,
+          resolvedCountry: true, resolvedBy: true, resolvedNote: true,
+        },
       })
     } catch {
       vendorTableMissing = true   // pre-migration, or never synced
@@ -77,8 +86,16 @@ export async function GET() {
       // ⚠ BC holds NO country for any vendor (measured: 28,998 pulled, 0 with one), so this is
       // worked out from the address. Every answer carries the rule that decided it, and anything
       // the rules cannot place stays Not known rather than being folded into the UK.
-      const guess = v ? guessCountry(v) : { code: null, reason: "Not in the vendor list" }
-      const code  = guess.code
+      let guess = v ? guessCountry(v) : { code: null as string | null, reason: "Not in the vendor list" }
+      // ⚠ A country the HUB worked out is used ONLY where BC has none and the rules could not
+      // place them, so it can never override something Business Central actually said.
+      if (!guess.code && v?.resolvedCountry) {
+        guess = {
+          code:   v.resolvedCountry,
+          reason: v.resolvedBy === "manual" ? "Set by hand" : "Worked out by the assistant",
+        }
+      }
+      const code = guess.code
 
       if (!code) {
         unknown++
@@ -136,6 +153,8 @@ export async function GET() {
         .sort((a, b) => Number(b.hasAddress) - Number(a.hasAddress) || a.vendorNo.localeCompare(b.vendorNo))
         .slice(0, 500),
       reasons: [...reasons.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
+      // For the per-row picker on the leftovers list.
+      countryOptions: Object.entries(COUNTRY_NAMES).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name)),
       vendorTableMissing,
       vendorsKnown: vendors.length,
       lastSync: lastSync?.completedAt?.toISOString() ?? null,
