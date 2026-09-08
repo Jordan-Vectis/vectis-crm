@@ -65,9 +65,9 @@ export async function GET() {
       return b
     }
 
-    let totalVendors = 0, totalLots = 0, assumedUk = 0, unknown = 0, notInBc = 0
+    let totalVendors = 0, totalLots = 0, assumedUk = 0, unknown = 0, notInBc = 0, noAddress = 0
     const reasons = new Map<string, number>()
-    const unknownSample: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null }[] = []
+    const unknownRows: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null; hasAddress: boolean }[] = []
 
     for (const [vendorNo, lots] of lotsByVendor) {
       totalVendors++
@@ -82,19 +82,24 @@ export async function GET() {
 
       if (!code) {
         unknown++
+        // ⚠ Two very different cases, and lumping them together makes the report look worse than
+        // it is. Someone with a town and a postcode we could not place is worth a look. Someone
+        // with no address in BC at all can never be placed by any rule, and saying so is the
+        // honest answer rather than leaving it looking like something to fix.
+        const hasAnyAddress = !!(v && ((v.city ?? "").trim() || (v.county ?? "").trim() || (v.postCode ?? "").trim()))
+        if (!hasAnyAddress) noAddress++
         if (!v) notInBc++
         const b = bucket("??", "Not known")
         b.vendors++; b.lots += lots
-        if (!v) b.noAddress++
-        if (unknownSample.length < 500) {
-          unknownSample.push({
-            vendorNo,
-            name:     v?.name ?? null,
-            city:     v?.city ?? null,
-            county:   v?.county ?? null,
-            postCode: v?.postCode ?? null,
-          })
-        }
+        if (!hasAnyAddress) b.noAddress++
+        unknownRows.push({
+          vendorNo,
+          name:     v?.name ?? null,
+          city:     v?.city ?? null,
+          county:   v?.county ?? null,
+          postCode: v?.postCode ?? null,
+          hasAddress: hasAnyAddress,
+        })
         continue
       }
 
@@ -124,8 +129,12 @@ export async function GET() {
         workedOut: assumedUk,
         unknown,
         notInBc,
+        noAddress,
+        unknownWithAddress: unknown - noAddress,
       },
-      unknownSample,
+      unknownSample: unknownRows
+        .sort((a, b) => Number(b.hasAddress) - Number(a.hasAddress) || a.vendorNo.localeCompare(b.vendorNo))
+        .slice(0, 500),
       reasons: [...reasons.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
       vendorTableMissing,
       vendorsKnown: vendors.length,

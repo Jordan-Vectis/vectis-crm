@@ -34,7 +34,10 @@ export type VendorAddress = {
 }
 
 const up = (v: string | null | undefined) => (v ?? "").trim().toUpperCase()
-const squash = (v: string | null | undefined) => up(v).replace(/\s+/g, "")
+// ⚠ Strips EVERY separator, not just spaces. BC postcodes are hand-typed and come through as
+// "TS6-6LB" and "TS6 6LB" and "ts66lb". A hyphen there sent a Middlesbrough vendor — five miles
+// down the road — into "country not known". It also normalises US ZIP+4 ("11561-5012").
+const squash = (v: string | null | undefined) => up(v).replace(/[^A-Z0-9]/g, "")
 
 /** UK: AA9A 9AA and friends. The last two characters are always letters, which is what keeps
  *  Canadian codes (which end in a digit) out. */

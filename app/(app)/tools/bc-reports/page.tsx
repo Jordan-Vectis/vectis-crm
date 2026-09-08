@@ -2221,9 +2221,9 @@ type VendorRow = { code: string; name: string; isoNumeric: string | null; vendor
 type VendorData = {
   ok: boolean
   rows: VendorRow[]
-  totals: { vendors: number; lots: number; countries: number; workedOut: number; unknown: number; notInBc: number }
+  totals: { vendors: number; lots: number; countries: number; workedOut: number; unknown: number; notInBc: number; noAddress: number; unknownWithAddress: number }
   reasons: { reason: string; count: number }[]
-  unknownSample: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null }[]
+  unknownSample: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null; hasAddress: boolean }[]
   vendorTableMissing: boolean
   vendorsKnown: number
   lastSync: string | null
@@ -2369,8 +2369,12 @@ function VendorLocationsTab() {
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1C1C1E] px-4 py-3">
               <p className="text-sm text-gray-800 dark:text-gray-200">
                 <strong>Business Central holds no country for any vendor</strong>, so the country is worked out from the
-                address. {data.totals.workedOut.toLocaleString()} were placed this way and{" "}
-                {data.totals.unknown.toLocaleString()} could not be, and are listed below rather than counted as UK.
+                address. {data.totals.workedOut.toLocaleString()} were placed this way.{" "}
+                {data.totals.unknown.toLocaleString()} could not be:{" "}
+                <strong>{data.totals.noAddress.toLocaleString()}</strong> have no address in Business Central at all,
+                so no rule could ever place them, and{" "}
+                <strong>{data.totals.unknownWithAddress.toLocaleString()}</strong> have an address we could not match.
+                Both are listed below rather than counted as UK.
               </p>
               {data.reasons.length > 0 && (
                 <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-600 dark:text-gray-400">
@@ -2444,7 +2448,10 @@ function VendorLocationsTab() {
                     <tbody>
                       {data.unknownSample.map(u => (
                         <tr key={u.vendorNo} className="border-t border-gray-200 dark:border-gray-800">
-                          <td className="px-3 py-2 font-mono text-gray-900 dark:text-gray-100">{u.vendorNo}</td>
+                          <td className="px-3 py-2 font-mono text-gray-900 dark:text-gray-100">
+                            {u.vendorNo}
+                            {!u.hasAddress && <span className="ml-2 text-xs font-sans text-gray-500">no address in BC</span>}
+                          </td>
                           <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{u.name ?? "—"}</td>
                           <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{u.city ?? "—"}</td>
                           <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{u.county ?? "—"}</td>
