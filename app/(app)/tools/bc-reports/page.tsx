@@ -2220,8 +2220,9 @@ Where items are now in the warehouse — <span className="font-medium">Shipped</
 type VendorRow = { code: string; name: string; isoNumeric: string | null; vendors: number; receipts: number; lots: number; vendorPct: number; receiptPct: number; lotPct: number; worked: number; noAddress: number }
 type VendorData = {
   ok: boolean
-  range: { from: string | null; to: string | null }
+  range: { from: string | null; to: string | null; basis: string }
   undated: number
+  coverage: { auction: number; catalogued: number; received: number; total: number }
   rows: VendorRow[]
   totals: { vendors: number; receipts: number; lots: number; countries: number; workedOut: number; unknown: number; notInBc: number; noAddress: number; unknownWithAddress: number }
   reasons: { reason: string; count: number }[]
@@ -2243,6 +2244,9 @@ function VendorLocationsTab() {
   // Blank = everything we hold, which is how the report behaved before the filter existed.
   const [from, setFrom] = useState("")
   const [to,   setTo]   = useState("")
+  // ⚠ Defaults to the sale date. The goods-received date looked like the right answer and is empty
+  // for 220,146 of 221,274 lots — BC does not fill it. The coverage figures below say so on screen.
+  const [basis, setBasis] = useState<"auction" | "catalogued" | "received">("auction")
   const cancelPull = useRef(false)
   const [resolving, setResolving] = useState(false)
   const cancelResolve = useRef(false)
@@ -2251,6 +2255,7 @@ function VendorLocationsTab() {
     const p = new URLSearchParams()
     if (from) p.set("from", from)
     if (to)   p.set("to", to)
+    if (basis !== "auction") p.set("basis", basis)
     return p.toString() ? `?${p.toString()}` : ""
   }
 
@@ -2268,7 +2273,7 @@ function VendorLocationsTab() {
     }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { void load() }, [from, to])
+  useEffect(() => { void load() }, [from, to, basis])
 
   // ⚠ The CLIENT drives the paging, one page per request, so the count on screen actually moves.
   // A single long request could only ever say "working…", which is indistinguishable from a hang —
@@ -2458,7 +2463,16 @@ function VendorLocationsTab() {
         </div>
         <div className="flex items-end gap-2">
           <label className="text-xs text-gray-500">
-            <span className="block mb-1">Goods received from</span>
+            <span className="block mb-1">Date to use</span>
+            <select value={basis} onChange={e => setBasis(e.target.value as any)}
+              className="bg-gray-100 dark:bg-[#1C1C1E] border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300">
+              <option value="auction">Date sold</option>
+              <option value="catalogued">Date catalogued</option>
+              <option value="received">Date goods received</option>
+            </select>
+          </label>
+          <label className="text-xs text-gray-500">
+            <span className="block mb-1">From</span>
             <input type="date" value={from} onChange={e => setFrom(e.target.value)}
               className="bg-gray-100 dark:bg-[#1C1C1E] border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300" />
           </label>
@@ -2477,9 +2491,19 @@ function VendorLocationsTab() {
 
       {data && !loading && (
         <>
+          {/* ⚠ Coverage for all three, always. This is what made the empty goods-received date
+              obvious instead of the report just showing zeros. */}
+          <p className="text-xs text-gray-600 dark:text-gray-400">
+            Business Central has a date for:{" "}
+            <span className={data.coverage.auction ? "" : "text-amber-500"}>{data.coverage.auction.toLocaleString()} sold</span>,{" "}
+            <span className={data.coverage.catalogued ? "" : "text-amber-500"}>{data.coverage.catalogued.toLocaleString()} catalogued</span>,{" "}
+            <span className={data.coverage.received ? "" : "text-amber-500"}>{data.coverage.received.toLocaleString()} goods received</span>
+            {" "}of {data.coverage.total.toLocaleString()} lots.
+          </p>
           {!!data.undated && (from || to) && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              {data.undated.toLocaleString()} lots have no goods received date in Business Central, so they are not in these figures.
+              {data.undated.toLocaleString()} lots have no date of that kind in Business Central, so they are not in these figures.
+              {data.undated > data.coverage.total / 2 && " Try a different date above."}
             </p>
           )}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

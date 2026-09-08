@@ -35,13 +35,18 @@ export type VendorLeftover = {
   hasAddress: boolean
 }
 
-export type VendorRange = { from?: string | null; to?: string | null }
+/** Which date the period means. See the note above computeVendorLocations. */
+export type DateBasis = "auction" | "catalogued" | "received"
+
+export type VendorRange = { from?: string | null; to?: string | null; basis?: DateBasis | null }
 
 export type VendorLocations = {
   /** The window this was worked out for. Both null means everything we hold. */
-  range:  { from: string | null; to: string | null }
-  /** Lots BC has no goods-received date for. They cannot be in a dated report — shown, not hidden. */
+  range:  { from: string | null; to: string | null; basis: DateBasis }
+  /** Lots with no date of the chosen kind. They cannot be in a dated report — shown, not hidden. */
   undated: number
+  /** How many lots BC actually holds each date for, so it is obvious which one is usable. */
+  coverage: { auction: number; catalogued: number; received: number; total: number }
   rows:   VendorCountryRow[]
   totals: {
     vendors: number; receipts: number; lots: number; countries: number; workedOut: number
@@ -54,13 +59,20 @@ export type VendorLocations = {
   lastSync:           string | null
 }
 
-// ⚠ THE DATE IS **EVA_GoodsReceivedDate** — when the goods came in. Not bcModifiedAt, which is
-// just when the row was last touched by a sync and would drop a lot from 2019 into "last month"
-// (the recurring date-window bug this codebase has been bitten by before). Not the auction date
-// either: this report is about consignors sending things in, not about when they sold.
+// ⚠⚠ WHICH DATE THE PERIOD MEANS, AND WHY IT IS A CHOICE.
+// The obvious answer was the goods-received date, and it was wrong: measured on live data
+// 2026-09-08, **220,146 of 221,274 lots have no EVA_GoodsReceivedDate** — we read the field, BC
+// simply does not fill it. So the report offers the three dates BC does hold and reports how many
+// lots carry each, rather than silently returning zero:
+//   • auction    — EVA_AuctionDate, when the lot sold. Default. An ISO yyyy-mm-dd STRING, so
+//                  lexicographic gte/lte is chronological (the same trick the shipping report uses).
+//   • catalogued — EVA_CataloguedDateTime, when we processed it.
+//   • received   — EVA_GoodsReceivedDate, when it arrived. Correct in principle, empty in practice.
+// ⚠ NEVER bcModifiedAt. That is just when a row was last touched by a sync, and it would drop a lot
+// from 2019 into "last month" — the recurring date-window bug this codebase has been bitten by.
 //
-// Boundaries are built in UTC on purpose. A goods-received date is a DATE, stored as midnight, and
-// building the window from the server's own clock would move it by an hour under BST.
+// Boundaries for the real DateTime fields are built in UTC on purpose: those dates are stored as
+// midnight, and building the window from the server's own clock moves it an hour under BST.
 function dayStartUtc(ymd: string): Date {
   const [y, m, d] = ymd.split("-").map(Number)
   return new Date(Date.UTC(y, (m || 1) - 1, d || 1, 0, 0, 0, 0))
@@ -71,18 +83,32 @@ function dayEndUtc(ymd: string): Date {
 }
 
 export async function computeVendorLocations(range?: VendorRange): Promise<VendorLocations> {
-  const from = (range?.from ?? "").trim() || null
-  const to   = (range?.to   ?? "").trim() || null
+  const from  = (range?.from ?? "").trim() || null
+  const to    = (range?.to   ?? "").trim() || null
+  const basis: DateBasis = range?.basis ?? "auction"
   const dated = !!(from || to)
 
-  const whereDate = dated
-    ? {
-        goodsReceivedDate: {
+  let whereDate: Record<string, any> = {}
+  if (dated) {
+    if (basis === "auction") {
+      // An ISO yyyy-mm-dd string. The T23:59:59 upper bound is inclusive whether or not BC put a
+      // time on it.
+      whereDate = {
+        auctionDate: {
+          ...(from ? { gte: from } : {}),
+          ...(to   ? { lte: `${to}T23:59:59.999Z` } : {}),
+        },
+      }
+    } else {
+      const field = basis === "catalogued" ? "cataloguedAt" : "goodsReceivedDate"
+      whereDate = {
+        [field]: {
           ...(from ? { gte: dayStartUtc(from) } : {}),
           ...(to   ? { lte: dayEndUtc(to) }     : {}),
         },
       }
-    : {}
+    }
+  }
   // ⚠ Grouped by vendor AND receipt in one pass, so a single query gives both figures: the lots
   // are the summed counts, and the receipts are the number of rows. Counting them separately would
   // be two scans of a 220,000-row table for the same answer.
@@ -92,13 +118,26 @@ export async function computeVendorLocations(range?: VendorRange): Promise<Vendo
     _count: { _all: true },
   })
 
-  // How many lots BC has no goods-received date for. A dated report cannot include them, and
-  // saying so is the difference between a filtered report and a wrong one.
-  const undated = dated
-    ? await prisma.warehouseItem.count({
-        where: { vendorNo: { not: null }, receiptNo: { not: null }, goodsReceivedDate: null },
-      })
-    : 0
+  // How many lots BC actually holds each date for. Counting all three every time is what makes a
+  // useless filter obvious instead of silently returning nothing — which is exactly what the
+  // goods-received date did.
+  const onReceipts = { vendorNo: { not: null }, receiptNo: { not: null } } as const
+  const [total, noAuction, noCatalogued, noReceived] = await Promise.all([
+    prisma.warehouseItem.count({ where: onReceipts }),
+    prisma.warehouseItem.count({ where: { ...onReceipts, OR: [{ auctionDate: null }, { auctionDate: "" }] } }),
+    prisma.warehouseItem.count({ where: { ...onReceipts, cataloguedAt: null } }),
+    prisma.warehouseItem.count({ where: { ...onReceipts, goodsReceivedDate: null } }),
+  ])
+  const coverage = {
+    total,
+    auction:    total - noAuction,
+    catalogued: total - noCatalogued,
+    received:   total - noReceived,
+  }
+  const undated = !dated ? 0
+    : basis === "auction" ? noAuction
+    : basis === "catalogued" ? noCatalogued
+    : noReceived
 
   const lotsByVendor     = new Map<string, number>()
   const receiptsByVendor = new Map<string, number>()
@@ -210,8 +249,9 @@ export async function computeVendorLocations(range?: VendorRange): Promise<Vendo
   })
 
   return {
-    range: { from, to },
+    range: { from, to, basis },
     undated,
+    coverage,
     rows,
     totals: {
       vendors:   totalVendors,

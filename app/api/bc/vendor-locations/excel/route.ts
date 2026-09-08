@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
     const { searchParams } = req.nextUrl
-    const d = await computeVendorLocations({ from: searchParams.get("from"), to: searchParams.get("to") })
+    const d = await computeVendorLocations({ from: searchParams.get("from"), to: searchParams.get("to"), basis: (searchParams.get("basis") as any) || null })
     const wb = XLSX.utils.book_new()
 
     // ── Sheet 1: by country ──────────────────────────────────────────────────
@@ -66,8 +66,8 @@ export async function GET(req: NextRequest) {
 
     // ── Sheet 3: how it was decided ──────────────────────────────────────────
     const s3 = XLSX.utils.json_to_sheet([
-      { "How the country was decided": "Period", "Vendors": (d.range.from || d.range.to ? `Goods received ${d.range.from ?? "start"} to ${d.range.to ?? "today"}` : "Everything we hold") as any },
-      ...(d.undated ? [{ "How the country was decided": "Lots with no goods received date in BC (not in a dated report)", "Vendors": d.undated }] : []),
+      { "How the country was decided": "Period", "Vendors": (d.range.from || d.range.to ? `${d.range.basis === "auction" ? "Sold" : d.range.basis === "catalogued" ? "Catalogued" : "Goods received"} ${d.range.from ?? "start"} to ${d.range.to ?? "today"}` : "Everything we hold") as any },
+      ...(d.undated ? [{ "How the country was decided": "Lots with no date of that kind in BC (not in a dated report)", "Vendors": d.undated }] : []),
       ...d.reasons.map(r => ({ "How the country was decided": r.reason, "Vendors": r.count })),
       { "How the country was decided": "Could not be decided", "Vendors": d.totals.unknown },
     ])

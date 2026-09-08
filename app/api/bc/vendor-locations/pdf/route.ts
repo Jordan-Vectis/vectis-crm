@@ -84,8 +84,9 @@ async function buildPdf(d: VendorLocations): Promise<Uint8Array> {
   const logoW = logoH * (fonts.logo.width / fonts.logo.height)
   cur.page.drawImage(fonts.logo, { x: MARGIN, y: cur.y - logoH, width: logoW, height: logoH })
   drawRight(cur.page, "Vendor Locations", RIGHT, cur.y - 12, 15, fonts.helvB, BLACK)
+  const basisWord = d.range.basis === "auction" ? "Sold" : d.range.basis === "catalogued" ? "Catalogued" : "Goods received"
   const period = d.range.from || d.range.to
-    ? `Goods received ${d.range.from ?? "the start"} to ${d.range.to ?? "today"}`
+    ? `${basisWord} ${d.range.from ?? "the start"} to ${d.range.to ?? "today"}`
     : "Everything we hold"
   drawRight(cur.page, period, RIGHT, cur.y - 28, 10, fonts.helv, GREY)
   drawRight(cur.page, `Printed ${printed}`, RIGHT, cur.y - 41, 8, fonts.helv, GREY)
@@ -114,7 +115,7 @@ async function buildPdf(d: VendorLocations): Promise<Uint8Array> {
     + `${num(d.totals.noAddress)} have no address in Business Central at all, and `
     + `${num(d.totals.unknownWithAddress)} have an address that could not be matched. `
     + `Those are listed at the end rather than counted as United Kingdom.`
-    + (d.undated ? ` ${num(d.undated)} lots have no goods received date in Business Central, so they cannot appear in a dated report.` : "")
+    + (d.undated ? ` ${num(d.undated)} lots have no ${basisWord.toLowerCase()} date in Business Central, so they cannot appear in a dated report.` : "")
   for (const ln of wrapLines(note, fonts.helv, 8.5, RIGHT - MARGIN)) {
     cur.page.drawText(ln, { x: MARGIN, y: cur.y, size: 8.5, font: fonts.helv, color: GREY })
     cur.y -= 11
@@ -254,7 +255,7 @@ export async function GET(req: NextRequest) {
     if (!session) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
     const { searchParams } = req.nextUrl
-    const d = await computeVendorLocations({ from: searchParams.get("from"), to: searchParams.get("to") })
+    const d = await computeVendorLocations({ from: searchParams.get("from"), to: searchParams.get("to"), basis: (searchParams.get("basis") as any) || null })
     const bytes = await buildPdf(d)
     const stamp = new Date().toISOString().slice(0, 10)
 

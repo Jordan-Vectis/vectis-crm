@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
     const d = await computeVendorLocations({
       from: searchParams.get("from"),
       to:   searchParams.get("to"),
+      basis: (searchParams.get("basis") as any) || null,
     })
 
     return NextResponse.json({
