@@ -12,6 +12,7 @@ import { useCategoryMap } from "@/lib/use-category-map"
 import { buildCondition as buildConditionStr, type BoxPrefixMode } from "@/lib/condition"
 import { useConditionWordings } from "@/lib/use-condition-wordings"
 import { identityWarning, checkIdentityTrio } from "@/lib/lot-identity"
+import { describeActionError } from "@/lib/action-error"
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -908,6 +909,14 @@ export default function LotWizardTab({
   // True while the trio on screen is the one carried over from last time rather than one chosen
   // for this batch. Cleared as soon as the tote is touched or the fields are cleared.
   const [restoredFromLast, setRestoredFromLast] = useState(false)
+  // The "remember these numbers for this sale" write failed. Shown, not swallowed.
+  const [rememberFailed,   setRememberFailed]   = useState(false)
+  // ⚠⚠ The app was updated while this page was open, so its Save button is talking to a build the
+  // server no longer has. Every other screen that hits this reloads itself; the wizard had NOTHING,
+  // so the iPad showed Next's redacted "an error occurred" paragraph and kept failing until someone
+  // reloaded it by hand. We do NOT auto-reload here: the lot on screen, including photos already
+  // taken, would go with it. Say plainly what happened, that nothing was saved, and let them choose.
+  const [staleDeploy,      setStaleDeploy]      = useState(false)
 
   // ⚠ These are remembered on the USER, not the sale, so they follow the person to a different
   // sale and a different iPad. Restoring them silently is how a batch gets catalogued under
@@ -915,7 +924,7 @@ export default function LotWizardTab({
   // actually chosen. The hintOnly lookup still labels them, and the warnings under Vendor/Receipt
   // compare the restored values against what BC says for that tote NOW.
   useEffect(() => {
-    getLastLotFields().then(f => {
+    getLastLotFields(auctionId).then(f => {
       let filled = false
       setVendor(v => { if (!v && f.vendor) filled = true; return v || f.vendor })
       setTote(t => t || f.tote)
@@ -1169,7 +1178,7 @@ export default function LotWizardTab({
     setTote(""); setVendor(""); setReceipt("")
     setToteInfo(null); setToteResults([]); setToteOpen(false); setToteIgnored(false); setVendorHint(null)
     setToteInfoFor(""); setToteMeta(null); setVendorTyped(false); setReceiptTyped(false)
-    setRestoredFromLast(false); setToteChoices(null)
+    setRestoredFromLast(false); setToteChoices(null); setRememberFailed(false)
     setStep1LengthWarning(false); setValidErr("")
   }
 
@@ -1362,7 +1371,9 @@ export default function LotWizardTab({
       try {
         res = await createLot(auctionId, fd)
       } catch (e: any) {
-        setSaveStatus(`⚠ ${e?.message ?? "Failed to save lot"}`)
+        const info = describeActionError(e)
+        if (info.staleDeploy) { setStaleDeploy(true); setSaveStatus("") ; return }
+        setSaveStatus(`⚠ ${info.message}${info.digest ? ` (ref ${info.digest})` : ""}`)
         return
       }
       // Server idle gate: this lot won't be created until the working-hours gap
@@ -1397,7 +1408,13 @@ export default function LotWizardTab({
       lastSavedAt.current = Date.now()
       saveLastBarcode(barcode)
       // Remember Tote / Vendor / Receipt on the user's account for next time (any device)
-      saveLastLotFields({ vendor, tote, receipt }).catch(() => {})
+      // ⚠ Was fire-and-forget with `.catch(() => {})`. When it failed — a stale deploy, a dropped
+      // connection, a backgrounded iPad tab — nothing was recorded and the next visit restored
+      // older numbers with no sign anything had gone wrong. Scoped to THIS sale now, and a failure
+      // says so on screen instead of vanishing.
+      saveLastLotFields({ vendor, tote, receipt, auctionId })
+        .then(r => { if (!r?.ok) setRememberFailed(true) })
+        .catch(() => setRememberFailed(true))
       setSaveStatus(`✓ Lot #${n} saved — ${vendor} / ${tote} / ${barcode}`)
       // Tote / Vendor / Receipt stay locked for the whole batch — leave them (and the
       // vendor name hint) as-is so the next lot keeps the same identity.
@@ -1721,6 +1738,45 @@ export default function LotWizardTab({
           )}
         </div>
       </div>
+
+      {/* ⚠⚠ The app was updated while this page was open. Their Save is talking to a build the
+          server no longer has, so it will keep failing until this tab is reloaded — which is what
+          left iPads stuck showing "an error occurred" and quietly not recording anything.
+          Deliberately NOT an automatic reload: the lot on screen and any photos already taken
+          would go with it. Say what happened, say nothing was saved, let them choose. */}
+      {staleDeploy && (
+        <div className="mb-4 rounded-xl border border-amber-500 bg-amber-500/10 px-4 py-3">
+          <p className="text-sm font-bold text-amber-700 dark:text-amber-300">The app has been updated</p>
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+            This lot was <strong>not saved</strong>. This page is the old version and cannot save until it is reloaded.
+            Reloading clears what is on screen, including any photos you have taken but not saved, so write down
+            anything you need first.
+          </p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button type="button" onClick={() => window.location.reload()}
+              style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 44 : undefined }}
+              className={`font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-white ${tablet ? "px-5 py-3 text-base" : "px-4 py-2 text-sm"}`}>
+              Reload now
+            </button>
+            <button type="button" onClick={() => setStaleDeploy(false)}
+              style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 44 : undefined }}
+              className={`font-semibold rounded-lg border border-amber-600/50 text-amber-700 dark:text-amber-200 hover:bg-amber-500/20 ${tablet ? "px-5 py-3 text-base" : "px-4 py-2 text-sm"}`}>
+              Not yet
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* The lot saved, but remembering its tote/vendor/receipt for this sale did not. Harmless to
+          the lot; it means the next visit would offer older numbers. Worth one line rather than the
+          silence that made this hard to pin down in the first place. */}
+      {rememberFailed && !staleDeploy && (
+        <div className="mb-4 rounded-xl border border-amber-500/60 bg-amber-500/10 px-4 py-2.5">
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            Your lot saved. The tote and vendor could not be remembered for next time, so check them when you come back.
+          </p>
+        </div>
+      )}
 
       {/* ── Who this batch belongs to — visible on EVERY step ────────────────────
           It used to appear only on step 2, as 11px grey text, so from the key points onwards

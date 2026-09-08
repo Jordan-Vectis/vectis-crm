@@ -1929,6 +1929,21 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS "WarehouseReceiptTote_toteNo_idx" ON "WarehouseReceiptTote"("toteNo")`,
   `CREATE INDEX IF NOT EXISTS "WarehouseReceiptTote_receiptNo_idx" ON "WarehouseReceiptTote"("receiptNo")`,
   `CREATE INDEX IF NOT EXISTS "WarehouseReceiptTote_toteNo_catalogued_idx" ON "WarehouseReceiptTote"("toteNo", "catalogued")`,
+
+  // The tote/vendor/receipt a cataloguer was last on, per SALE. Was three columns on User — one
+  // slot per person shared by every sale, tab and iPad, so whichever saved last overwrote the rest.
+  `CREATE TABLE IF NOT EXISTS "CatalogueLastBatch" (
+    "id"        TEXT NOT NULL,
+    "userId"    TEXT NOT NULL,
+    "auctionId" TEXT NOT NULL,
+    "tote"      TEXT,
+    "vendor"    TEXT,
+    "receipt"   TEXT,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "CatalogueLastBatch_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "CatalogueLastBatch_userId_auctionId_key" ON "CatalogueLastBatch"("userId", "auctionId")`,
+  `CREATE INDEX IF NOT EXISTS "CatalogueLastBatch_userId_idx" ON "CatalogueLastBatch"("userId")`,
   `CREATE TABLE IF NOT EXISTS "ArchiveJob" (
     "id"        TEXT NOT NULL,
     "cursor"    INTEGER NOT NULL DEFAULT 0,
