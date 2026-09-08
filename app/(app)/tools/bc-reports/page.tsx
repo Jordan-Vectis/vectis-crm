@@ -69,7 +69,7 @@ type ShipData = {
   }
 }
 
-type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "shipping"
+type Report = "cataloguing" | "packing" | "warehouse" | "explorer" | "shipping" | "vendors"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -2208,6 +2208,209 @@ Where items are now in the warehouse — <span className="font-medium">Shipped</
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Vendor Locations ─────────────────────────────────────────────────────────
+// Where our consignors are based, by country, and how many lots each country sends.
+//
+// "Vendors" here is the C numbers that actually appear on receipts, not every vendor record in BC.
+//
+// ⚠ Business Central leaves the country blank on home-country records, which is most of the book,
+// so a blank country on a UK-shaped postcode is counted as United Kingdom. That is an assumption,
+// so the screen says how many rows it was applied to rather than burying it in the headline.
+
+type VendorRow = { code: string; name: string; isoNumeric: string | null; vendors: number; lots: number; assumedUk: number; noAddress: number }
+type VendorData = {
+  ok: boolean
+  rows: VendorRow[]
+  totals: { vendors: number; lots: number; countries: number; assumedUk: number; unknown: number; notInBc: number }
+  unknownSample: { vendorNo: string; name: string | null; city: string | null; county: string | null; postCode: string | null }[]
+  vendorTableMissing: boolean
+  vendorsKnown: number
+  lastSync: string | null
+}
+
+function VendorLocationsTab() {
+  const [data,    setData]    = useState<VendorData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [showUnknown, setShowUnknown] = useState(false)
+
+  async function load() {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch("/api/bc/vendor-locations", { cache: "no-store" })
+      const d   = await res.json()
+      if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
+      setData(d)
+    } catch (e: any) {
+      setError(e?.message ?? "Could not load the report")
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(() => { void load() }, [])
+
+  async function pullVendors() {
+    setSyncing(true); setSyncMsg(null)
+    try {
+      const res = await fetch("/api/warehouse/sync/vendors", { method: "POST" })
+      const d   = await res.json()
+      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`)
+      setSyncMsg(`Pulled ${(d.itemsProcessed ?? 0).toLocaleString()} vendors from Business Central, ${(d.withCountry ?? 0).toLocaleString()} with a country on file.`)
+      await load()
+    } catch (e: any) {
+      setSyncMsg(`Could not pull vendors: ${e?.message ?? "unknown error"}`)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const maxVendors = Math.max(1, ...(data?.rows ?? []).map(r => r.vendors))
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Vendor Locations</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Which country our consignors are based in, and how many lots each country has sent in.
+            It counts the C numbers that appear on receipts.
+          </p>
+        </div>
+        <div className="text-right">
+          <button onClick={pullVendors} disabled={syncing}
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white transition-colors">
+            {syncing ? "Pulling…" : "Pull vendor addresses from BC"}
+          </button>
+          <p className="text-xs text-gray-500 mt-1">
+            {data?.lastSync
+              ? `Last pulled ${new Date(data.lastSync).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+              : "Never pulled"}
+          </p>
+        </div>
+      </div>
+
+      {syncMsg && <p className="text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2">{syncMsg}</p>}
+      {error && <p className="text-sm text-red-500 bg-red-500/10 border border-red-500/40 rounded-lg px-3 py-2">{error}</p>}
+      {loading && <p className="text-sm text-gray-500">Working it out…</p>}
+
+      {data?.vendorTableMissing && (
+        <p className="text-sm text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/50 rounded-lg px-3 py-2">
+          No vendor addresses have been stored yet. Press <strong>Run Migrations</strong> on the Admin page if this is a
+          new deployment, then <strong>Pull vendor addresses from BC</strong> above.
+        </p>
+      )}
+
+      {data && !loading && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { n: data.totals.vendors,   l: "Vendors on receipts" },
+              { n: data.totals.countries, l: "Countries" },
+              { n: data.totals.lots,      l: "Lots sent in" },
+              { n: data.totals.unknown,   l: "Country not known" },
+            ].map(t => (
+              <div key={t.l} className="bg-white dark:bg-[#1C1C1E] border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{t.n.toLocaleString()}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{t.l}</div>
+              </div>
+            ))}
+          </div>
+
+          {data.totals.assumedUk > 0 && (
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Business Central leaves the country blank on UK records, so {data.totals.assumedUk.toLocaleString()} vendors
+              were counted as United Kingdom because their postcode is a UK one. Everything else is the country BC holds.
+            </p>
+          )}
+
+          {data.rows.some(r => r.code !== "??") && (
+            <WorldMap
+              byCountry={data.rows.filter(r => r.code !== "??").map(r => ({ country: r.code, count: r.vendors }))}
+              total={data.totals.vendors}
+            />
+          )}
+
+          <div className="overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-xl">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-100 dark:bg-[#1C1C1E]">
+                  <th className="text-left px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Country</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Vendors</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs w-1/3">Share</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Lots sent in</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 uppercase tracking-wide text-xs">Lots per vendor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map(r => (
+                  <tr key={r.code} className="border-t border-gray-200 dark:border-gray-800">
+                    <td className="px-3 py-2 text-gray-900 dark:text-gray-100">
+                      {r.name}
+                      {r.assumedUk > 0 && <span className="text-xs text-gray-500 ml-2">{r.assumedUk.toLocaleString()} from the postcode</span>}
+                      {r.code === "??" && r.noAddress > 0 && <span className="text-xs text-gray-500 ml-2">{r.noAddress.toLocaleString()} not in the vendor list</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-900 dark:text-gray-100">{r.vendors.toLocaleString()}</td>
+                    <td className="px-3 py-2">
+                      <div className="h-2 rounded bg-gray-200 dark:bg-[#2C2C2E]">
+                        <div className="h-2 rounded bg-amber-500" style={{ width: `${Math.round((r.vendors / maxVendors) * 100)}%` }} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{r.lots.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-400">
+                      {r.vendors ? Math.round(r.lots / r.vendors).toLocaleString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {data.unknownSample.length > 0 && (
+            <div>
+              <button onClick={() => setShowUnknown(v => !v)} className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                {showUnknown ? "Hide" : "Show"} the {data.totals.unknown.toLocaleString()} vendors with no country
+              </button>
+              {showUnknown && (
+                <div className="mt-2 overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-xl">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-100 dark:bg-[#1C1C1E]">
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Vendor</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Town</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">County</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Postcode</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.unknownSample.map(u => (
+                        <tr key={u.vendorNo} className="border-t border-gray-200 dark:border-gray-800">
+                          <td className="px-3 py-2 font-mono text-gray-900 dark:text-gray-100">{u.vendorNo}</td>
+                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{u.name ?? "—"}</td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{u.city ?? "—"}</td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{u.county ?? "—"}</td>
+                          <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400">{u.postCode ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {data.totals.unknown > data.unknownSample.length && (
+                    <p className="text-xs text-gray-500 px-3 py-2">
+                      Showing the first {data.unknownSample.length.toLocaleString()} of {data.totals.unknown.toLocaleString()}.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 type NavItem = { id: Report; label: string; activeColor: string; icon: string }
 
 const reports: NavItem[] = [
@@ -2226,6 +2429,10 @@ const reports: NavItem[] = [
   {
     id: "shipping", label: "Shipping", activeColor: "text-cyan-400",
     icon: "M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0zM13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0",
+  },
+  {
+    id: "vendors", label: "Vendor Locations", activeColor: "text-amber-400",
+    icon: "M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z",
   },
 ]
 const toolReports: NavItem[] = [
@@ -2367,6 +2574,7 @@ export default function BCReportsPage() {
             {activeReport === "warehouse"   && <WarehouseTab />}
             {activeReport === "explorer"    && <DataExplorerTab />}
             {activeReport === "shipping"    && <ShippingTab />}
+            {activeReport === "vendors"     && <VendorLocationsTab />}
           </div>
         )}
       </main>

@@ -1944,6 +1944,25 @@ const MIGRATIONS = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "CatalogueLastBatch_userId_auctionId_key" ON "CatalogueLastBatch"("userId", "auctionId")`,
   `CREATE INDEX IF NOT EXISTS "CatalogueLastBatch_userId_idx" ON "CatalogueLastBatch"("userId")`,
+
+  // Vendor (consignor) addresses from BC, for BC Reports → Vendor Locations.
+  `CREATE TABLE IF NOT EXISTS "BcVendor" (
+    "id"          TEXT NOT NULL,
+    "vendorNo"    TEXT NOT NULL,
+    "name"        TEXT,
+    "address"     TEXT,
+    "address2"    TEXT,
+    "city"        TEXT,
+    "county"      TEXT,
+    "postCode"    TEXT,
+    "countryCode" TEXT,
+    "source"      TEXT,
+    "syncedAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "BcVendor_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "BcVendor_vendorNo_key" ON "BcVendor"("vendorNo")`,
+  `CREATE INDEX IF NOT EXISTS "BcVendor_countryCode_idx" ON "BcVendor"("countryCode")`,
+  `CREATE INDEX IF NOT EXISTS "BcVendor_postCode_idx" ON "BcVendor"("postCode")`,
   `CREATE TABLE IF NOT EXISTS "ArchiveJob" (
     "id"        TEXT NOT NULL,
     "cursor"    INTEGER NOT NULL DEFAULT 0,

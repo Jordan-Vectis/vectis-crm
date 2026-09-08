@@ -1626,6 +1626,37 @@ model CatalogueLastBatch {
   @@index([userId])
 }
 
+// A vendor (consignor) as Business Central holds them — the C-number customers who send us goods.
+//
+// Built for BC Reports → Vendor Locations. Nothing else in the Hub had a vendor address: the
+// warehouse feeds carry vendorNo and vendorName and nothing more.
+//
+// ⚠ COUNTRY IS THE AWKWARD FIELD. Evo's own Vendor API (page 75608 EVA_VendorAPI, publisher
+// evo/base) is already scoped to auction vendors, which is exactly who we want, but it exposes
+// address / city / county / postCode and NO country. Microsoft's standard api/v2.0 vendors entity
+// does carry a country letter code but is not auction-scoped. The sync reads the standard one
+// first for the country and falls back to Evo's; `source` records which answered, and a blank
+// country on a UK-shaped postcode is resolved to GB by the report, never by this table.
+model BcVendor {
+  id           String    @id @default(cuid())
+  /// BC's vendor "No." — the C###### the receipts carry.
+  vendorNo     String    @unique
+  name         String?
+  address      String?
+  address2     String?
+  city         String?
+  county       String?
+  postCode     String?
+  /// ISO alpha-2 as BC gave it, blank when BC holds none. Never inferred here.
+  countryCode  String?
+  /// Which endpoint answered: "standard" | "evo". Kept so a wrong-looking report can be traced.
+  source       String?
+  syncedAt     DateTime  @default(now())
+
+  @@index([countryCode])
+  @@index([postCode])
+}
+
 model WarehouseReceiptTote {
   id          String    @id @default(cuid())
   /// BC's SystemId for the receipt-tote row — the API page's ODataKeyFields, stable across syncs.
