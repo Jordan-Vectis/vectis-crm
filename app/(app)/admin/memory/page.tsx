@@ -3243,6 +3243,48 @@ Adding "🧾 Vendor / Tote Check" tipped the strip into overflow and drew a scro
 - The strip now **wraps instead of scrolling** (\`flex-wrap\`, 2026-08-03): with 14+ tabs it overflows a normal window, and a *hidden* horizontal scroll just loses the last tabs off the edge where nobody finds them. Keep new tab labels short anyway.`,
   },
   {
+    filename: "db_readonly_incident.md",
+    content: `---
+name: The read-only database day (2026-09-09) — and the pooler that outlived it
+purpose: What a read-only database looks like from inside the Hub, how to diagnose it without fooling yourself, and the two Prisma/migration traps it exposed. Read before diagnosing "saves are failing" or adding a column.
+last_updated: 2026-09-09
+---
+
+# The read-only database day — 2026-09-09
+
+Production’s Neon compute came up with \`default_transaction_read_only = on\`. Every SELECT worked, so the Hub looked entirely healthy — pages loaded, lots listed, searches ran — while every INSERT was refused with Postgres **25006**. Cataloguers saw scattered "couldn’t save" errors and their tote/vendor reverting.
+
+## ⚠⚠ The compute recovered but the fault did not — a poisoned pooler connection
+
+Neon’s PgBouncer kept a server connection opened during the read-only window, and a session setting made at connect time lives for that connection’s whole life. Measured: **7 of 25** pooled connections were read-only (all on backend pid 12954) while the SAME host with \`-pooler\` removed was **0 of 15**. So ~28% of writes failed at random for hours after the "outage" ended.
+
+**Fix: restart the compute** (Neon console → Computes → the production branch’s compute → ⋯ → Restart). That drops every pooled connection. Verified after: 0/30 across two backends, plus a real rolled-back write test.
+
+## How to diagnose it — the mistakes are the lesson
+
+- **SAMPLE MANY CONNECTIONS, NEVER ONE.** Claude twice reported it "cleared" off a single probe that happened to land on the good backend. Loop 25–30 and report the RATE plus the backend pids.
+- **Compare pooled against direct** — a difference localises the fault to the pooler in one step.
+- ⚠ **\`pg_is_in_recovery()\` does NOT detect a Neon read replica** — Neon computes are not streaming replicas, so it returns false on one. It was used to "rule out" a replica, wrongly.
+- **Billing and status pages show nothing.** Launch plan, £22 of a £100 threshold, "All OK", storage costing pennies. The ArchiveLot-storage theory was wrong. ⚠ Check the REGION and DATE of anything on Neon’s status page.
+- **Railway looks perfectly healthy throughout** and always will — it is the database refusing writes.
+
+## Nothing lost was recoverable
+
+The writes were **refused**, so no rows ever existed — a point-in-time restore cannot return data never written. Ruled out: no draft/autosave (Resume removed 2026-08-07) and no orphaned R2 photos (wizard saves are text-only; photos arrive later from Photography). The only recovery is a cataloguer whose wizard tab is still open. Scale: the 15:00 hour had 23 lots against 46 the hour before — half rate, not a stop, because retries often landed on a good connection.
+
+## What was built because of it
+
+- **\`lib/db-readonly.ts\`** — \`isReadOnlyDbError()\` walks the **cause chain** (Prisma 7’s pg adapter wraps the SQLSTATE as \`DriverAdapterError.cause.code\`, so a shallow check finds nothing).
+- **\`createLot\` RETURNS the block instead of throwing** — production redacts thrown messages, which is why cataloguers got "the specific message is omitted in production builds". \`saveLastLotFields\` reports it separately; that write failing is what made vendors appear to revert.
+- **A STOP modal in the lot wizard** that cannot be clicked away — it says the lot is NOT saved, is still on screen, and not to clear anything.
+- **\`GET /api/health/db-writable\`** — READS the setting rather than inserting a probe row, is called only by a screen already refused, and answers \`writable: null\` on an error, never \`false\`.
+
+## ⚠⚠ Two traps proved the same day — they apply to ALL work here
+
+1. **\`prisma.x.update()\` reads the whole row back**, so it names EVERY column in the model. A column that has shipped in code but not yet in the database breaks an update that never touched it — the BC photo job died on \`BcLotWeb.siteSaleId\` while writing only photo keys. **Pass a minimal \`select\` on any update that must survive a pending migration.**
+2. **The \`MIGRATIONS\` array in \`app/api/admin/run-migrations/route.ts\` is the ONLY route a schema change reaches Railway.** \`siteSaleId\` had a Prisma migration FILE but was never added to the array — so staging had the column, production did not, and the symptom was production-only, which reads like a failed deploy. The same button press applied two other columns perfectly.`,
+  },
+  {
     filename: "lot_wizard_tote_banner.md",
     content: `---
 name: Lot wizard — the customer banner (Different tote on the LEFT + BC contents)
@@ -3267,6 +3309,15 @@ BC's Receipt Totes screen has a free-text **Contents Description** \u2014 "Tonka
 Stored on \`WarehouseTote.contents\` (**NEEDS Run Migrations**), written by BOTH tote syncs, returned by \`/api/warehouse/vendor-lookup\` and \`/api/warehouse/tote-search\`.
 
 \u26a0\u26a0 **The BC property name is DISCOVERED, not assumed.** The two feeds spell the same column differently (\`Receipt_Totes_Excel\` serves \`EVA_TOT_*\` PascalCase, the eva/tot custom API serves camelCase) and this column had never been read. ⚠ CONFIRMED on \`Receipt_Totes_Excel\` as **EVA_TOT_ContentsDescription** (BC API Viewer, 2026-09-09, sample "green box"); the eva/tot camelCase spelling is still unchecked, so \`pickBcContents()\` in \`lib/bc.ts\` stays tolerant and matches BC's own caption against the keys a row actually arrived with. If a feed does not publish the column, nothing is written and the **Data Sync log says so** \u2014 each tote stage prints "Contents description: read from BC's X" or "not published by this feed", so "no descriptions appeared" can be told apart from "BC has none".
+
+## \u26a0\u26a0 The phantom tote row — a duplicate React key strands a CLICKABLE row
+
+Typing T027204 offered "T000005 · R000009 · Debbie Dillon" as the first result. It was never a search result — no query can return those two rows together. BC keys receipt-totes on (receipt, **LINE**), so a tote booked twice onto the SAME receipt is two rows; 7 such pairs exist, and T000005 on R000009 (lines 10000 and 20000) sits inside the first 20 of every "T"/"T0" prefix. The dropdown keyed its rows on \`toteNo|receiptNo\`, so those two got an IDENTICAL key — React keeps one fiber per key in its reconciliation map, so the other was never deleted: its DOM node survived every keystroke and ended up first in the list, still wired to the props it was rendered with.
+
+\u26a0 It stayed clickable — tapping it would have started the batch under the wrong customer.
+\u26a0 React’s duplicate-key warning is **development-only** and is stripped from the production build, so nothing was ever logged. Never rely on it to catch this.
+
+Fixed at source (\`dedupeByToteAndReceipt\` in \`lib/receipt-totes.ts\` — one entry per (tote, receipt), never per BC line), in the ambiguous-tote \`options\` of vendor-lookup (which also said "on 3 receipts" when there were 2), and with the index in the key at both render sites. Verified live: prefix "T" and "T0" each had one duplicate key before, none after.
 
 \u26a0 The contents live on the **tote-keyed cache**, not on BC's receipt-tote rows, so \`vendor-lookup\` fetches them once and merges them into every branch \u2014 an ambiguous tote and a bare shell row both still have a description, and those are the cases where knowing what should be in the box helps most.`,
   },

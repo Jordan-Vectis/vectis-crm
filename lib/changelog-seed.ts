@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"0e505342cd77616af2c78c76d2a39632298b9ac7","author":"Jordan Orange","date":"2026-09-09T16:19:54+01:00","subject":"Run Migrations was missing BcLotWeb.siteSaleId, so production never got the column"},
   {"sha":"d82927412fb5368cf409c30f560fbafbf878f594","author":"Jordan Orange","date":"2026-09-09T15:50:29+01:00","subject":"Stop cataloguing when the database is refusing writes, instead of losing an hour a lot at a time"},
   {"sha":"b01670d12dc3650cf35954b3d71dfa2e150f6d95","author":"Jordan Orange","date":"2026-09-09T15:42:15+01:00","subject":"Lot wizard: a phantom tote row could start a batch under the wrong customer"},
   {"sha":"2e3a72fbaf22dd70855cd66024ff72d798332781","author":"Jordan Orange","date":"2026-09-09T14:59:49+01:00","subject":"Lot wizard banners: match the form column, and record BC's confirmed contents field name"},
