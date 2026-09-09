@@ -6,6 +6,7 @@ import { getSignedImageUrl } from "@/lib/r2"
 import { SITE_IMAGES } from "@/lib/archive-site"
 import ArchiveSite from "../archive/archive-site"
 import BcCollect from "./bc-collect"
+import { BC_FIRST_SITE_SALE, BC_LAST_SITE_SALE } from "@/lib/bc-web-collector"
 
 // Databases → BC Database: every Business Central lot that has been through a sale,
 // built like the ABC database. The lot's own figures (sale, lot number, estimate,
@@ -88,29 +89,10 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
   }
   const pages = Math.max(1, Math.ceil(total / PAGE))
 
-  // Sensible sale numbers for the browser collector, worked out rather than guessed: start just
-  // before the first Business Central sale, finish past the newest sale the site walk ever saw.
-  // ⚠ The walk is what has stalled, so its last sale is behind today's — hence the margin. Sale
-  // numbers past the end cost one quick request each, and the script stops itself after 80 empties.
-  let collect = { from: 1, to: 5000, basis: "" }
-  if (isAdmin) {
-    try {
-      const [firstBc, newest] = await Promise.all([
-        prisma.$queryRaw<{ d: string | null }[]>`SELECT min("auctionDate") AS d FROM "WarehouseItem" WHERE "auctionDate" IS NOT NULL AND "auctionDate" <> ''`,
-        prisma.archiveSale.findFirst({ orderBy: { siteId: "desc" }, select: { siteId: true } }),
-      ])
-      const d = firstBc[0]?.d ?? null
-      const before = d ? await prisma.archiveSale.findFirst({ where: { saleDate: { lt: new Date(d + "T00:00:00Z") } }, orderBy: { siteId: "desc" }, select: { siteId: true } }) : null
-      if (before) collect.from = before.siteId
-      if (newest) collect.to = newest.siteId + 300
-      const bits = [
-        d ? `The first Business Central sale was ${fmtDate(d)}` : null,
-        before ? `which is about the website's sale ${before.siteId}` : null,
-        newest ? `and the newest sale the Hub has ever seen on the site is ${newest.siteId}` : null,
-      ].filter(Boolean)
-      collect.basis = bits.length ? bits.join(", ") + "." : ""
-    } catch { collect.basis = "" }
-  }
+  // ⚠ Measured, not worked out from the data: a full run on 2026-09-09 found Business Central
+  // sales between site numbers 1062 (B007) and 1558, with the old system below that. The margin
+  // past the end catches sales the website has added since.
+  const collect = { from: BC_FIRST_SITE_SALE, to: BC_LAST_SITE_SALE + 60 }
   const link = (p: number) => {
     const u = new URLSearchParams(); if (q) u.set("q", q); if (year) u.set("year", year); if (sale) u.set("sale", sale)
     // ⚠ Carry the sort across pages too, or page 2 quietly reverts to newest-first.
@@ -147,11 +129,17 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
           </div>
         )}
 
-        {isAdmin && <ArchiveSite scope="bc" />}
-        {isAdmin && <BcCollect defaultFrom={collect.from} defaultTo={collect.to} basis={collect.basis} />}
+        {/* ⚠ ONE tools block, not four competing panels (Jordan, 2026-09-09: "its become a mess UI
+            wise"). Each tool is a compact card: what it is, its button, a line of live status. The
+            explanations sit behind a "What this does" toggle — they are read once and then in the
+            way for ever, and between them they pushed the search box and the lots off the screen. */}
         {isAdmin && (
-          <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-5">
-            <summary className="cursor-pointer text-base font-bold text-gray-900 dark:text-white">Export &amp; handover — for a backup, or a future website</summary>
+        <div className="space-y-2">
+          <h2 className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Tools</h2>
+          <ArchiveSite scope="bc" />
+          <BcCollect defaultFrom={collect.from} defaultTo={collect.to} />
+          <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-4">
+            <summary className="cursor-pointer text-sm font-bold text-gray-900 dark:text-white">⬇ Export &amp; handover — for a backup, or a future website</summary>
             <div className="mt-3 space-y-3 text-sm text-gray-700 dark:text-gray-300">
               <div className="flex flex-wrap items-center gap-3">
                 <a href="/api/databases/bc/export" className="min-h-[44px] inline-flex items-center px-4 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">⬇ Export data (CSV)</a>
@@ -165,6 +153,7 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
               <p className="text-gray-600 dark:text-gray-400">Handover works exactly as on the ABC Database page: the CSV plus a read-only R2 token, copied bucket-to-bucket. The lot data itself lives in Business Central and is re-synced nightly.</p>
             </div>
           </details>
+        </div>
         )}
 
         {/* ⚠ One box on show, the rest behind More filters (Jordan's choice, 2026-09-09). The panel
