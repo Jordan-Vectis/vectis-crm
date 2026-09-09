@@ -73,7 +73,7 @@ async function fetchSalePage(siteId: number): Promise<{ title: string; date: Dat
   return { title: decode(t?.[1] ?? "").trim(), date: d ? new Date(Date.UTC(+d[3], MONTHS.indexOf(d[2]), +d[1])) : null }
 }
 
-type FeedLot = {
+export type FeedLot = {
   lot_number: unknown; id: unknown; unique_id: unknown; image: unknown; description: unknown; meta: unknown
   low_estimate: unknown; high_estimate: unknown; hammer_price: unknown; sold: unknown; withdrawn: unknown
   sef_link: unknown; isFinished: unknown
@@ -191,7 +191,13 @@ const isBcId = (u: string | null): u is string => !!u && /^r\d+-\d+$/i.test(u)
  * one), so these rows are CREATED as well as updated — but only in BcLotWeb, never on
  * WarehouseItem, whose figures stay BC's own. One INSERT … ON CONFLICT per sale.
  */
-async function writeBcSale(auctionCode: string | null, lots: FeedLot[]): Promise<number> {
+/**
+ * ⚠ EXPORTED so the browser-collected import writes through exactly this, rather than a second
+ * copy of the same INSERT. The website blocks our server (202, empty body, from Railway only), so
+ * the lot feed is collected in Jordan's own browser on vectis.co.uk and uploaded — but it must land
+ * in the database by the same path as the live walk or the two will drift.
+ */
+export async function writeBcSale(auctionCode: string | null, lots: FeedLot[]): Promise<number> {
   const seen = new Set<string>()
   const rows = lots
     .map(l => ({ l, id: str(l.unique_id)?.toUpperCase() ?? null }))

@@ -5,6 +5,7 @@ import { Prisma } from "@/app/generated/prisma/client"
 import { getSignedImageUrl } from "@/lib/r2"
 import { SITE_IMAGES } from "@/lib/archive-site"
 import ArchiveSite from "../archive/archive-site"
+import BcCollect from "./bc-collect"
 
 // Databases → BC Database: every Business Central lot that has been through a sale,
 // built like the ABC database. The lot's own figures (sale, lot number, estimate,
@@ -86,6 +87,30 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
     tableError = /does not exist|relation/i.test(String(e?.message)) ? "The BC Database table isn't there yet — Run Migrations on this environment first." : (e?.message ?? "Couldn't read the BC database")
   }
   const pages = Math.max(1, Math.ceil(total / PAGE))
+
+  // Sensible sale numbers for the browser collector, worked out rather than guessed: start just
+  // before the first Business Central sale, finish past the newest sale the site walk ever saw.
+  // ⚠ The walk is what has stalled, so its last sale is behind today's — hence the margin. Sale
+  // numbers past the end cost one quick request each, and the script stops itself after 80 empties.
+  let collect = { from: 1, to: 5000, basis: "" }
+  if (isAdmin) {
+    try {
+      const [firstBc, newest] = await Promise.all([
+        prisma.$queryRaw<{ d: string | null }[]>`SELECT min("auctionDate") AS d FROM "WarehouseItem" WHERE "auctionDate" IS NOT NULL AND "auctionDate" <> ''`,
+        prisma.archiveSale.findFirst({ orderBy: { siteId: "desc" }, select: { siteId: true } }),
+      ])
+      const d = firstBc[0]?.d ?? null
+      const before = d ? await prisma.archiveSale.findFirst({ where: { saleDate: { lt: new Date(d + "T00:00:00Z") } }, orderBy: { siteId: "desc" }, select: { siteId: true } }) : null
+      if (before) collect.from = before.siteId
+      if (newest) collect.to = newest.siteId + 300
+      const bits = [
+        d ? `The first Business Central sale was ${fmtDate(d)}` : null,
+        before ? `which is about the website's sale ${before.siteId}` : null,
+        newest ? `and the newest sale the Hub has ever seen on the site is ${newest.siteId}` : null,
+      ].filter(Boolean)
+      collect.basis = bits.length ? bits.join(", ") + "." : ""
+    } catch { collect.basis = "" }
+  }
   const link = (p: number) => {
     const u = new URLSearchParams(); if (q) u.set("q", q); if (year) u.set("year", year); if (sale) u.set("sale", sale)
     // ⚠ Carry the sort across pages too, or page 2 quietly reverts to newest-first.
@@ -123,6 +148,7 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
         )}
 
         {isAdmin && <ArchiveSite scope="bc" />}
+        {isAdmin && <BcCollect defaultFrom={collect.from} defaultTo={collect.to} basis={collect.basis} />}
         {isAdmin && (
           <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-5">
             <summary className="cursor-pointer text-base font-bold text-gray-900 dark:text-white">Export &amp; handover — for a backup, or a future website</summary>
