@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { resolveTote, resolveReceipt } from "@/lib/receipt-totes"
+import { resolveTote, resolveReceipt, dedupeByToteAndReceipt } from "@/lib/receipt-totes"
 
 // GET /api/warehouse/vendor-lookup?receipt=R007523
 // GET /api/warehouse/vendor-lookup?tote=T024801
@@ -74,7 +74,11 @@ export async function GET(req: NextRequest) {
             vendorNo: null, vendorName: null, receiptNo: null,
             catalogued: null, syncedAt: rt.rows[0]?.syncedAt?.toISOString() ?? null,
             source: "receipt-tote", ambiguous: true,
-            options: rt.rows.map(r => ({
+            // ⚠ ONE OPTION PER RECEIPT, not per BC line. `ambiguous` is decided on the count of
+            // DISTINCT receipts, so passing the raw rows made the wizard offer the same receipt
+            // twice, say "on 3 receipts" when there were 2, and give both buttons the same React
+            // key — the identical defect that stranded a row in the tote dropdown.
+            options: dedupeByToteAndReceipt(rt.rows).map(r => ({
               receiptNo:  r.receiptNo,
               vendorNo:   r.vendorNo,
               vendorName: r.vendorName,

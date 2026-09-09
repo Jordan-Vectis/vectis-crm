@@ -163,29 +163,61 @@ export async function resolveReceipt(receiptNo: string): Promise<{ vendorNo: str
 export async function searchReceiptTotes(q: string, take = 20): Promise<ReceiptToteRow[] | null> {
   const query = (q ?? "").trim()
   if (!query) return null
+  const select = {
+    receiptNo: true, toteNo: true, vendorNo: true, vendorName: true,
+    catalogued: true, bcCreatedAt: true, syncedAt: true,
+  } as const
+  // ⚠ Over-fetch, because dedupeByToteAndReceipt below can only remove rows and the caller asked
+  // for `take` of them.
+  const fetchTake = take * 2
   try {
     let rows = await prisma.warehouseReceiptTote.findMany({
       where:  { toteNo: { startsWith: query, mode: "insensitive" } },
-      select: {
-        receiptNo: true, toteNo: true, vendorNo: true, vendorName: true,
-        catalogued: true, bcCreatedAt: true, syncedAt: true,
-      },
+      select,
       orderBy: [{ toteNo: "asc" }, { receiptNo: "desc" }],
-      take,
+      take: fetchTake,
     })
     if (rows.length === 0) {
       rows = await prisma.warehouseReceiptTote.findMany({
         where:  { toteNo: { contains: query, mode: "insensitive" } },
-        select: {
-          receiptNo: true, toteNo: true, vendorNo: true, vendorName: true,
-          catalogued: true, bcCreatedAt: true, syncedAt: true,
-        },
+        select,
         orderBy: [{ toteNo: "asc" }, { receiptNo: "desc" }],
-        take,
+        take: fetchTake,
       })
     }
-    return rows.length > 0 ? await withVendorNames(rows) : null
+    const unique = dedupeByToteAndReceipt(rows).slice(0, take)
+    return unique.length > 0 ? await withVendorNames(unique) : null
   } catch {
     return null
   }
+}
+
+/**
+ * One entry per (tote, receipt) — not per BC LINE.
+ *
+ * ⚠⚠ THIS TABLE IS KEYED ON BC's `bcSystemId`, AND BC IS KEYED ON (receipt, line). A tote booked
+ * twice onto the SAME receipt is therefore two rows here, and it is ONE consignment — the rule
+ * `pick()` above has always applied to `resolveTote`. Measured live 2026-09-09: 7 such pairs
+ * exist, T000005 on R000009 among them (lines 10000 and 20000, same customer both times).
+ *
+ * It is not merely cosmetic. Those two rows are indistinguishable to every caller — the API drops
+ * `lineNo` — so the wizard's dropdown gave both the SAME React key, React's reconciler kept only
+ * one of them in its lookup map, and the other's DOM node was never removed. It survived every
+ * later keystroke and sat at the top of the list, still wired to the customer it was rendered
+ * for: typing T027204 offered a stranded "T000005 · Debbie Dillon" row that would have started
+ * the batch under the wrong customer. React's duplicate-key warning is development-only and is
+ * stripped from the production build, so nothing was ever logged.
+ *
+ * Fixing it here rather than only at the render means every caller is safe, including new ones.
+ */
+export function dedupeByToteAndReceipt(rows: ReceiptToteRow[]): ReceiptToteRow[] {
+  const seen = new Set<string>()
+  const out: ReceiptToteRow[] = []
+  for (const r of rows) {
+    const key = `${r.toteNo.trim().toUpperCase()}|${r.receiptNo.trim().toUpperCase()}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(r)
+  }
+  return out
 }

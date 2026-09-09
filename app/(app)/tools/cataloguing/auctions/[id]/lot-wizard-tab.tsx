@@ -1925,8 +1925,21 @@ export default function LotWizardTab({
                         which belong to different consignments, so the row has to carry enough to
                         tell them apart — the receipt was already being fetched and simply never
                         shown. Touch target raised to ~44px on the tablets (house rule). */}
-                    {toteResults.map((item: any) => (
-                      <button key={`${item.toteNo}|${item.receiptNo ?? ""}`} type="button" onMouseDown={() => selectTote(item)}
+                    {/* ⚠⚠ THE INDEX IS IN THE KEY DELIBERATELY (2026-09-09). This was
+                        `${item.toteNo}|${item.receiptNo}`, and BC has 7 totes booked TWICE onto the
+                        same receipt (two line numbers), which made two rows share a key. React's
+                        reconciler keeps one fiber per key in its lookup map, so the other was never
+                        deleted: its DOM node survived every keystroke and sat stranded at the top of
+                        the list, still wired to the customer it was rendered for. Typing T027204
+                        offered a leftover "T000005 · Debbie Dillon" row that would have started the
+                        batch under the wrong customer. The duplicate-key warning is development-only
+                        and is stripped from the production build, so nothing was ever logged.
+                        The list is fully replaced on every response and the rows hold no state of
+                        their own, so an index in the key is safe here. The duplicate is ALSO removed
+                        at source in lib/receipt-totes.ts — this is the second line of defence, for
+                        whatever BC does next. */}
+                    {toteResults.map((item: any, i: number) => (
+                      <button key={`${item.toteNo}|${item.receiptNo ?? ""}|${i}`} type="button" onMouseDown={() => selectTote(item)}
                         className={`w-full text-left hover:bg-gray-100 dark:hover:bg-[#2C2C2E] transition-colors border-b border-gray-200 dark:border-gray-800 last:border-0 ${tablet ? "px-4 py-3" : "px-3 py-2.5"}`}
                         style={{ minHeight: tablet ? 48 : 40, touchAction: tablet ? "manipulation" : undefined }}>
                         <span className={`font-mono text-[#2AB4A6] ${tablet ? "text-base" : "text-sm"}`}>{item.toteNo}</span>
@@ -1959,8 +1972,10 @@ export default function LotWizardTab({
                     BC has tote {tote} on {toteChoices.length} receipts. Which one is in front of you?
                   </p>
                   <div className="mt-2 flex flex-col gap-2">
-                    {toteChoices.map(o => (
-                      <button key={o.receiptNo} type="button"
+                    {/* Same reason as the dropdown above: one option per receipt is guaranteed by
+                        the route now, and the index keeps the key unique regardless. */}
+                    {toteChoices.map((o, i) => (
+                      <button key={`${o.receiptNo}|${i}`} type="button"
                         onClick={() => selectTote({ toteNo: tote, receiptNo: o.receiptNo, vendorNo: o.vendorNo, vendorName: o.vendorName, catalogued: o.catalogued })}
                         style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 48 : 40 }}
                         className={`w-full text-left rounded-lg border border-amber-600/40 bg-white/60 dark:bg-[#1C1C1E]/60 hover:border-amber-500 ${tablet ? "px-4 py-3" : "px-3 py-2"}`}>
