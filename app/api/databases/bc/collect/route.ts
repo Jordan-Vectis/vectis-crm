@@ -50,7 +50,10 @@ export async function POST(req: NextRequest) {
         const code = typeof sale?.auctionCode === "string" ? sale.auctionCode.toUpperCase() : null
         const rows: FeedLot[] = Array.isArray(sale?.lots) ? sale.lots : []
         if (!rows.length) continue
-        const written = await writeBcSale(code, rows)
+        // ⚠ The website's own sale number rides along so the page can say how far the collection
+        // has got and pre-fill the next run — otherwise nobody knows where to carry on from.
+        const siteSaleId = Number.isFinite(Number(sale?.siteId)) ? Math.round(Number(sale.siteId)) : null
+        const written = await writeBcSale(code, rows, siteSaleId)
         if (written > 0) { sales++; lots += written }
       }
     }

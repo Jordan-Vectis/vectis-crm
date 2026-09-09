@@ -197,7 +197,7 @@ const isBcId = (u: string | null): u is string => !!u && /^r\d+-\d+$/i.test(u)
  * the lot feed is collected in Jordan's own browser on vectis.co.uk and uploaded — but it must land
  * in the database by the same path as the live walk or the two will drift.
  */
-export async function writeBcSale(auctionCode: string | null, lots: FeedLot[]): Promise<number> {
+export async function writeBcSale(auctionCode: string | null, lots: FeedLot[], siteSaleId: number | null = null): Promise<number> {
   const seen = new Set<string>()
   const rows = lots
     .map(l => ({ l, id: str(l.unique_id)?.toUpperCase() ?? null }))
@@ -211,20 +211,46 @@ export async function writeBcSale(auctionCode: string | null, lots: FeedLot[]): 
   const links = rows.map(x => (str(x.l.sef_link) ?? "").replace(/^\/+/, ""))
   const photos = rows.map(x => str(x.l.image) ?? "")
   const hammers = rows.map(x => { const h = hammer(x.l); return h == null ? "" : String(h) })
-  await prisma.$executeRaw`
-    INSERT INTO "BcLotWeb" ("uniqueId", "auctionCode", "lotNumber", "description", "siteLotId", "siteLink", "sitePhoto", "siteHammerPrice", "pulledAt")
-    SELECT v."id", ${auctionCode}, NULLIF(v."lot", '')::int, NULLIF(v."desc", ''), NULLIF(v."siteId", '')::int, NULLIF(v."link", ''), NULLIF(v."photo", ''), NULLIF(v."hammer", '')::float8, now()
-    FROM unnest(${ids}::text[], ${lotNos}::text[], ${descs}::text[], ${siteIds}::text[], ${links}::text[], ${photos}::text[], ${hammers}::text[])
-      AS v("id", "lot", "desc", "siteId", "link", "photo", "hammer")
-    ON CONFLICT ("uniqueId") DO UPDATE SET
-      "auctionCode" = COALESCE(EXCLUDED."auctionCode", "BcLotWeb"."auctionCode"),
-      "lotNumber" = COALESCE(EXCLUDED."lotNumber", "BcLotWeb"."lotNumber"),
-      "description" = COALESCE(EXCLUDED."description", "BcLotWeb"."description"),
-      "siteLotId" = COALESCE(EXCLUDED."siteLotId", "BcLotWeb"."siteLotId"),
-      "siteLink" = COALESCE(EXCLUDED."siteLink", "BcLotWeb"."siteLink"),
-      "sitePhoto" = COALESCE(EXCLUDED."sitePhoto", "BcLotWeb"."sitePhoto"),
-      "siteHammerPrice" = COALESCE(EXCLUDED."siteHammerPrice", "BcLotWeb"."siteHammerPrice"),
-      "pulledAt" = now()`
+  // ⚠ The website's own sale NUMBER, kept so the Hub knows how far the collection has got and the
+  // next run can start from the sale after it. Nothing else reads it.
+  const sale = Number.isFinite(Number(siteSaleId)) && Number(siteSaleId) > 0 ? Math.round(Number(siteSaleId)) : null
+
+  // ⚠⚠ MIGRATION-SAFE. Code reaches Railway the moment it is pushed; migrations wait for the Run
+  // Migrations button. Without this fallback an upload on an environment that has not run them yet
+  // would fail outright — losing every lot in the file over one column of bookkeeping.
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO "BcLotWeb" ("uniqueId", "auctionCode", "lotNumber", "description", "siteLotId", "siteSaleId", "siteLink", "sitePhoto", "siteHammerPrice", "pulledAt")
+      SELECT v."id", ${auctionCode}, NULLIF(v."lot", '')::int, NULLIF(v."desc", ''), NULLIF(v."siteId", '')::int, ${sale}, NULLIF(v."link", ''), NULLIF(v."photo", ''), NULLIF(v."hammer", '')::float8, now()
+      FROM unnest(${ids}::text[], ${lotNos}::text[], ${descs}::text[], ${siteIds}::text[], ${links}::text[], ${photos}::text[], ${hammers}::text[])
+        AS v("id", "lot", "desc", "siteId", "link", "photo", "hammer")
+      ON CONFLICT ("uniqueId") DO UPDATE SET
+        "auctionCode" = COALESCE(EXCLUDED."auctionCode", "BcLotWeb"."auctionCode"),
+        "lotNumber" = COALESCE(EXCLUDED."lotNumber", "BcLotWeb"."lotNumber"),
+        "description" = COALESCE(EXCLUDED."description", "BcLotWeb"."description"),
+        "siteLotId" = COALESCE(EXCLUDED."siteLotId", "BcLotWeb"."siteLotId"),
+        "siteSaleId" = COALESCE(EXCLUDED."siteSaleId", "BcLotWeb"."siteSaleId"),
+        "siteLink" = COALESCE(EXCLUDED."siteLink", "BcLotWeb"."siteLink"),
+        "sitePhoto" = COALESCE(EXCLUDED."sitePhoto", "BcLotWeb"."sitePhoto"),
+        "siteHammerPrice" = COALESCE(EXCLUDED."siteHammerPrice", "BcLotWeb"."siteHammerPrice"),
+        "pulledAt" = now()`
+  } catch (e: any) {
+    if (!/siteSaleId/i.test(String(e?.message ?? ""))) throw e
+    await prisma.$executeRaw`
+      INSERT INTO "BcLotWeb" ("uniqueId", "auctionCode", "lotNumber", "description", "siteLotId", "siteLink", "sitePhoto", "siteHammerPrice", "pulledAt")
+      SELECT v."id", ${auctionCode}, NULLIF(v."lot", '')::int, NULLIF(v."desc", ''), NULLIF(v."siteId", '')::int, NULLIF(v."link", ''), NULLIF(v."photo", ''), NULLIF(v."hammer", '')::float8, now()
+      FROM unnest(${ids}::text[], ${lotNos}::text[], ${descs}::text[], ${siteIds}::text[], ${links}::text[], ${photos}::text[], ${hammers}::text[])
+        AS v("id", "lot", "desc", "siteId", "link", "photo", "hammer")
+      ON CONFLICT ("uniqueId") DO UPDATE SET
+        "auctionCode" = COALESCE(EXCLUDED."auctionCode", "BcLotWeb"."auctionCode"),
+        "lotNumber" = COALESCE(EXCLUDED."lotNumber", "BcLotWeb"."lotNumber"),
+        "description" = COALESCE(EXCLUDED."description", "BcLotWeb"."description"),
+        "siteLotId" = COALESCE(EXCLUDED."siteLotId", "BcLotWeb"."siteLotId"),
+        "siteLink" = COALESCE(EXCLUDED."siteLink", "BcLotWeb"."siteLink"),
+        "sitePhoto" = COALESCE(EXCLUDED."sitePhoto", "BcLotWeb"."sitePhoto"),
+        "siteHammerPrice" = COALESCE(EXCLUDED."siteHammerPrice", "BcLotWeb"."siteHammerPrice"),
+        "pulledAt" = now()`
+  }
   return rows.length
 }
 
@@ -344,7 +370,7 @@ async function runSitePull() {
       // ⚠ One walk covers both databases because they are the SAME sales on the website — what the
       // scope changes is which database gets written. Running "bc" leaves the ABC archive untouched.
       if (scope !== "bc" && finished && auctionId != null) ({ matched, added } = await writeSale(auctionId, title, page.date, lots))
-      if (scope !== "abc" && finished && lots.some(l => isBcId(str(l.unique_id)))) matched += await writeBcSale(auctionCode, lots)   // BC-era lots → BcLotWeb
+      if (scope !== "abc" && finished && lots.some(l => isBcId(str(l.unique_id)))) matched += await writeBcSale(auctionCode, lots, siteId)   // BC-era lots → BcLotWeb
       cursor = siteId
       await prisma.archiveJob.update({
         where: { id: "site" },

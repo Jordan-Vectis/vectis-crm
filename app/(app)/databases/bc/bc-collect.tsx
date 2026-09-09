@@ -17,7 +17,7 @@ import { bcCollectorScript, COLLECTOR_FILE_MB, BC_FIRST_SITE_SALE, BC_LAST_SITE_
 //
 // ⚠ Files are sent ONE AT A TIME, with a count that moves (RULES §7b). A single 139 MB post shows
 // nothing while it runs and would be cut off by Railway's 20 MB body limit anyway.
-export default function BcCollect({ defaultFrom, defaultTo }: { defaultFrom: number; defaultTo: number }) {
+export default function BcCollect({ defaultFrom, defaultTo, collectedTo }: { defaultFrom: number; defaultTo: number; collectedTo: number | null }) {
   const [from, setFrom] = useState(String(defaultFrom))
   const [to, setTo] = useState(String(defaultTo))
   const [copied, setCopied] = useState(false)
@@ -91,6 +91,15 @@ export default function BcCollect({ defaultFrom, defaultTo }: { defaultFrom: num
           </button>
         </div>
       </div>
+
+      {/* ⚠ NEXT TIME. The website's sale number is stored with every lot, so the page can say how
+          far the collection got and start the next run at the sale after it. Without it, "do it
+          again in a month" means somebody remembering a number. */}
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        {collectedTo
+          ? <>Collected up to the website&rsquo;s sale <span className="font-mono">{collectedTo}</span>. To pick up the sales held since, collect from <span className="font-mono">{collectedTo + 1}</span> — the script below is already set to it — then load the files here. Sales already in are updated, never duplicated, so going over old ones again only fills in what was blank, such as a hammer price on a sale that has since been held.</>
+          : <>Nothing has been loaded yet. Collect from sale <span className="font-mono">{defaultFrom}</span> onwards with the script below, then choose the files here.</>}
+      </p>
 
       {!busy && !done && files.length > 0 && (
         <p className="text-sm text-gray-600 dark:text-gray-400">{files.length} file{files.length === 1 ? "" : "s"} chosen · {totalMb.toFixed(0)} MB. They go up one at a time.</p>

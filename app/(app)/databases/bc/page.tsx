@@ -6,6 +6,7 @@ import { getSignedImageUrl } from "@/lib/r2"
 import { SITE_IMAGES } from "@/lib/archive-site"
 import ArchiveSite from "../archive/archive-site"
 import BcCollect from "./bc-collect"
+import BcTools from "./bc-tools"
 import { BC_FIRST_SITE_SALE, BC_LAST_SITE_SALE } from "@/lib/bc-web-collector"
 
 // Databases → BC Database: every Business Central lot that has been through a sale,
@@ -26,18 +27,31 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
   const session = await auth()
   const isAdmin = session?.user?.role === "ADMIN"
   const sp = await searchParams
-  const q = one(sp.q).trim(), year = one(sp.year).trim(), sale = one(sp.sale).trim()
+  const q = one(sp.q).trim(), sale = one(sp.sale).trim()
+  const dFrom = one(sp.from).trim(), dTo = one(sp.to).trim()
+  const status = one(sp.status).trim(), photo = one(sp.photo).trim(), desc = one(sp.desc).trim()
   const order = one(sp.order).trim()
   const min = parseFloat(one(sp.min)), max = parseFloat(one(sp.max))
   const page = Math.max(1, parseInt(one(sp.page)) || 1)
+  const FILTERS = ["q", "sale", "from", "to", "min", "max", "status", "photo", "desc"] as const
+  const anyFilter = FILTERS.some(k => one(sp[k]).trim())
 
   // Only lots that have been through a sale that has happened: a sale code, a lot number, a date not in the future.
   const conds: Prisma.Sql[] = [Prisma.sql`w."auctionCode" IS NOT NULL AND w."auctionDate" IS NOT NULL AND w."auctionDate" <= to_char(now(), 'YYYY-MM-DD') AND COALESCE(NULLIF(w."currentLotNo", '0'), NULLIF(w."lotNo", '0')) IS NOT NULL`]
-  if (q) conds.push(Prisma.sql`(w."description" ILIKE ${"%" + q + "%"} OR b."description" ILIKE ${"%" + q + "%"} OR w."auctionName" ILIKE ${"%" + q + "%"})`)
-  if (sale) conds.push(Prisma.sql`w."auctionName" ILIKE ${"%" + sale + "%"}`)
-  if (/^\d{4}$/.test(year)) conds.push(Prisma.sql`w."auctionDate" LIKE ${year + "-%"}`)
+  // ⚠ The search covers the unique ID too — looking a known lot up by "R009030-1" is the commonest
+  // reason anyone opens this page, and it used to find nothing.
+  if (q) conds.push(Prisma.sql`(w."description" ILIKE ${"%" + q + "%"} OR b."description" ILIKE ${"%" + q + "%"} OR w."auctionName" ILIKE ${"%" + q + "%"} OR w."uniqueId" ILIKE ${"%" + q + "%"})`)
+  if (sale) conds.push(Prisma.sql`(w."auctionName" ILIKE ${"%" + sale + "%"} OR w."auctionCode" ILIKE ${"%" + sale + "%"})`)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dFrom)) conds.push(Prisma.sql`w."auctionDate" >= ${dFrom}`)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dTo)) conds.push(Prisma.sql`w."auctionDate" <= ${dTo}`)
   if (Number.isFinite(min)) conds.push(Prisma.sql`w."hammerPrice" >= ${min}`)
   if (Number.isFinite(max)) conds.push(Prisma.sql`w."hammerPrice" <= ${max} AND w."hammerPrice" > 0`)
+  if (status === "sold") conds.push(Prisma.sql`w."hammerPrice" > 0`)
+  if (status === "unsold") conds.push(Prisma.sql`COALESCE(w."hammerPrice", 0) = 0`)
+  if (photo === "yes") conds.push(Prisma.sql`(b."photoKey" IS NOT NULL OR b."sitePhoto" IS NOT NULL)`)
+  if (photo === "no") conds.push(Prisma.sql`(b."photoKey" IS NULL AND b."sitePhoto" IS NULL)`)
+  if (desc === "full") conds.push(Prisma.sql`b."description" IS NOT NULL`)
+  if (desc === "short") conds.push(Prisma.sql`b."description" IS NULL`)
   const where = Prisma.join(conds, " AND ")
   const from = Prisma.sql`FROM "WarehouseItem" w LEFT JOIN "BcLotWeb" b ON b."uniqueId" = upper(w."uniqueId")`
   // ⚠ Built from a fixed map, never from the query string — this goes into raw SQL, so anything a
@@ -46,13 +60,18 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
   // cheapest, and letting the nulls lead a low-to-high sort buries the genuinely cheap ones.
   const LOT_NO = Prisma.sql`NULLIF(regexp_replace(COALESCE(NULLIF(w."currentLotNo", '0'), w."lotNo"), '[^0-9]', '', 'g'), '')::int`
   const ORDERS: Record<string, Prisma.Sql> = {
-    "":         Prisma.sql`w."auctionDate" DESC, w."auctionCode" DESC, ${LOT_NO} ASC`,
-    oldest:     Prisma.sql`w."auctionDate" ASC, w."auctionCode" ASC, ${LOT_NO} ASC`,
-    price_desc: Prisma.sql`NULLIF(w."hammerPrice", 0) DESC NULLS LAST, w."auctionDate" DESC`,
-    price_asc:  Prisma.sql`NULLIF(w."hammerPrice", 0) ASC NULLS LAST, w."auctionDate" DESC`,
-    lot:        Prisma.sql`w."auctionCode" DESC, ${LOT_NO} ASC`,
+    date_desc:   Prisma.sql`w."auctionDate" DESC, w."auctionCode" DESC, ${LOT_NO} ASC`,
+    date_asc:    Prisma.sql`w."auctionDate" ASC, w."auctionCode" ASC, ${LOT_NO} ASC`,
+    sale_desc:   Prisma.sql`w."auctionCode" DESC, ${LOT_NO} ASC`,
+    sale_asc:    Prisma.sql`w."auctionCode" ASC, ${LOT_NO} ASC`,
+    lot_asc:     Prisma.sql`${LOT_NO} ASC NULLS LAST, w."auctionDate" DESC`,
+    lot_desc:    Prisma.sql`${LOT_NO} DESC NULLS LAST, w."auctionDate" DESC`,
+    est_desc:    Prisma.sql`w."highEstimate" DESC NULLS LAST, w."auctionDate" DESC`,
+    est_asc:     Prisma.sql`w."lowEstimate" ASC NULLS LAST, w."auctionDate" DESC`,
+    hammer_desc: Prisma.sql`NULLIF(w."hammerPrice", 0) DESC NULLS LAST, w."auctionDate" DESC`,
+    hammer_asc:  Prisma.sql`NULLIF(w."hammerPrice", 0) ASC NULLS LAST, w."auctionDate" DESC`,
   }
-  const orderBy = ORDERS[order] ?? ORDERS[""]
+  const orderBy = ORDERS[order] ?? ORDERS.date_desc
 
   type Stats = { n: number; sales: number; from: string | null; to: string | null; hammer: number; sold: number; longDesc: number; inHub: number; fullSize: number; siteOnly: number; noPhoto: number }
   let rows: Row[] = [], total = 0, stats: Stats | null = null, tableError: string | null = null
@@ -92,15 +111,38 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
   // ⚠ Measured, not worked out from the data: a full run on 2026-09-09 found Business Central
   // sales between site numbers 1062 (B007) and 1558, with the old system below that. The margin
   // past the end catches sales the website has added since.
-  const collect = { from: BC_FIRST_SITE_SALE, to: BC_LAST_SITE_SALE + 60 }
-  const link = (p: number) => {
-    const u = new URLSearchParams(); if (q) u.set("q", q); if (year) u.set("year", year); if (sale) u.set("sale", sale)
-    // ⚠ Carry the sort across pages too, or page 2 quietly reverts to newest-first.
-    if (one(sp.min)) u.set("min", one(sp.min)); if (one(sp.max)) u.set("max", one(sp.max))
-    if (order) u.set("order", order); u.set("page", String(p))
+  // ⚠ How far the collection has got, read off the lots themselves, so "where do I start next
+  // time" is a fact rather than something to remember. Migration-safe — the column is new, and an
+  // environment that has not run migrations simply shows nothing instead of breaking the page.
+  let collectedTo: number | null = null
+  if (isAdmin) {
+    try {
+      const r = await prisma.$queryRaw<{ m: number | null }[]>`SELECT max("siteSaleId") AS m FROM "BcLotWeb"`
+      collectedTo = r[0]?.m != null ? Number(r[0].m) : null
+    } catch { collectedTo = null }
+  }
+  const collect = { from: collectedTo ? collectedTo + 1 : BC_FIRST_SITE_SALE, to: Math.max(BC_LAST_SITE_SALE, collectedTo ?? 0) + 60 }
+  // ⚠ EVERY filter travels with a page change and with a sort. Page 2 quietly reverting to
+  // unfiltered and newest-first is what made the filters feel broken.
+  const carry = () => {
+    const u = new URLSearchParams()
+    for (const k of FILTERS) { const v = one(sp[k]).trim(); if (v) u.set(k, v) }
+    return u
+  }
+  const link = (p: number) => { const u = carry(); if (order) u.set("order", order); u.set("page", String(p)); return `/databases/bc?${u}` }
+  // Clicking a column sorts it the way that column is normally wanted first — newest sale, biggest
+  // hammer, lot 1 upwards — and clicking it again turns it round.
+  const NATURAL: Record<string, "asc" | "desc"> = { date: "desc", sale: "desc", lot: "asc", est: "desc", hammer: "desc" }
+  const current = order || "date_desc"
+  const sortHref = (f: string) => {
+    const nat = NATURAL[f]
+    const dir = current === `${f}_${nat}` ? (nat === "desc" ? "asc" : "desc") : nat
+    const u = carry(); u.set("order", `${f}_${dir}`)
     return `/databases/bc?${u}`
   }
+  const arrow = (f: string) => current === `${f}_desc` ? " ▼" : current === `${f}_asc` ? " ▲" : ""
   const input = "rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1C1C1E] px-3 min-h-[44px] text-base text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:border-violet-500"
+  const sortCls = "hover:text-violet-600 dark:hover:text-violet-400"
   const pct = (x: number) => stats?.n ? Math.round((x / stats.n) * 100) : 0
   const tile = "rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] px-4 py-3"
   const big = "text-2xl font-bold text-gray-900 dark:text-white tabular-nums", lbl = "text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400", sub = "text-xs text-gray-500 dark:text-gray-400 mt-0.5"
@@ -134,52 +176,63 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
             explanations sit behind a "What this does" toggle — they are read once and then in the
             way for ever, and between them they pushed the search box and the lots off the screen. */}
         {isAdmin && (
-        <div className="space-y-2">
-          <h2 className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Tools</h2>
-          <ArchiveSite scope="bc" />
-          <BcCollect defaultFrom={collect.from} defaultTo={collect.to} />
-          <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-4">
-            <summary className="cursor-pointer text-sm font-bold text-gray-900 dark:text-white">⬇ Export &amp; handover — for a backup, or a future website</summary>
-            <div className="mt-3 space-y-3 text-sm text-gray-700 dark:text-gray-300">
-              <div className="flex flex-wrap items-center gap-3">
-                <a href="/api/databases/bc/export" className="min-h-[44px] inline-flex items-center px-4 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">⬇ Export data (CSV)</a>
-                <span className="text-gray-600 dark:text-gray-400">Every lot, one row each: BC's figures, the website's full description, both photo file names and the site link. Streams as it goes.</span>
+          <BcTools
+            jobs={<ArchiveSite scope="bc" />}
+            load={<BcCollect defaultFrom={collect.from} defaultTo={collect.to} collectedTo={collectedTo} />}
+            exportPanel={
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-4">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white">⬇ Export &amp; handover — for a backup, or a future website</h3>
+                <div className="mt-3 space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <a href="/api/databases/bc/export" className="min-h-[44px] inline-flex items-center px-4 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">⬇ Export data (CSV)</a>
+                    <span className="text-gray-600 dark:text-gray-400">Every lot, one row each: BC's figures, the website's full description, both photo file names and the site link. Streams as it goes.</span>
+                  </div>
+                  <p><span className="font-semibold text-gray-900 dark:text-white">Where the photos live.</span> Cloudflare R2, bucket <code className={code}>{process.env.CLOUDFLARE_R2_BUCKET ?? "(not set)"}</code>, two files per lot named by its BC unique ID:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li><code className={code}>bc-photos/xl/&#123;UniqueID&#125;.webp</code> — full size (about 250 KB)</li>
+                    <li><code className={code}>bc-photos/&#123;UniqueID&#125;.webp</code> — small display copy (about 23 KB)</li>
+                  </ul>
+                  <p className="text-gray-600 dark:text-gray-400">Handover works exactly as on the ABC Database page: the CSV plus a read-only R2 token, copied bucket-to-bucket. The lot data itself lives in Business Central and is re-synced nightly.</p>
+                </div>
               </div>
-              <p><span className="font-semibold text-gray-900 dark:text-white">Where the photos live.</span> Cloudflare R2, bucket <code className={code}>{process.env.CLOUDFLARE_R2_BUCKET ?? "(not set)"}</code>, two files per lot named by its BC unique ID:</p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li><code className={code}>bc-photos/xl/&#123;UniqueID&#125;.webp</code> — full size (about 250 KB)</li>
-                <li><code className={code}>bc-photos/&#123;UniqueID&#125;.webp</code> — small display copy (about 23 KB)</li>
-              </ul>
-              <p className="text-gray-600 dark:text-gray-400">Handover works exactly as on the ABC Database page: the CSV plus a read-only R2 token, copied bucket-to-bucket. The lot data itself lives in Business Central and is re-synced nightly.</p>
-            </div>
-          </details>
-        </div>
+            }
+          />
         )}
 
-        {/* ⚠ One box on show, the rest behind More filters (Jordan's choice, 2026-09-09). The panel
-            opens already open when any of those filters is in use, so a narrowed list never looks
-            unfiltered. */}
-        <form method="get" className="space-y-2">
+        {/* ⚠ The filters are ON SCREEN, not hidden behind "More filters" (Jordan, 2026-09-09: "the
+            filtering options are still awful"). Every one of them is carried through paging AND
+            through a sort, and every column that can be ordered says which way it is going. */}
+        <form method="get" className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-3 space-y-2">
           <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-            <input name="q" defaultValue={q} placeholder="Search descriptions — e.g. Corgi 267, Steiff, Star Wars" className={input} />
-            <select name="order" defaultValue={order} className={input} aria-label="Order the results">
-              <option value="">Newest sale first</option>
-              <option value="oldest">Oldest sale first</option>
-              <option value="price_desc">Hammer: high to low</option>
-              <option value="price_asc">Hammer: low to high</option>
-              <option value="lot">Sale then lot number</option>
-            </select>
+            <input name="q" defaultValue={q} placeholder="Search descriptions or a unique ID — e.g. Corgi 267, Steiff, R009030-1" className={input} />
             <button type="submit" className="min-h-[44px] px-5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">Search</button>
+            <Link href="/databases/bc" className="min-h-[44px] inline-flex items-center px-4 rounded-lg border border-gray-300 dark:border-gray-700 hover:border-violet-500 text-sm text-gray-700 dark:text-gray-300">Clear</Link>
           </div>
-          <details open={!!(sale || year || one(sp.min) || one(sp.max))} className="rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
-            <summary className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">More filters</summary>
-            <div className="mt-2 grid gap-2 sm:grid-cols-4">
-              <input name="sale" defaultValue={sale} placeholder="Sale title" className={input} />
-              <input name="year" defaultValue={year} placeholder="Year" inputMode="numeric" className={input} />
-              <input name="min" defaultValue={one(sp.min)} placeholder="Min £" inputMode="numeric" className={input} />
-              <input name="max" defaultValue={one(sp.max)} placeholder="Max £" inputMode="numeric" className={input} />
-            </div>
-          </details>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <input name="sale" defaultValue={sale} placeholder="Sale — name or code (F111)" className={input} />
+            <label className="flex items-center gap-2"><span className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">From</span><input type="date" name="from" defaultValue={dFrom} className={`${input} w-full dark:[color-scheme:dark]`} /></label>
+            <label className="flex items-center gap-2"><span className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">To</span><input type="date" name="to" defaultValue={dTo} className={`${input} w-full dark:[color-scheme:dark]`} /></label>
+            <select name="status" defaultValue={status} className={input} aria-label="Sold or unsold">
+              <option value="">Sold and unsold</option>
+              <option value="sold">Sold only</option>
+              <option value="unsold">Unsold only</option>
+            </select>
+            <input name="min" defaultValue={one(sp.min)} placeholder="Hammer from £" inputMode="numeric" className={input} />
+            <input name="max" defaultValue={one(sp.max)} placeholder="Hammer to £" inputMode="numeric" className={input} />
+            <select name="photo" defaultValue={photo} className={input} aria-label="Whether the lot has a photo">
+              <option value="">Any photo</option>
+              <option value="yes">Has a photo</option>
+              <option value="no">No photo yet</option>
+            </select>
+            <select name="desc" defaultValue={desc} className={input} aria-label="Which description the lot has">
+              <option value="">Any description</option>
+              <option value="full">Full description</option>
+              <option value="short">Short one only</option>
+            </select>
+          </div>
+          {/* ⚠ Keeps the chosen sort when the form is submitted — without it every search threw
+              the ordering away and dropped back to newest-first. */}
+          {order && <input type="hidden" name="order" value={order} />}
         </form>
 
         {tableError ? (
@@ -188,13 +241,18 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
           <p className="text-sm text-gray-600 dark:text-gray-400">Nothing here yet — the BC sync hasn't loaded any sold lots. Run Data Sync first.</p>
         ) : (
           <>
-            <p className="text-sm text-gray-600 dark:text-gray-400">{total.toLocaleString()} {total === 1 ? "lot" : "lots"}{(q || sale || year || one(sp.min) || one(sp.max)) ? " match" : ""} · page {page} of {pages}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{total.toLocaleString()} {total === 1 ? "lot" : "lots"}{anyFilter ? " match" : ""} · page {page} of {pages}</p>
             <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
               <table className="w-full text-sm">
                 <thead className="text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#141416]">
                   <tr>
-                    <th className="px-3 py-2"></th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Sale</th><th className="px-3 py-2 text-right">Lot</th>
-                    <th className="px-3 py-2">Description</th><th className="px-3 py-2 text-right">Estimate</th><th className="px-3 py-2 text-right">Hammer</th>
+                    <th className="px-3 py-2"></th>
+                    <th className="px-3 py-2"><Link href={sortHref("date")} className={sortCls}>Date{arrow("date")}</Link></th>
+                    <th className="px-3 py-2"><Link href={sortHref("sale")} className={sortCls}>Sale{arrow("sale")}</Link></th>
+                    <th className="px-3 py-2 text-right"><Link href={sortHref("lot")} className={sortCls}>Lot{arrow("lot")}</Link></th>
+                    <th className="px-3 py-2">Description</th>
+                    <th className="px-3 py-2 text-right"><Link href={sortHref("est")} className={sortCls}>Estimate{arrow("est")}</Link></th>
+                    <th className="px-3 py-2 text-right"><Link href={sortHref("hammer")} className={sortCls}>Hammer{arrow("hammer")}</Link></th>
                   </tr>
                 </thead>
                 <tbody>

@@ -1437,6 +1437,7 @@ model BcLotWeb {
   lotNumber       Int?
   description     String?   @db.Text               // the site's full description
   siteLotId       Int?
+  siteSaleId      Int?                             // the website's own sale number this came from
   siteLink        String?
   sitePhoto       String?
   photoKey        String?                          // bc-photos/{uniqueId}.webp
@@ -1445,6 +1446,7 @@ model BcLotWeb {
   pulledAt        DateTime  @default(now())
 
   @@index([auctionCode])
+  @@index([siteSaleId])
 }
 
 // One sale as the website lists it: its own sequential id, the AuctionID it shares
