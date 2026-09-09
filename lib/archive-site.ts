@@ -80,16 +80,25 @@ async function fetchFeed(siteId: number, page: number): Promise<{ lots: FeedLot[
   const res = await fetch(`${SITE}/index.php?option=com_bidding&format=json&task=commission.getLots`, {
     method: "POST", headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" }, body, cache: "no-store",
   })
-  // 4xx/5xx = there is no sale with that id. Everything else has to be readable JSON.
+  // 4xx/5xx = there is no sale with that id.
   if (!res.ok) return { lots: [], total: 0, missing: true }
-  const text = await res.text()
+  const text = (await res.text()).trim()
+  // ⚠⚠ AN EMPTY BODY IS "NO SUCH SALE", NOT A REFUSAL. Measured 2026-09-09: from this office the
+  // site answers **500** for a missing sale id, but from Railway it answers **202 with an empty
+  // body** for the same id. Treating that as an error stopped the whole walk dead on sale 1 and it
+  // never reached sale 2, which has 774 lots. An empty answer carries no information, so the only
+  // safe reading is "nothing here" — move on, and let the miss counter decide when to stop.
+  // ⚠ The guard that makes this safe is in the walk: reaching the end having read ZERO sales is
+  // reported as something to look at, never as "Finished". So if the site really is refusing us,
+  // it says so instead of quietly claiming there is nothing there.
+  if (!text) return { lots: [], total: 0, missing: true }
   let j: any
   try { j = JSON.parse(text) } catch {
-    throw new Error(`The website did not return its lot feed for sale ${siteId} — it answered ${res.status} with ${text.trim().slice(0, 80) || "an empty body"}`)
+    // A body that is not JSON is a real refusal — a block page, a maintenance page, a login wall.
+    throw new Error(`The website did not return its lot feed for sale ${siteId} — it answered ${res.status} with ${text.slice(0, 80)}`)
   }
-  if (!Array.isArray(j?.lots)) {
-    throw new Error(`The website's reply for sale ${siteId} had no lot list in it`)
-  }
+  // JSON that simply has no lot list (the site's "no such auction" shape) is a miss too.
+  if (!Array.isArray(j?.lots)) return { lots: [], total: 0, missing: true }
   return { lots: j.lots, total: Number(j?.total_lots) || 0, missing: false }
 }
 
@@ -253,7 +262,7 @@ async function runSitePull() {
               done: true,
               note: seen > 0
                 ? `Finished — ${seen} sale${seen === 1 ? "" : "s"} read, nothing beyond sale ${lastReal}`
-                : `Stopped at sale ${siteId} without finding a single sale. The website answered for every id but had nothing in it, so this is worth looking at rather than treating as finished.`,
+                : `Stopped at sale ${siteId} having found no sales at all. Every id came back empty, which usually means the website is not serving its lot feed to the Hub rather than that there is nothing there. Worth looking at — this is not "finished".`,
             },
           })
           break
