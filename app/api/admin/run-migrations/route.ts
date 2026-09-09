@@ -1964,6 +1964,9 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS "BcVendor_countryCode_idx" ON "BcVendor"("countryCode")`,
   `CREATE INDEX IF NOT EXISTS "BcVendor_postCode_idx" ON "BcVendor"("postCode")`,
 
+  // Which database a website job is running for: "abc", "bc" or "both".
+  `ALTER TABLE "ArchiveJob" ADD COLUMN IF NOT EXISTS "scope" TEXT`,
+
   // A country the HUB worked out for a vendor BC has none for — AI or set by hand on the report.
   `ALTER TABLE "BcVendor" ADD COLUMN IF NOT EXISTS "resolvedCountry" TEXT`,
   `ALTER TABLE "BcVendor" ADD COLUMN IF NOT EXISTS "resolvedBy"      TEXT`,

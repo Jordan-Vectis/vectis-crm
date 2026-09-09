@@ -1464,6 +1464,9 @@ model ArchiveSale {
 // The two long-running archive jobs ("site" = pull lots/LotIDs/photo paths from the
 // website; "photos" = copy those photos into R2), resumable from cursor.
 model ArchiveJob {
+  /// ⚠ "abc" | "bc" | "both" — which database this run is for. The ABC page starts its runs as
+  /// "abc" and the BC page as "bc", so BC photos no longer sit behind 948,000 ABC ones.
+  scope     String?
   id        String   @id
   cursor    Int      @default(0)
   total     Int      @default(0)

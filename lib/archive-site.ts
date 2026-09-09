@@ -195,9 +195,11 @@ async function writeBcSale(auctionCode: string | null, lots: FeedLot[]): Promise
 
 // ── "site" job ──────────────────────────────────────────────────────────────
 
-export async function startSitePull(startedBy: string) {
+export type Scope = "abc" | "bc" | "both"
+
+export async function startSitePull(startedBy: string, scope: Scope = "both") {
   if (isActive("site")) return getJob("site")
-  let job = await prisma.archiveJob.upsert({ where: { id: "site" }, create: { id: "site", startedBy }, update: { error: null, startedBy } })
+  let job = await prisma.archiveJob.upsert({ where: { id: "site" }, create: { id: "site", startedBy, scope }, update: { error: null, startedBy, scope } })
   if (job.done) {
     // Run again: from the first sale that wasn't finished last time (or after the last one seen).
     const [firstOpen, last] = await Promise.all([
@@ -215,6 +217,7 @@ async function runSitePull() {
   const ctl: Ctl = { stop: false }; active.set("site", ctl)
   try {
     const job = await prisma.archiveJob.findUniqueOrThrow({ where: { id: "site" } })
+    const scope = (job.scope as Scope) ?? "both"
     let cursor = job.cursor, misses = 0, seen = 0
     while (!ctl.stop) {
       const siteId = cursor + 1
@@ -271,8 +274,10 @@ async function runSitePull() {
         update: { auctionId, title, saleDate: page.date, lots: lots.length, finished, pulledAt: new Date() },
       })
       let matched = 0, added = 0
-      if (finished && auctionId != null) ({ matched, added } = await writeSale(auctionId, title, page.date, lots))
-      if (finished && lots.some(l => isBcId(str(l.unique_id)))) matched += await writeBcSale(auctionCode, lots)   // BC-era lots → BcLotWeb
+      // ⚠ One walk covers both databases because they are the SAME sales on the website — what the
+      // scope changes is which database gets written. Running "bc" leaves the ABC archive untouched.
+      if (scope !== "bc" && finished && auctionId != null) ({ matched, added } = await writeSale(auctionId, title, page.date, lots))
+      if (scope !== "abc" && finished && lots.some(l => isBcId(str(l.unique_id)))) matched += await writeBcSale(auctionCode, lots)   // BC-era lots → BcLotWeb
       cursor = siteId
       await prisma.archiveJob.update({
         where: { id: "site" },
@@ -294,13 +299,17 @@ async function runSitePull() {
 const PHOTO_TODO: Prisma.ArchiveLotWhereInput = { sitePhoto: { not: null }, OR: [{ photoKey: null }, { photoXlKey: null }] }
 const BC_PHOTO_TODO: Prisma.BcLotWebWhereInput = { sitePhoto: { not: null }, OR: [{ photoKey: null }, { photoXlKey: null }] }
 
-export async function startPhotoCopy(startedBy: string) {
+export async function startPhotoCopy(startedBy: string, scope: Scope = "both") {
   if (isActive("photos")) return getJob("photos")
-  const total = (await prisma.archiveLot.count({ where: PHOTO_TODO })) + (await prisma.bcLotWeb.count({ where: BC_PHOTO_TODO }))
+  // ⚠ The total has to match the scope, or the BC run shows "376 of 948,506" and looks stuck when
+  // it is actually nearly done.
+  const total =
+    (scope === "bc"  ? 0 : await prisma.archiveLot.count({ where: PHOTO_TODO })) +
+    (scope === "abc" ? 0 : await prisma.bcLotWeb.count({ where: BC_PHOTO_TODO }))
   const job = await prisma.archiveJob.upsert({
     where: { id: "photos" },
-    create: { id: "photos", startedBy, total },
-    update: { error: null, startedBy, total, done: false, added: 0, note: null },
+    create: { id: "photos", startedBy, total, scope },
+    update: { error: null, startedBy, total, scope, done: false, added: 0, note: null },
   })
   void runPhotoCopy()
   return { ...job, running: true }
@@ -309,6 +318,7 @@ export async function startPhotoCopy(startedBy: string) {
 async function runPhotoCopy() {
   const ctl: Ctl = { stop: false }; active.set("photos", ctl)
   try {
+    const scope = ((await prisma.archiveJob.findUnique({ where: { id: "photos" }, select: { scope: true } }))?.scope as Scope) ?? "both"
     const grab = async (path: string): Promise<Buffer | null> => {             // null = the site has no such file
       const res = await fetch(SITE_IMAGES + path, { headers: { "User-Agent": UA } })
       if (res.status === 404 || res.status === 403) return null
@@ -335,7 +345,10 @@ async function runPhotoCopy() {
     while (!ctl.stop) {
       let n = 0
       // ABC lots first, then BC lots — same treatment, different folders.
-      const batch = await prisma.archiveLot.findMany({ where: PHOTO_TODO, select: { id: true, lotId: true, sitePhoto: true, photoKey: true, photoXlKey: true }, take: 40, orderBy: { id: "asc" } })
+      // ⚠⚠ SCOPE IS WHY THIS EXISTS. The copy did every ABC photo before it started a single BC one,
+      // so the BC Database sat at 0 photos behind 948,000 ABC lots. Running it from the BC page now
+      // does BC only.
+      const batch = scope === "bc" ? [] : await prisma.archiveLot.findMany({ where: PHOTO_TODO, select: { id: true, lotId: true, sitePhoto: true, photoKey: true, photoXlKey: true }, take: 40, orderBy: { id: "asc" } })
       if (batch.length) {
         for (let i = 0; i < batch.length && !ctl.stop; i += 5) {
           await Promise.all(batch.slice(i, i + 5).map(async l => {
@@ -346,7 +359,7 @@ async function runPhotoCopy() {
           await sleep(100)
         }
       } else {
-        const bc = await prisma.bcLotWeb.findMany({ where: BC_PHOTO_TODO, select: { uniqueId: true, sitePhoto: true, photoKey: true, photoXlKey: true }, take: 40, orderBy: { uniqueId: "asc" } })
+        const bc = scope === "abc" ? [] : await prisma.bcLotWeb.findMany({ where: BC_PHOTO_TODO, select: { uniqueId: true, sitePhoto: true, photoKey: true, photoXlKey: true }, take: 40, orderBy: { uniqueId: "asc" } })
         if (!bc.length) {
           // ⚠ "Nothing to copy" and "everything is copied" are not the same sentence. With no
           // website pull yet there are no photo paths to copy from, and saying it was all done

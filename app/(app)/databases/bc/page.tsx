@@ -25,6 +25,7 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
   const isAdmin = session?.user?.role === "ADMIN"
   const sp = await searchParams
   const q = one(sp.q).trim(), year = one(sp.year).trim(), sale = one(sp.sale).trim()
+  const order = one(sp.order).trim()
   const min = parseFloat(one(sp.min)), max = parseFloat(one(sp.max))
   const page = Math.max(1, parseInt(one(sp.page)) || 1)
 
@@ -37,6 +38,19 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
   if (Number.isFinite(max)) conds.push(Prisma.sql`w."hammerPrice" <= ${max} AND w."hammerPrice" > 0`)
   const where = Prisma.join(conds, " AND ")
   const from = Prisma.sql`FROM "WarehouseItem" w LEFT JOIN "BcLotWeb" b ON b."uniqueId" = upper(w."uniqueId")`
+  // ⚠ Built from a fixed map, never from the query string — this goes into raw SQL, so anything a
+  // visitor could influence must not reach it. An unknown value simply falls back to the default.
+  // ⚠ Unsold lots (hammer 0) sort LAST on both price directions: a lot with no result is not the
+  // cheapest, and letting the nulls lead a low-to-high sort buries the genuinely cheap ones.
+  const LOT_NO = Prisma.sql`NULLIF(regexp_replace(COALESCE(NULLIF(w."currentLotNo", '0'), w."lotNo"), '[^0-9]', '', 'g'), '')::int`
+  const ORDERS: Record<string, Prisma.Sql> = {
+    "":         Prisma.sql`w."auctionDate" DESC, w."auctionCode" DESC, ${LOT_NO} ASC`,
+    oldest:     Prisma.sql`w."auctionDate" ASC, w."auctionCode" ASC, ${LOT_NO} ASC`,
+    price_desc: Prisma.sql`NULLIF(w."hammerPrice", 0) DESC NULLS LAST, w."auctionDate" DESC`,
+    price_asc:  Prisma.sql`NULLIF(w."hammerPrice", 0) ASC NULLS LAST, w."auctionDate" DESC`,
+    lot:        Prisma.sql`w."auctionCode" DESC, ${LOT_NO} ASC`,
+  }
+  const orderBy = ORDERS[order] ?? ORDERS[""]
 
   type Stats = { n: number; sales: number; from: string | null; to: string | null; hammer: number; sold: number; longDesc: number; inHub: number; fullSize: number; siteOnly: number; noPhoto: number }
   let rows: Row[] = [], total = 0, stats: Stats | null = null, tableError: string | null = null
@@ -48,7 +62,7 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
                w."description" AS "shortDesc", b."description" AS "longDesc", w."lowEstimate" AS "estimateLow", w."highEstimate" AS "estimateHigh",
                NULLIF(w."hammerPrice", 0) AS "hammerPrice", b."siteHammerPrice", b."siteLink", b."sitePhoto", b."photoKey", b."photoXlKey", w."noOfPhotos"
         ${from} WHERE ${where}
-        ORDER BY w."auctionDate" DESC, w."auctionCode" DESC, NULLIF(regexp_replace(COALESCE(NULLIF(w."currentLotNo", '0'), w."lotNo"), '[^0-9]', '', 'g'), '')::int ASC
+        ORDER BY ${orderBy}
         LIMIT ${PAGE} OFFSET ${(page - 1) * PAGE}`,
       prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*)::bigint AS n ${from} WHERE ${where}`,
       prisma.$queryRaw<{ n: bigint; sales: bigint; from: string | null; to: string | null; hammer: number | null; sold: bigint; longdesc: bigint; inhub: bigint; fullsize: bigint; siteonly: bigint }[]>`
@@ -74,7 +88,9 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
   const pages = Math.max(1, Math.ceil(total / PAGE))
   const link = (p: number) => {
     const u = new URLSearchParams(); if (q) u.set("q", q); if (year) u.set("year", year); if (sale) u.set("sale", sale)
-    if (one(sp.min)) u.set("min", one(sp.min)); if (one(sp.max)) u.set("max", one(sp.max)); u.set("page", String(p))
+    // ⚠ Carry the sort across pages too, or page 2 quietly reverts to newest-first.
+    if (one(sp.min)) u.set("min", one(sp.min)); if (one(sp.max)) u.set("max", one(sp.max))
+    if (order) u.set("order", order); u.set("page", String(p))
     return `/databases/bc?${u}`
   }
   const input = "rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1C1C1E] px-3 min-h-[44px] text-base text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:border-violet-500"
@@ -106,7 +122,7 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
           </div>
         )}
 
-        {isAdmin && <ArchiveSite />}
+        {isAdmin && <ArchiveSite scope="bc" />}
         {isAdmin && (
           <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-5">
             <summary className="cursor-pointer text-base font-bold text-gray-900 dark:text-white">Export &amp; handover — for a backup, or a future website</summary>
@@ -125,13 +141,30 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
           </details>
         )}
 
-        <form method="get" className="grid gap-2 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]">
-          <input name="q" defaultValue={q} placeholder="Search descriptions — e.g. Corgi 267, Steiff, Star Wars" className={input} />
-          <input name="sale" defaultValue={sale} placeholder="Sale title" className={input} />
-          <input name="year" defaultValue={year} placeholder="Year" inputMode="numeric" className={input} />
-          <input name="min" defaultValue={one(sp.min)} placeholder="Min £" inputMode="numeric" className={input} />
-          <input name="max" defaultValue={one(sp.max)} placeholder="Max £" inputMode="numeric" className={input} />
-          <button type="submit" className="min-h-[44px] px-5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">Search</button>
+        {/* ⚠ One box on show, the rest behind More filters (Jordan's choice, 2026-09-09). The panel
+            opens already open when any of those filters is in use, so a narrowed list never looks
+            unfiltered. */}
+        <form method="get" className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <input name="q" defaultValue={q} placeholder="Search descriptions — e.g. Corgi 267, Steiff, Star Wars" className={input} />
+            <select name="order" defaultValue={order} className={input} aria-label="Order the results">
+              <option value="">Newest sale first</option>
+              <option value="oldest">Oldest sale first</option>
+              <option value="price_desc">Hammer: high to low</option>
+              <option value="price_asc">Hammer: low to high</option>
+              <option value="lot">Sale then lot number</option>
+            </select>
+            <button type="submit" className="min-h-[44px] px-5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">Search</button>
+          </div>
+          <details open={!!(sale || year || one(sp.min) || one(sp.max))} className="rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
+            <summary className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">More filters</summary>
+            <div className="mt-2 grid gap-2 sm:grid-cols-4">
+              <input name="sale" defaultValue={sale} placeholder="Sale title" className={input} />
+              <input name="year" defaultValue={year} placeholder="Year" inputMode="numeric" className={input} />
+              <input name="min" defaultValue={one(sp.min)} placeholder="Min £" inputMode="numeric" className={input} />
+              <input name="max" defaultValue={one(sp.max)} placeholder="Max £" inputMode="numeric" className={input} />
+            </div>
+          </details>
         </form>
 
         {tableError ? (

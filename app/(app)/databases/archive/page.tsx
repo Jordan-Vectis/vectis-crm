@@ -17,11 +17,23 @@ const fmtGBP = (n: number | null) => n == null ? "—" : "£" + n.toLocaleString
 type SP = Record<string, string | string[] | undefined>
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? ""
 
+// How the results are ordered. ⚠ Hammer sorts put the unsold (null) at the end either way — a lot
+// with no result is not "cheapest", and floating them to the top of a low-to-high sort would bury
+// the actual cheap lots.
+const ARCHIVE_ORDER: Record<string, any> = {
+  "":           [{ auctionDate: "desc" }, { auctionId: "desc" }, { lot: "asc" }],
+  oldest:       [{ auctionDate: "asc" }, { auctionId: "asc" }, { lot: "asc" }],
+  price_desc:   [{ hammerPrice: { sort: "desc", nulls: "last" } }, { auctionDate: "desc" }],
+  price_asc:    [{ hammerPrice: { sort: "asc",  nulls: "last" } }, { auctionDate: "desc" }],
+  lot:          [{ auctionId: "desc" }, { lot: "asc" }],
+}
+
 export default async function ArchivePage({ searchParams }: { searchParams: Promise<SP> }) {
   const session = await auth()
   const isAdmin = session?.user?.role === "ADMIN"
   const sp = await searchParams
   const q = one(sp.q).trim(), year = one(sp.year).trim(), sale = one(sp.sale).trim()
+  const order = one(sp.order).trim()
   const min = parseFloat(one(sp.min)), max = parseFloat(one(sp.max))
   const page = Math.max(1, parseInt(one(sp.page)) || 1)
 
@@ -39,7 +51,7 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
   let rows: any[] = [], total = 0, stats: Stats | null = null, tableError: string | null = null
   try {
     const [r, t, agg] = await Promise.all([
-      prisma.archiveLot.findMany({ where, orderBy: [{ auctionDate: "desc" }, { auctionId: "desc" }, { lot: "asc" }], skip: (page - 1) * PAGE, take: PAGE }),
+      prisma.archiveLot.findMany({ where, orderBy: ARCHIVE_ORDER[order] ?? ARCHIVE_ORDER[""], skip: (page - 1) * PAGE, take: PAGE }),
       prisma.archiveLot.count({ where }),
       // One pass over the table for the summary box (a million rows — one scan, not eight counts).
       prisma.$queryRaw<{ n: bigint; sales: bigint; from: Date | null; to: Date | null; hammer: number | null; sold: bigint; withlotid: bigint; inhub: bigint; fullsize: bigint; siteonly: bigint; fromsheet: bigint }[]>`
@@ -72,7 +84,9 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
   const pages = Math.max(1, Math.ceil(total / PAGE))
   const link = (p: number) => {
     const u = new URLSearchParams(); if (q) u.set("q", q); if (year) u.set("year", year); if (sale) u.set("sale", sale)
-    if (one(sp.min)) u.set("min", one(sp.min)); if (one(sp.max)) u.set("max", one(sp.max)); u.set("page", String(p))
+    // ⚠ Carry the sort across pages too, or page 2 quietly reverts to newest-first.
+    if (one(sp.min)) u.set("min", one(sp.min)); if (one(sp.max)) u.set("max", one(sp.max))
+    if (order) u.set("order", order); u.set("page", String(p))
     return `/databases/archive?${u}`
   }
   const input = "rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1C1C1E] px-3 min-h-[44px] text-base text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:border-violet-500"
@@ -110,7 +124,7 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
         })()}
 
         {isAdmin && <ArchiveImport />}
-        {isAdmin && <ArchiveSite />}
+        {isAdmin && <ArchiveSite scope="abc" />}
         {isAdmin && (
           <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-5">
             <summary className="cursor-pointer text-base font-bold text-gray-900 dark:text-white">Export &amp; handover — for a backup, or a future website</summary>
@@ -131,13 +145,30 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
           </details>
         )}
 
-        <form method="get" className="grid gap-2 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]">
-          <input name="q" defaultValue={q} placeholder="Search descriptions — e.g. Dinky 105, Steiff, Palitoy Leia" className={input} />
-          <input name="sale" defaultValue={sale} placeholder="Sale title" className={input} />
-          <input name="year" defaultValue={year} placeholder="Year" inputMode="numeric" className={input} />
-          <input name="min" defaultValue={one(sp.min)} placeholder="Min £" inputMode="numeric" className={input} />
-          <input name="max" defaultValue={one(sp.max)} placeholder="Max £" inputMode="numeric" className={input} />
-          <button type="submit" className="min-h-[44px] px-5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">Search</button>
+        {/* ⚠ One box on show, the rest behind More filters (Jordan's choice, 2026-09-09). Five big
+            boxes across the page made the search look heavier than it is. The panel opens already
+            open when any of those filters is in use, so a narrowed list never looks unfiltered. */}
+        <form method="get" className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <input name="q" defaultValue={q} placeholder="Search descriptions — e.g. Dinky 105, Steiff, Palitoy Leia" className={input} />
+            <select name="order" defaultValue={order} className={input} aria-label="Order the results">
+              <option value="">Newest sale first</option>
+              <option value="oldest">Oldest sale first</option>
+              <option value="price_desc">Hammer: high to low</option>
+              <option value="price_asc">Hammer: low to high</option>
+              <option value="lot">Sale then lot number</option>
+            </select>
+            <button type="submit" className="min-h-[44px] px-5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">Search</button>
+          </div>
+          <details open={!!(sale || year || one(sp.min) || one(sp.max))} className="rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
+            <summary className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">More filters</summary>
+            <div className="mt-2 grid gap-2 sm:grid-cols-4">
+              <input name="sale" defaultValue={sale} placeholder="Sale title" className={input} />
+              <input name="year" defaultValue={year} placeholder="Year" inputMode="numeric" className={input} />
+              <input name="min" defaultValue={one(sp.min)} placeholder="Min £" inputMode="numeric" className={input} />
+              <input name="max" defaultValue={one(sp.max)} placeholder="Max £" inputMode="numeric" className={input} />
+            </div>
+          </details>
         </form>
 
         {tableError ? (
