@@ -13,6 +13,7 @@ import { buildCondition as buildConditionStr, type BoxPrefixMode } from "@/lib/c
 import { useConditionWordings } from "@/lib/use-condition-wordings"
 import { identityWarning, checkIdentityTrio } from "@/lib/lot-identity"
 import { describeActionError } from "@/lib/action-error"
+import { isDbReadOnlyBlock, DB_READ_ONLY_MESSAGE } from "@/lib/db-readonly"
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -990,6 +991,11 @@ export default function LotWizardTab({
   // Different tote asks first (Jordan, 2026-09-09). One tap used to empty the tote, vendor and
   // receipt and throw the batch back to step 1 with nothing to undo it.
   const [leaveToteConfirm, setLeaveToteConfirm] = useState(false)
+  // ⚠⚠ The database is refusing writes (2026-09-09). Not a warning line — a STOP. Everything a
+  // cataloguer does here is a write, so once one is refused the rest of the shift is refused too,
+  // and the only useful thing the screen can do is say so and get them to put their pen down.
+  const [dbReadOnly,    setDbReadOnly]    = useState(false)
+  const [dbRecheck,     setDbRecheck]     = useState<"idle" | "checking" | "still" | "unknown">("idle")
   // Category/brand pins (separate feature — unchanged): keep a value sticky across lots.
   const [pinnedMain,    setPinnedMain]    = useState("")
   const [pinnedSub,     setPinnedSub]     = useState("")
@@ -1206,6 +1212,27 @@ export default function LotWizardTab({
 
   // "Change Tote / Vendor" — wipe the trio for a clean re-entry, then go back to
   // step 1.
+  // Ask the server whether the database is taking writes again. ⚠ Only ever called while the
+  // stop is already on screen — nothing polls this in the normal case. An error answers "unknown"
+  // rather than "still refusing": a dropped connection is a different fact, and telling somebody
+  // their database is still down because the wifi blipped sends them home for nothing.
+  async function recheckDbWritable() {
+    setDbRecheck("checking")
+    try {
+      const res  = await fetch("/api/health/db-writable", { cache: "no-store" })
+      const data = await res.json()
+      if (data?.writable === true) {
+        setDbReadOnly(false)
+        setDbRecheck("idle")
+        setSaveStatus("The database is taking saves again \u2014 press Save Lot to save this one.")
+        return
+      }
+      setDbRecheck(data?.writable === false ? "still" : "unknown")
+    } catch {
+      setDbRecheck("unknown")
+    }
+  }
+
   function changeVendor() {
     setLeaveToteConfirm(false)
     clearVendorFields()
@@ -1403,6 +1430,9 @@ export default function LotWizardTab({
       // since the last save is accounted for. Reuse the existing popup — logging
       // the reason re-runs performSave, which then passes (a covering log exists).
       // Enforced server-side so it survives closing the app / signing out.
+      // The database is refusing writes. The lot on screen is NOT saved and nothing further will
+      // be, so stop the batch rather than letting them carry on into a wall.
+      if (isDbReadOnlyBlock(res)) { setDbReadOnly(true); setDbRecheck("idle"); setSaveStatus(""); return }
       if (res && typeof res === "object" && (res as { needsIdle?: boolean }).needsIdle) {
         const g = res as { idleMs: number; sinceMs: number }
         // ⚠ Only ask ONCE per gap. The server gate excludes UNALLOCATED rows and wants half the
@@ -1436,7 +1466,12 @@ export default function LotWizardTab({
       // older numbers with no sign anything had gone wrong. Scoped to THIS sale now, and a failure
       // says so on screen instead of vanishing.
       saveLastLotFields({ vendor, tote, receipt, auctionId })
-        .then(r => { if (!r?.ok) setRememberFailed(true) })
+        .then(r => {
+          // ⚠ A read-only database is not "could not remember these numbers" — it is the same
+          // stop as a refused lot. This write failing is what made vendors appear to revert.
+          if (r && (r as { dbReadOnly?: boolean }).dbReadOnly) { setDbReadOnly(true); setDbRecheck("idle"); return }
+          if (!r?.ok) setRememberFailed(true)
+        })
         .catch(() => setRememberFailed(true))
       setSaveStatus(`✓ Lot #${n} saved — ${vendor} / ${tote} / ${barcode}`)
       // Tote / Vendor / Receipt stay locked for the whole batch — leave them (and the
@@ -1714,6 +1749,51 @@ export default function LotWizardTab({
         </div>
         )
       })()}
+
+      {/* ⚠⚠ THE DATABASE IS REFUSING WRITES — A FULL STOP, NOT A BANNER (2026-09-09).
+          Production’s database came up read-only for an hour. Reads worked, so the app looked
+          perfectly healthy, and cataloguers carried on for an hour losing every lot — seeing one
+          refused save at a time, worded as Next’s "the specific message is omitted in production
+          builds" boilerplate, plus their tote and vendor quietly reverting (that is a write too,
+          and it was failing as well).
+          It is a MODAL and it cannot be clicked away, because the only correct action is to stop.
+          A banner would have been scrolled past — and the banners on this screen now sit at the
+          foot of the step, where it would not even have been on screen.
+          ⚠ It says the lot is still on screen: the danger otherwise is somebody assuming the work
+          is gone and clearing the form, which is the one way to actually lose it. */}
+      {dbReadOnly && (
+        <div className="fixed inset-0 z-[95] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border-2 border-red-500 w-full max-w-md p-5">
+            <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">Stop — nothing is saving</h3>
+            <p className="text-sm text-gray-700 dark:text-gray-200 mb-3">{DB_READ_ONLY_MESSAGE}</p>
+            <p className="text-sm text-gray-700 dark:text-gray-200 mb-3">
+              <strong>This lot was not saved.</strong> It is still on the screen behind this message, so
+              don&apos;t clear anything — when the database is back, press Save Lot and it will go in.
+            </p>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+              Nothing already saved is affected. This is the database refusing new entries, not the app.
+            </p>
+            {dbRecheck === "still" && (
+              <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">Still not accepting anything. Leave it a few minutes and press again.</p>
+            )}
+            {dbRecheck === "unknown" && (
+              <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">Could not reach the server to ask — that may just be the connection. Try again in a moment.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={recheckDbWritable} disabled={dbRecheck === "checking"}
+                style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 44 : undefined }}
+                className={`font-semibold rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white ${tablet ? "px-5 py-3 text-base" : "px-4 py-2 text-sm"}`}>
+                {dbRecheck === "checking" ? "Checking…" : "Check again"}
+              </button>
+              <button type="button" onClick={() => window.location.reload()}
+                style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 44 : undefined }}
+                className={`font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-400 ${tablet ? "px-5 py-3 text-base" : "px-4 py-2 text-sm"}`}>
+                Reload the page
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Different tote — ask before emptying the batch's identity.
           ⚠ Buttons are deliberately the other way round from a normal dialog: the safe one is on

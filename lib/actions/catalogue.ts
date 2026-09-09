@@ -12,6 +12,7 @@ import { headers } from "next/headers"
 import { evaluateIdleGate, logIdleDecision, clockLooksTampered } from "@/lib/idle-gate"
 import { buildToteMap, checkLot, toteLookupVariants, duplicateToteNumbers, norm } from "@/lib/tote-check"
 import { ukDayStartUtc } from "@/lib/cataloguing-reports"
+import { isReadOnlyDbError, dbReadOnlyBlock, DB_READ_ONLY_MESSAGE } from "@/lib/db-readonly"
 import { getDepartmentAccessForSession, canSeeAuction } from "@/lib/departments"
 import { shouldKeepFlag } from "@/lib/measurement-check"
 import { withConditionSentence, stripConditionSentences, hasConditionSentence, keepConditionLine } from "@/lib/condition"
@@ -472,7 +473,7 @@ export async function getLastLotFields(auctionId?: string) {
  */
 export async function saveLastLotFields(
   fields: { tote?: string; vendor?: string; receipt?: string; auctionId?: string },
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; dbReadOnly?: boolean }> {
   try {
     const session = await auth()
     if (!session) return { ok: false, error: "Not signed in" }
@@ -499,6 +500,11 @@ export async function saveLastLotFields(
     })
     return { ok: true }
   } catch (e: any) {
+    // ⚠ A read-only database says so explicitly. This write is what remembers the tote and vendor
+    // for the next lot, and when it silently failed on 2026-09-09 cataloguers saw their vendor
+    // revert to the previous batch with no explanation — which read as the app losing their work
+    // at random rather than as the one fault it actually was.
+    if (isReadOnlyDbError(e)) return { ok: false, dbReadOnly: true, error: DB_READ_ONLY_MESSAGE }
     return { ok: false, error: e?.message ?? "Could not remember these numbers" }
   }
 }
@@ -1298,7 +1304,25 @@ export async function getMyLotsToday(): Promise<number> {
   })
 }
 
+/**
+ * ⚠ A READ-ONLY DATABASE IS RETURNED, NOT THROWN (2026-09-09). A thrown message is redacted on a
+ * production build, so an hour of refused saves reached cataloguers as Next's "the specific
+ * message is omitted" boilerplate and they kept working. Returning it lets the wizard stop them.
+ * Every OTHER error is re-thrown untouched — this wrapper changes nothing else about createLot.
+ */
 export async function createLot(auctionId: string, formData: FormData) {
+  try {
+    return await createLotInner(auctionId, formData)
+  } catch (e) {
+    if (isReadOnlyDbError(e)) {
+      console.error("createLot: database is read-only, lot NOT saved")
+      return dbReadOnlyBlock()
+    }
+    throw e
+  }
+}
+
+async function createLotInner(auctionId: string, formData: FormData) {
   const session = await requireCataloguer()
   await requireNotBCLocked(auctionId, session)
   const data = extractLotData(formData)
