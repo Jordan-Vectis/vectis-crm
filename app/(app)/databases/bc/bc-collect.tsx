@@ -77,10 +77,31 @@ export default function BcCollect({ defaultFrom, defaultTo, collectedTo }: { def
   const why = "cursor-pointer text-xs text-gray-500 dark:text-gray-400 hover:text-violet-500"
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-4 space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-gray-900 dark:text-white">📥 Load lot files collected from the website</h3>
-        <div className="flex flex-wrap items-center gap-3">
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-4 space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-bold text-gray-900 dark:text-white">📥 Update the BC lots</h3>
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          {collectedTo ? <>Collected up to the website&rsquo;s sale <span className="font-mono">{collectedTo}</span> — this picks up from <span className="font-mono">{collectedTo + 1}</span></> : <>Nothing collected yet — this starts at sale <span className="font-mono">{defaultFrom}</span></>}
+        </span>
+      </div>
+
+      {/* ⚠ THE THREE STEPS ARE ON SCREEN, NUMBERED (Jordan, 2026-09-09: "so when I want to update
+          the BC lots lets say in a month what do I do?"). They were behind a toggle, which meant the
+          panel showed a file box and no way of knowing where the files were meant to come from. */}
+      <ol className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+        <li className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-gray-900 dark:text-white">1.</span>
+          <button type="button" onClick={copy} className={`${btn} border border-gray-300 dark:border-gray-700 hover:border-violet-500`}>
+            {copied ? "✓ Copied" : "📋 Copy the collector"}
+          </button>
+          <span>then open <a href="https://www.vectis.co.uk" target="_blank" rel="noopener noreferrer" className="text-violet-600 dark:text-violet-400 hover:underline">www.vectis.co.uk ↗</a> on an office machine.</span>
+        </li>
+        <li className="flex flex-wrap items-start gap-2">
+          <span className="font-semibold text-gray-900 dark:text-white">2.</span>
+          <span>On that page press <span className="font-semibold text-gray-900 dark:text-white">F12</span>, click <span className="font-semibold text-gray-900 dark:text-white">Console</span>, paste and press Enter. Leave the tab open — it prints each sale as it goes and saves a file to your Downloads every {COLLECTOR_FILE_MB} MB. Red 500 lines are normal.</span>
+        </li>
+        <li className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-gray-900 dark:text-white">3.</span>
           <input
             type="file" accept=".json,application/json" multiple disabled={busy}
             onChange={e => { setFiles(Array.from(e.target.files ?? [])); setDone(null); setError(null); setProblems([]) }}
@@ -89,21 +110,10 @@ export default function BcCollect({ defaultFrom, defaultTo, collectedTo }: { def
           <button type="button" onClick={load} disabled={busy || !files.length} className={`${btn} bg-violet-600 hover:bg-violet-500 text-white`}>
             {busy ? "Loading…" : files.length ? `Load ${files.length} file${files.length === 1 ? "" : "s"}` : "Load files"}
           </button>
-        </div>
-      </div>
+          <span className="text-gray-500 dark:text-gray-400">{files.length ? `${totalMb.toFixed(0)} MB — they go up one at a time.` : "choose the files it saved."}</span>
+        </li>
+      </ol>
 
-      {/* ⚠ NEXT TIME. The website's sale number is stored with every lot, so the page can say how
-          far the collection got and start the next run at the sale after it. Without it, "do it
-          again in a month" means somebody remembering a number. */}
-      <p className="text-sm text-gray-600 dark:text-gray-400">
-        {collectedTo
-          ? <>Collected up to the website&rsquo;s sale <span className="font-mono">{collectedTo}</span>. To pick up the sales held since, collect from <span className="font-mono">{collectedTo + 1}</span> — the script below is already set to it — then load the files here. Sales already in are updated, never duplicated, so going over old ones again only fills in what was blank, such as a hammer price on a sale that has since been held.</>
-          : <>Nothing has been loaded yet. Collect from sale <span className="font-mono">{defaultFrom}</span> onwards with the script below, then choose the files here.</>}
-      </p>
-
-      {!busy && !done && files.length > 0 && (
-        <p className="text-sm text-gray-600 dark:text-gray-400">{files.length} file{files.length === 1 ? "" : "s"} chosen · {totalMb.toFixed(0)} MB. They go up one at a time.</p>
-      )}
       {busy && (
         <div className="text-sm text-gray-700 dark:text-gray-300" aria-live="polite">
           <div className="flex flex-wrap justify-between gap-2 mb-1">
@@ -122,12 +132,13 @@ export default function BcCollect({ defaultFrom, defaultTo, collectedTo }: { def
       )}
 
       <details>
-        <summary className={why}>How the files are collected</summary>
+        <summary className={why}>Why it is done this way, and the sale numbers</summary>
         <div className="mt-2 space-y-3 text-sm text-gray-600 dark:text-gray-400">
           <p>
             The website will not answer the Hub&rsquo;s server — every sale comes back empty — but it answers a browser
-            on the office network normally. So the lots are collected on an office machine and loaded back here.
-            They go in through the same route the automatic pull uses, so the two can never disagree.
+            on the office network normally. The files go in through the same route the automatic pull uses, so the two
+            can never disagree. Sales already held are updated rather than duplicated, so collecting a stretch twice
+            only fills in what was blank — a hammer price on a sale that has since been held, for instance.
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1">
@@ -138,20 +149,13 @@ export default function BcCollect({ defaultFrom, defaultTo, collectedTo }: { def
               <span className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Last sale</span>
               <input value={to} onChange={e => setTo(e.target.value)} inputMode="numeric" className={`${box} w-28`} />
             </label>
-            <button type="button" onClick={copy} className={`${btn} border border-gray-300 dark:border-gray-700 hover:border-violet-500`}>
-              {copied ? "✓ Copied" : "📋 Copy script"}
-            </button>
           </div>
           <p className="text-xs">
-            These are the website&rsquo;s own sale numbers, not our sale codes. Business Central sales run from site
-            number {BC_FIRST_SITE_SALE} to {BC_LAST_SITE_SALE}; sales with no BC lots are skipped in one small request.
+            These are the website&rsquo;s own sale numbers, not our sale codes — Business Central sales run from site
+            number {BC_FIRST_SITE_SALE} to {BC_LAST_SITE_SALE}, and sales with none are skipped in one small request.
+            Change them and press Copy the collector again. To stop a run early type <span className="font-mono">vectisStop()</span>;
+            running it again carries on from where it stopped.
           </p>
-          <ol className="list-decimal pl-5 space-y-1">
-            <li>Open <a href="https://www.vectis.co.uk" target="_blank" rel="noopener noreferrer" className="text-violet-600 dark:text-violet-400 hover:underline">www.vectis.co.uk ↗</a> on an office machine.</li>
-            <li>Press <span className="font-semibold text-gray-900 dark:text-white">F12</span>, click the <span className="font-semibold text-gray-900 dark:text-white">Console</span> tab, paste and press Enter.</li>
-            <li>Leave the tab open. It prints each sale, and saves a file to Downloads every {COLLECTOR_FILE_MB} MB. Red 500 lines are normal — that is the site saying there is no sale with that number.</li>
-            <li>Then choose those files above and press Load. Safe to stop and re-run: type <span className="font-mono">vectisStop()</span>, and next time it carries on where it stopped.</li>
-          </ol>
           <details>
             <summary className={why}>Show the script (if the copy button will not work)</summary>
             <textarea readOnly value={script} rows={10} className="mt-2 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#0D0D0F] p-2 font-mono text-[11px] text-gray-800 dark:text-gray-200" />

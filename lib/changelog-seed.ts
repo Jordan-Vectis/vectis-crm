@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"62efde58d245e0920a4230492f9412e2dae1fb59","author":"Jordan Orange","date":"2026-09-09T12:25:16+01:00","subject":"BC Database: tools as small chips, real sorting, and a way to carry on next time"},
   {"sha":"78c742e3ce5ca0f3c2e904d8dee0f812ea738824","author":"Jordan Orange","date":"2026-09-09T11:56:22+01:00","subject":"BC Database: tidy the tools, and stop the collector losing a sale in silence"},
   {"sha":"318b487cf9b995c62e240bb8a85a279e0a9a7432","author":"Jordan Orange","date":"2026-09-09T10:49:10+01:00","subject":"BC Database: collect the website's lots from the browser"},
   {"sha":"dce04dcdb6efef726d74a8d6e061630c09afe23b","author":"Jordan Orange","date":"2026-09-09T10:17:19+01:00","subject":"Website pull: send the headers the site's own page sends, and a way to see its answer"},
