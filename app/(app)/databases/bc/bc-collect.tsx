@@ -20,7 +20,7 @@ import { bcCollectorScript, COLLECTOR_FILE_MB, BC_FIRST_SITE_SALE, BC_LAST_SITE_
 export default function BcCollect({ defaultFrom, defaultTo, collectedTo }: { defaultFrom: number; defaultTo: number; collectedTo: number | null }) {
   const [from, setFrom] = useState(String(defaultFrom))
   const [to, setTo] = useState(String(defaultTo))
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<"" | "script" | "claude">("")
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [at, setAt] = useState(0)
@@ -34,11 +34,32 @@ export default function BcCollect({ defaultFrom, defaultTo, collectedTo }: { def
   const script = bcCollectorScript({ from: f, to: t })
   const totalMb = files.reduce((n, x) => n + x.size, 0) / 1048576
 
-  async function copy() {
+  // ⚠ Written to stand on its own. Whoever reads it — a fresh Claude session on an office machine —
+  // has none of this conversation, so it has to carry WHY the server cannot do it, WHERE the
+  // collector is, WHICH sales to start from, and WHAT to report back.
+  const claudeText = [
+    "Please collect the Business Central lot descriptions and photos from vectis.co.uk for the Vectis Hub. I will load the files myself afterwards.",
+    "",
+    "Background: the Hub's Railway server cannot read the website — it answers 202 with an empty body for every sale — but a machine on the Vectis office network gets the lots normally. Business Central holds the full description and the photo path but publishes neither, so the website's lot feed is the only source we have.",
+    "",
+    "There is a collector in the repo for exactly this. From C:\\Dev apps\\vectis-hub, run it in the background and leave it going:",
+    "",
+    `    node scripts/collect-bc-lots.mjs ${f} ${t} "<my Downloads folder>/vectis-bc-lots"`,
+    "",
+    collectedTo
+      ? `The Hub already holds every sale up to the website's sale number ${collectedTo}, so ${f} is where to carry on from.`
+      : "Nothing has been collected yet, so that is the whole range.",
+    "",
+    "It walks the website's own sale numbers, skips the pre-Business-Central sales with one small request each, keeps only finished sales and lots whose id looks like r009030-1, and writes JSON files of about 12 MB. Roughly half an hour for a year of sales. A red 500 in the output means there is no sale with that number and is normal.",
+    "",
+    "When it finishes, tell me how many lots and sales it collected, how many files, and whether any sale could not be read — it names those at the end. Do not try to load them into the database yourself.",
+  ].join(String.fromCharCode(10))
+
+  async function copyText(kind: "script" | "claude") {
     try {
-      await navigator.clipboard.writeText(script)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 4000)
+      await navigator.clipboard.writeText(kind === "script" ? script : claudeText)
+      setCopied(kind)
+      setTimeout(() => setCopied(""), 4000)
     } catch {
       setError("This browser would not let the page copy for you — open “Show the script” and copy it by hand.")
     }
@@ -91,8 +112,8 @@ export default function BcCollect({ defaultFrom, defaultTo, collectedTo }: { def
       <ol className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
         <li className="flex flex-wrap items-center gap-2">
           <span className="font-semibold text-gray-900 dark:text-white">1.</span>
-          <button type="button" onClick={copy} className={`${btn} border border-gray-300 dark:border-gray-700 hover:border-violet-500`}>
-            {copied ? "✓ Copied" : "📋 Copy the collector"}
+          <button type="button" onClick={() => copyText("script")} className={`${btn} border border-gray-300 dark:border-gray-700 hover:border-violet-500`}>
+            {copied === "script" ? "✓ Copied" : "📋 Copy the collector"}
           </button>
           <span>then open <a href="https://www.vectis.co.uk" target="_blank" rel="noopener noreferrer" className="text-violet-600 dark:text-violet-400 hover:underline">www.vectis.co.uk ↗</a> on an office machine.</span>
         </li>
@@ -113,6 +134,15 @@ export default function BcCollect({ defaultFrom, defaultTo, collectedTo }: { def
           <span className="text-gray-500 dark:text-gray-400">{files.length ? `${totalMb.toFixed(0)} MB — they go up one at a time.` : "choose the files it saved."}</span>
         </li>
       </ol>
+
+      {/* ⚠ The other way round: hand the whole job to Claude on an office machine. It can reach the
+          website when the Hub's server cannot, so steps 1 and 2 stop being Jordan's problem. */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 dark:border-gray-800 pt-3">
+        <button type="button" onClick={() => copyText("claude")} className={`${btn} border border-gray-300 dark:border-gray-700 hover:border-violet-500`}>
+          {copied === "claude" ? "✓ Copied" : "📋 Copy instructions for Claude"}
+        </button>
+        <span className="text-sm text-gray-600 dark:text-gray-400">Or paste these into Claude Code on an office machine and it does steps 1 and 2 for you — then come back and press Load.</span>
+      </div>
 
       {busy && (
         <div className="text-sm text-gray-700 dark:text-gray-300" aria-live="polite">
