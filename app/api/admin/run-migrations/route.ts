@@ -1891,6 +1891,13 @@ const MIGRATIONS = [
     CONSTRAINT "BcLotWeb_pkey" PRIMARY KEY ("uniqueId")
   )`,
   `CREATE INDEX IF NOT EXISTS "BcLotWeb_auctionCode_idx" ON "BcLotWeb"("auctionCode")`,
+  // ⚠ MISSED WHEN IT SHIPPED (added 2026-09-09). The Prisma migration for siteSaleId existed as a
+  // file but never made it into this array, so the Run Migrations button had nothing to run and
+  // production never got the column — while staging had it and looked fine. Everything that reads
+  // BcLotWeb then failed on production only, which is the most misleading shape a bug can take.
+  // Which website sale number a lot came from, so the next collection starts after it.
+  `ALTER TABLE "BcLotWeb" ADD COLUMN IF NOT EXISTS "siteSaleId" INTEGER`,
+  `CREATE INDEX IF NOT EXISTS "BcLotWeb_siteSaleId_idx" ON "BcLotWeb"("siteSaleId")`,
   `CREATE INDEX IF NOT EXISTS "WarehouseItem_auctionDate_idx" ON "WarehouseItem"("auctionDate")`,
   `CREATE INDEX IF NOT EXISTS "WarehouseItem_hammerPrice_idx" ON "WarehouseItem"("hammerPrice")`,
   // Identity is the LotID: sale + lot number repeats within multi-day sales.

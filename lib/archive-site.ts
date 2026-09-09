@@ -446,7 +446,12 @@ async function runPhotoCopy() {
         for (let i = 0; i < batch.length && !ctl.stop; i += 5) {
           await Promise.all(batch.slice(i, i + 5).map(async l => {
             const data = await copyOne(l as PhotoRow, "archive-photos", String(l.lotId || l.id).replace(/[^A-Za-z0-9_-]/g, ""))
-            await prisma.archiveLot.update({ where: { id: l.id }, data: data ?? { sitePhoto: null } })
+            // Same read-back trap as the BC job below — keep the select.
+            await prisma.archiveLot.update({
+              where:  { id: l.id },
+              data:   data ?? { sitePhoto: null },
+              select: { id: true },
+            })
             if (data) n++
           }))
           await sleep(100)
@@ -475,7 +480,16 @@ async function runPhotoCopy() {
         for (let i = 0; i < bc.length && !ctl.stop; i += 5) {
           await Promise.all(bc.slice(i, i + 5).map(async l => {
             const data = await copyOne(l as PhotoRow, "bc-photos", l.uniqueId.replace(/[^A-Za-z0-9_-]/g, ""))
-            await prisma.bcLotWeb.update({ where: { uniqueId: l.uniqueId }, data: data ?? { sitePhoto: null } })
+            // ⚠ `select` is not tidying. Without it Prisma reads the whole row back after the
+            // update, which means it names EVERY column in the model — so a column that has
+            // shipped in code but not yet in the database (Run Migrations is a manual button here)
+            // fails an update that never touched it. That is exactly how this job died on
+            // production with "BcLotWeb.siteSaleId does not exist" while writing only photo keys.
+            await prisma.bcLotWeb.update({
+              where:  { uniqueId: l.uniqueId },
+              data:   data ?? { sitePhoto: null },
+              select: { uniqueId: true },
+            })
             if (data) n++
           }))
           await sleep(100)
