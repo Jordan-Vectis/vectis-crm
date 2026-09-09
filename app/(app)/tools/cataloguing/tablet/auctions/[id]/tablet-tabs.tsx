@@ -155,7 +155,7 @@ export default function TabletTabs({ auction, lots, userRole, userId, userName, 
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+      <div className="flex-1 min-h-0 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
         {/* Manage Lots */}
         {tab === "manage" && (
           editingLotId
@@ -180,8 +180,11 @@ export default function TabletTabs({ auction, lots, userRole, userId, userName, 
         )}
 
         {/* Add Lot — hidden not unmounted so state persists on tab switch */}
-        <div className={tab === "add-lot" ? "h-full" : "hidden"}>
-          <div className="p-4 h-full">
+        {/* ⚠ min-h-0 on both, for the same reason as inside the wizard: without it these h-full
+            wrappers refuse to shrink and the wizard's own scroll area overflows the screen with no
+            way to reach the bottom of the form. */}
+        <div className={tab === "add-lot" ? "h-full min-h-0" : "hidden"}>
+          <div className="p-4 h-full min-h-0">
             {bcLocked ? (
               <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-orange-950/40 border border-orange-700/50 text-orange-300 text-sm max-w-lg">
                 <span className="text-lg">🔒</span>

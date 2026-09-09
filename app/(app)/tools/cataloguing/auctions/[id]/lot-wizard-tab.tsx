@@ -911,6 +911,11 @@ export default function LotWizardTab({
   const [restoredFromLast, setRestoredFromLast] = useState(false)
   // The "remember these numbers for this sale" write failed. Shown, not swallowed.
   const [rememberFailed,   setRememberFailed]   = useState(false)
+  // ⚠ Notices a cataloguer has read and put away. Jordan, 2026-09-09: on a phone a warning they
+  // cannot clear is in the way of the job all day. Cleared whenever the tote changes, so a NEW
+  // batch always gets told again — dismissing is for this batch, never for good.
+  const [hidden, setHidden] = useState<Record<string, boolean>>({})
+  const dismiss = (k: string) => setHidden(h => ({ ...h, [k]: true }))
   // ⚠⚠ The app was updated while this page was open, so its Save button is talking to a build the
   // server no longer has. Every other screen that hits this reloads itself; the wizard had NOTHING,
   // so the iPad showed Next's redacted "an error occurred" paragraph and kept failing until someone
@@ -1059,6 +1064,7 @@ export default function LotWizardTab({
     setReceiptTyped(false)
     setRestoredFromLast(false)
     setToteChoices(null)
+    setHidden({})
   }
 
   // Look up vendor/receipt for a tote (or vendor for a receipt) from the BC-synced
@@ -1179,7 +1185,7 @@ export default function LotWizardTab({
     setTote(""); setVendor(""); setReceipt("")
     setToteInfo(null); setToteResults([]); setToteOpen(false); setToteIgnored(false); setVendorHint(null)
     setToteInfoFor(""); setToteMeta(null); setVendorTyped(false); setReceiptTyped(false)
-    setRestoredFromLast(false); setToteChoices(null); setRememberFailed(false)
+    setRestoredFromLast(false); setToteChoices(null); setRememberFailed(false); setHidden({})
     setStep1LengthWarning(false); setValidErr("")
   }
 
@@ -1428,6 +1434,17 @@ export default function LotWizardTab({
       setStep(2)
       onCreated()
     })
+  }
+
+  // A notice a cataloguer can put away. 44px target — these live on the iPads.
+  function Dismiss({ k }: { k: string }) {
+    return (
+      <button type="button" onClick={() => dismiss(k)} aria-label="Hide this message"
+        style={{ touchAction: tablet ? "manipulation" : undefined, minWidth: 44, minHeight: 44 }}
+        className="flex-shrink-0 -my-2 -mr-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 text-lg leading-none">
+        ✕
+      </button>
+    )
   }
 
   // Whole minutes, ROUNDED UP — the popup deliberately shows no seconds
@@ -1733,81 +1750,6 @@ export default function LotWizardTab({
           left iPads stuck showing "an error occurred" and quietly not recording anything.
           Deliberately NOT an automatic reload: the lot on screen and any photos already taken
           would go with it. Say what happened, say nothing was saved, let them choose. */}
-      {staleDeploy && (
-        <div className="mb-4 rounded-xl border border-amber-500 bg-amber-500/10 px-4 py-3">
-          <p className="text-sm font-bold text-amber-700 dark:text-amber-300">The app has been updated</p>
-          <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-            This lot was <strong>not saved</strong>. This page is the old version and cannot save until it is reloaded.
-            Reloading clears what is on screen, including any photos you have taken but not saved, so write down
-            anything you need first.
-          </p>
-          <div className="flex flex-wrap gap-2 mt-3">
-            <button type="button" onClick={() => window.location.reload()}
-              style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 44 : undefined }}
-              className={`font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-white ${tablet ? "px-5 py-3 text-base" : "px-4 py-2 text-sm"}`}>
-              Reload now
-            </button>
-            <button type="button" onClick={() => setStaleDeploy(false)}
-              style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 44 : undefined }}
-              className={`font-semibold rounded-lg border border-amber-600/50 text-amber-700 dark:text-amber-200 hover:bg-amber-500/20 ${tablet ? "px-5 py-3 text-base" : "px-4 py-2 text-sm"}`}>
-              Not yet
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* The lot saved, but remembering its tote/vendor/receipt for this sale did not. Harmless to
-          the lot; it means the next visit would offer older numbers. Worth one line rather than the
-          silence that made this hard to pin down in the first place. */}
-      {rememberFailed && !staleDeploy && (
-        <div className="mb-4 rounded-xl border border-amber-500/60 bg-amber-500/10 px-4 py-2.5">
-          <p className="text-sm text-amber-700 dark:text-amber-300">
-            Your lot saved. The tote and vendor could not be remembered for next time, so check them when you come back.
-          </p>
-        </div>
-      )}
-
-      {/* ── Who this batch belongs to — visible on EVERY step ────────────────────
-          It used to appear only on step 2, as 11px grey text, so from the key points onwards
-          nothing on screen said whose lot was being catalogued. A batch started against the wrong
-          customer was then never seen again until Tote Check — which cannot see it either, because
-          the lot agrees with the tote it was filled from. The customer NAME leads: it is the only
-          part a person can check against the paperwork in their hand. */}
-      {step > 1 && (vendor || tote || receipt) && (() => {
-        const overridden = (vendorTyped && !!toteInfo?.vendorNo && vendor.trim().toUpperCase() !== toteInfo.vendorNo.toUpperCase())
-          || (receiptTyped && !!toteInfo?.receiptNo && receipt.trim().toUpperCase() !== toteInfo.receiptNo.toUpperCase())
-        const flagged = overridden || restoredFromLast || !!toteMeta?.catalogued || toteMeta?.source === "item" || toteIgnored
-        return (
-          <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 rounded-xl border px-4 ${tablet ? "py-3" : "py-2.5"} ${
-            flagged ? "border-amber-500/60 bg-amber-500/10" : "border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-[#2C2C2E]"}`}>
-            <div className="min-w-0">
-              <p className={`font-bold leading-tight ${tablet ? "text-lg" : "text-base"} ${flagged ? "text-amber-700 dark:text-amber-300" : "text-gray-900 dark:text-white"}`}>
-                {vendorHint || toteInfo?.vendorName || "No customer name"}
-              </p>
-              <p className={`font-mono text-gray-600 dark:text-gray-400 mt-0.5 ${tablet ? "text-sm" : "text-xs"}`}>
-                {vendor || "no vendor"} · {tote || "no tote"} · {receipt || "no receipt"}
-              </p>
-              {overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">Typed by hand, not taken from BC.</p>}
-              {toteMeta?.catalogued && !overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">BC has this tote ticked catalogued.</p>}
-              {toteIgnored && !overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">This tote is not in our copy of BC.</p>}
-              {restoredFromLast && !overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">Carried over from your last batch — check it is still the tote in front of you.</p>}
-            </div>
-            {/* Was a text-xs chip. This is the only clean way to start a different tote, and the
-                wrong door (← Back, which leaves the whole trio in place) was far easier to hit. */}
-            <button type="button" onClick={changeVendor}
-              style={{
-                touchAction: tablet ? "manipulation" : undefined,
-                minHeight:   tablet ? 44 : undefined,
-                color:       CAT_ACCENT,
-                border:      `1px solid ${CAT_ACCENT}66`,
-              }}
-              className={`ml-auto flex-shrink-0 font-semibold rounded-lg transition-colors hover:bg-[#2AB4A6]/10 ${tablet ? "px-5 py-3 text-base" : "px-3.5 py-2 text-sm"}`}>
-              Different tote
-            </button>
-          </div>
-        )
-      })()}
-
       {/* Step indicator */}
       <div className="flex mb-5 border-b border-gray-200 dark:border-gray-800">
         {STEP_LABELS.map((label, i) => (
@@ -1859,8 +1801,106 @@ export default function LotWizardTab({
         )}
       </div>
 
-      {/* Step content */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Step content
+          ⚠⚠ THE BANNERS BELOW LIVE INSIDE THIS SCROLLING AREA ON PURPOSE (Jordan, 2026-09-09:
+          "on some cases they push things off the screen you cant scroll to"). This component is a
+          fixed-height column — on the tablet it is `position: fixed; inset: 0` — so anything placed
+          as a SIBLING above this div permanently steals height from it and cannot itself be
+          scrolled. On a phone, two banners plus the step strip left barely any room for the form.
+          Anything new that is not a control for moving between steps goes in here, not above. */}
+      {/* ⚠⚠ `min-h-0` IS LOad-BEARING, NOT TIDYING. A flex item defaults to `min-height: auto`, which
+          means it refuses to shrink below its content. So `flex-1 overflow-y-auto` inside a
+          fixed-height column does NOT scroll — it grows past the bottom of the screen and the
+          overflow is simply unreachable, which is exactly what Jordan hit on a phone. With
+          `min-h-0` it can shrink and the scrollbar does its job. Never remove it. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+      {staleDeploy && (
+        <div className="mb-4 rounded-xl border border-amber-500 bg-amber-500/10 px-4 py-3">
+          <p className="text-sm font-bold text-amber-700 dark:text-amber-300">The app has been updated</p>
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+            This lot was <strong>not saved</strong>. This page is the old version and cannot save until it is reloaded.
+            Reloading clears what is on screen, including any photos you have taken but not saved, so write down
+            anything you need first.
+          </p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button type="button" onClick={() => window.location.reload()}
+              style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 44 : undefined }}
+              className={`font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-white ${tablet ? "px-5 py-3 text-base" : "px-4 py-2 text-sm"}`}>
+              Reload now
+            </button>
+            <button type="button" onClick={() => setStaleDeploy(false)}
+              style={{ touchAction: tablet ? "manipulation" : undefined, minHeight: tablet ? 44 : undefined }}
+              className={`font-semibold rounded-lg border border-amber-600/50 text-amber-700 dark:text-amber-200 hover:bg-amber-500/20 ${tablet ? "px-5 py-3 text-base" : "px-4 py-2 text-sm"}`}>
+              Not yet
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* The lot saved, but remembering its tote/vendor/receipt for this sale did not. Harmless to
+          the lot; it means the next visit would offer older numbers. Worth one line rather than the
+          silence that made this hard to pin down in the first place. */}
+      {rememberFailed && !staleDeploy && !hidden.remember && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 px-4 py-2.5">
+          <p className="text-sm text-amber-700 dark:text-amber-300 flex-1">
+            Your lot saved. The tote and vendor could not be remembered for next time, so check them when you come back.
+          </p>
+          <Dismiss k="remember" />
+        </div>
+      )}
+
+      {/* ── Who this batch belongs to — visible on EVERY step ────────────────────
+          It used to appear only on step 2, as 11px grey text, so from the key points onwards
+          nothing on screen said whose lot was being catalogued. A batch started against the wrong
+          customer was then never seen again until Tote Check — which cannot see it either, because
+          the lot agrees with the tote it was filled from. The customer NAME leads: it is the only
+          part a person can check against the paperwork in their hand. */}
+      {step > 1 && (vendor || tote || receipt) && (() => {
+        const overridden = (vendorTyped && !!toteInfo?.vendorNo && vendor.trim().toUpperCase() !== toteInfo.vendorNo.toUpperCase())
+          || (receiptTyped && !!toteInfo?.receiptNo && receipt.trim().toUpperCase() !== toteInfo.receiptNo.toUpperCase())
+        const flagged = overridden || restoredFromLast || !!toteMeta?.catalogued || toteMeta?.source === "item" || toteIgnored
+        return (
+          <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 rounded-xl border px-4 ${tablet ? "py-3" : "py-2.5"} ${
+            flagged ? "border-amber-500/60 bg-amber-500/10" : "border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-[#2C2C2E]"}`}>
+            <div className="min-w-0">
+              <p className={`font-bold leading-tight ${tablet ? "text-lg" : "text-base"} ${flagged ? "text-amber-700 dark:text-amber-300" : "text-gray-900 dark:text-white"}`}>
+                {vendorHint || toteInfo?.vendorName || "No customer name"}
+              </p>
+              <p className={`font-mono text-gray-600 dark:text-gray-400 mt-0.5 ${tablet ? "text-sm" : "text-xs"}`}>
+                {vendor || "no vendor"} · {tote || "no tote"} · {receipt || "no receipt"}
+              </p>
+              {overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">Typed by hand, not taken from BC.</p>}
+              {toteMeta?.catalogued && !overridden && !hidden.catalogued && (
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 flex items-center gap-2">
+                  <span className="flex-1">BC has this tote ticked catalogued.</span>
+                  <Dismiss k="catalogued" />
+                </p>
+              )}
+              {toteIgnored && !overridden && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">This tote is not in our copy of BC.</p>}
+              {restoredFromLast && !overridden && !hidden.carried && (
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 flex items-center gap-2">
+                  <span className="flex-1">Carried over from your last batch — check it is still the tote in front of you.</span>
+                  <Dismiss k="carried" />
+                </p>
+              )}
+            </div>
+            {/* Was a text-xs chip. This is the only clean way to start a different tote, and the
+                wrong door (← Back, which leaves the whole trio in place) was far easier to hit. */}
+            <button type="button" onClick={changeVendor}
+              style={{
+                touchAction: tablet ? "manipulation" : undefined,
+                minHeight:   tablet ? 44 : undefined,
+                color:       CAT_ACCENT,
+                border:      `1px solid ${CAT_ACCENT}66`,
+              }}
+              className={`ml-auto flex-shrink-0 font-semibold rounded-lg transition-colors hover:bg-[#2AB4A6]/10 ${tablet ? "px-5 py-3 text-base" : "px-3.5 py-2 text-sm"}`}>
+              Different tote
+            </button>
+          </div>
+        )
+      })()}
+
+
 
         {step === 1 && (
           <div className="max-w-lg space-y-4">
@@ -1892,7 +1932,7 @@ export default function LotWizardTab({
                       // selectTote / a successful blur lookup re-populate them for a real BC tote.
                       setTote(e.target.value); setVendor(""); setReceipt(""); setVendorHint(null)
                       setToteInfo(null); setToteInfoFor(""); setToteMeta(null); setToteIgnored(false)
-                      setVendorTyped(false); setReceiptTyped(false); setRestoredFromLast(false); setToteChoices(null)
+                      setVendorTyped(false); setReceiptTyped(false); setRestoredFromLast(false); setToteChoices(null); setHidden({})
                       searchTotes(e.target.value); setStep1LengthWarning(false)
                     }}
                     // ⚠ select() matters because the box is ALWAYS full: a tote is always exactly
@@ -2061,11 +2101,11 @@ export default function LotWizardTab({
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠ {identityWarning("vendor", vendor)}</p>
               )}
               {vendorHint && <p className="text-xs text-[#2AB4A6] mt-1">{vendorHint}</p>}
-              {vendor.trim() && toteInfo?.vendorNo && vendor.trim().toUpperCase() !== toteInfo.vendorNo.toUpperCase() && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              {vendor.trim() && toteInfo?.vendorNo && !hidden.vendorDiff && vendor.trim().toUpperCase() !== toteInfo.vendorNo.toUpperCase() && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-start gap-2"><span className="flex-1">
                   ⚠ BC has {toteInfo.vendorNo} for tote {tote}{toteInfo.vendorName ? ` (${toteInfo.vendorName})` : ""}.
                   {vendorTyped ? " This will be saved as you typed it." : " This value was carried over, not taken from this tote."}
-                </p>
+                </span><Dismiss k="vendorDiff" /></p>
               )}
             </div>
             <div>
@@ -2090,11 +2130,11 @@ export default function LotWizardTab({
                   has minted no unique IDs since 2026-08-06 — BC's numbering is the only source, and
                   🔗 BC Match imports it later — so that text was both untrue and implied the receipt
                   had been validated. Removed rather than reworded; the box needs no caption. */}
-              {receipt.trim() && toteInfo?.receiptNo && receipt.trim().toUpperCase() !== toteInfo.receiptNo.toUpperCase() && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              {receipt.trim() && toteInfo?.receiptNo && !hidden.receiptDiff && receipt.trim().toUpperCase() !== toteInfo.receiptNo.toUpperCase() && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-start gap-2"><span className="flex-1">
                   ⚠ BC has {toteInfo.receiptNo} for tote {tote}.
                   {receiptTyped ? " This will be saved as you typed it." : " This value was carried over, not taken from this tote."}
-                </p>
+                </span><Dismiss k="receiptDiff" /></p>
               )}
             </div>
 

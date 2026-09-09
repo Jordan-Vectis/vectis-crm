@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"81bcad0b819ca5e94794f9fdf4b18396f8558f16","author":"Jordan Orange","date":"2026-09-09T09:54:13+01:00","subject":"Wizard: drop the \"pulled N hours ago\" line"},
   {"sha":"0143fe441227b811de6ec081393a9ede006b43b6","author":"Jordan Orange","date":"2026-09-09T09:46:23+01:00","subject":"Every tote said \"No customer name in BC\" — my regression, now live"},
   {"sha":"e7817db26a56c11115eabb7c83280c23c23e0875","author":"Jordan Orange","date":"2026-09-09T09:39:10+01:00","subject":"Databases: run ABC and BC separately, one search box, and sorting"},
   {"sha":"0a1fe4f2d4a22af2b943cdeb809cf660fb146268","author":"Jordan Orange","date":"2026-09-09T09:09:59+01:00","subject":"Website pull said \"Finished\" having downloaded nothing"},
