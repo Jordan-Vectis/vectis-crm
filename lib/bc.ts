@@ -396,13 +396,15 @@ export async function bcTotApiUrl(token: string, entitySet: string): Promise<str
 
 // ── "Contents Description" — the free text a goods-in clerk writes on a tote ────────────────
 //
-// ⚠ THE PROPERTY NAME IS DISCOVERED, NOT ASSUMED. The two tote feeds name the same BC column
-// differently — Receipt_Totes_Excel serves EVA_TOT_* PascalCase, the eva/tot custom API serves
-// camelCase — and this column had never been read, so neither spelling was on record here.
-// Guessing one silently yields `undefined` for ever and looks exactly like "BC has nothing".
-// So match BC's own caption against the keys a row ACTUALLY arrived with: if a feed publishes
-// the column under any spelling we get it, and if it doesn't publish it at all `field` comes
-// back null, the caller writes nothing, and the Data Sync log says which of the two happened.
+// ⚠ CONFIRMED on Receipt_Totes_Excel as **EVA_TOT_ContentsDescription** (Jordan, BC API Viewer,
+// 2026-09-09 — 30 fields, sample value "green box"). The eva/tot custom API serves camelCase
+// instead and has NOT been checked, so the match stays tolerant rather than hardcoding one
+// spelling: BC's own caption is matched against the keys a row ACTUALLY arrived with. If a feed
+// doesn't publish the column, `field` comes back null, the caller writes nothing, and the Data
+// Sync log says which of the two happened — a hardcoded name that silently yields `undefined`
+// looks identical to "BC has nothing", which is the failure this avoids.
+// ⚠⚠ Receipt_Totes_Excel publishes ONLY totes NOT ticked Catalogued, so a catalogued tote's
+// description can arrive only via the totes-all (eva/tot) stage.
 const CONTENTS_KEYS = new Set(["contentsdescription", "contentdescription", "contentsdesc"])
 
 export function pickBcContents(row: Record<string, unknown>): { value: string | null; field: string | null } {

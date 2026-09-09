@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"687bec2082960a0789622a57ce64d42c11c42f9c","author":"Jordan Orange","date":"2026-09-09T14:47:57+01:00","subject":"Lot wizard: warning boxes to the foot of the step, Different tote off Next, and BC's tote contents"},
   {"sha":"34585f802fe8fc68d8dc7c850a49bb41900a75be","author":"Jordan Orange","date":"2026-09-09T13:04:38+01:00","subject":"Memory: the opening message now says the website will not answer the server"},
   {"sha":"c02a0d6524b885ce7032354d5237d711f5912e59","author":"Jordan Orange","date":"2026-09-09T12:54:58+01:00","subject":"BC Database: \"Copy instructions for Claude\", and record how the collection works"},
   {"sha":"dd17dffe13d60a09fa137e883c4c8dae15f3adba","author":"Jordan Orange","date":"2026-09-09T12:40:58+01:00","subject":"BC Database: say the three steps for updating, on screen"},

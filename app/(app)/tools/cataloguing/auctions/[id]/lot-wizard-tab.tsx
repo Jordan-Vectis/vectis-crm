@@ -2572,9 +2572,14 @@ export default function LotWizardTab({
           on a phone, three on a bad day — so the answer to "where is the box I type in" was
           "scroll". They still appear on EVERY step, and they still live inside this scrolling
           area (never as a sibling above it, which would steal height from a fixed-height column
-          and be unreachable). Do not move them back up. */}
+          and be unreachable). Do not move them back up.
+          ⚠ `max-w-lg` on each, matching every step's own container — Jordan, same day: "why does it
+          need to span the entire screen". A short status box stretched to 1,900px puts its dismiss
+          ✕ a foot away from the sentence it dismisses and lines up with nothing on the page. The
+          full-width rule in RULES.md is about DATA (tables, plans, comparisons); this is a label
+          beside a form. */}
       {staleDeploy && (
-        <div className="mt-4 rounded-xl border border-amber-500 bg-amber-500/10 px-4 py-3">
+        <div className="mt-4 max-w-lg rounded-xl border border-amber-500 bg-amber-500/10 px-4 py-3">
           <p className="text-sm font-bold text-amber-700 dark:text-amber-300">The app has been updated</p>
           <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
             This lot was <strong>not saved</strong>. This page is the old version and cannot save until it is reloaded.
@@ -2600,7 +2605,7 @@ export default function LotWizardTab({
           the lot; it means the next visit would offer older numbers. Worth one line rather than the
           silence that made this hard to pin down in the first place. */}
       {rememberFailed && !staleDeploy && !hidden.remember && (
-        <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 px-4 py-2.5">
+        <div className="mt-4 max-w-lg flex items-start gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 px-4 py-2.5">
           <p className="text-sm text-amber-700 dark:text-amber-300 flex-1">
             Your lot saved. The tote and vendor could not be remembered for next time, so check them when you come back.
           </p>
@@ -2619,7 +2624,7 @@ export default function LotWizardTab({
           || (receiptTyped && !!toteInfo?.receiptNo && receipt.trim().toUpperCase() !== toteInfo.receiptNo.toUpperCase())
         const flagged = overridden || restoredFromLast || !!toteMeta?.catalogued || toteMeta?.source === "item" || toteIgnored
         return (
-          <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 mt-4 rounded-xl border px-4 ${tablet ? "py-3" : "py-2.5"} ${
+          <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 mt-4 max-w-lg rounded-xl border px-4 ${tablet ? "py-3" : "py-2.5"} ${
             flagged ? "border-amber-500/60 bg-amber-500/10" : "border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-[#2C2C2E]"}`}>
             {/* ⚠ ON THE LEFT, AND IT STAYS THERE (Jordan, 2026-09-09: "people keep pressing it on
                 accident"). It used to sit at the right-hand end of this row — directly under the
