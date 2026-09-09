@@ -59,6 +59,52 @@ function pick(rows: ReceiptToteRow[]): ReceiptToteRow | null {
 const byReceiptDesc = (a: ReceiptToteRow, b: ReceiptToteRow) =>
   b.receiptNo.localeCompare(a.receiptNo, undefined, { numeric: true })
 
+/**
+ * ⚠⚠ FILL IN THE CUSTOMER NAME. The eva/tot API this table is built from has **no vendor name
+ * field at all** — only the number — and the name is backfilled from WarehouseItem, but only at the
+ * end of a completed walk. Until that lands every row here has a null name, and because the wizard
+ * asks this table FIRST it showed every tote as "No customer name in BC" while the old path had the
+ * name all along. Measured live 2026-09-09 on T027150: number and receipt right, name blank.
+ *
+ * The name is the one thing a cataloguer can check against the paperwork, so a missing one is not a
+ * cosmetic problem. Filled from WarehouseTote (same lineage, written by the active-totes sync) and
+ * then WarehouseItem, in one query each and only when something is actually missing.
+ */
+async function withVendorNames(rows: ReceiptToteRow[]): Promise<ReceiptToteRow[]> {
+  const missing = [...new Set(rows.filter(r => !r.vendorName && r.vendorNo).map(r => r.vendorNo!.trim()))]
+  if (missing.length === 0) return rows
+
+  const names = new Map<string, string>()
+  const add = (no: string | null, name: string | null) => {
+    const k = (no ?? "").trim().toUpperCase()
+    if (k && name && !names.has(k)) names.set(k, name)
+  }
+  try {
+    const totes = await prisma.warehouseTote.findMany({
+      where:  { vendorNo: { in: missing }, vendorName: { not: null } },
+      select: { vendorNo: true, vendorName: true },
+      take:   500,
+    })
+    for (const t of totes) add(t.vendorNo, t.vendorName)
+  } catch { /* best effort */ }
+
+  const still = missing.filter(no => !names.has(no.toUpperCase()))
+  if (still.length) {
+    try {
+      const items = await prisma.warehouseItem.findMany({
+        where:  { vendorNo: { in: still }, vendorName: { not: null } },
+        select: { vendorNo: true, vendorName: true },
+        take:   500,
+      })
+      for (const i of items) add(i.vendorNo, i.vendorName)
+    } catch { /* best effort */ }
+  }
+
+  return rows.map(r => r.vendorName
+    ? r
+    : { ...r, vendorName: names.get((r.vendorNo ?? "").trim().toUpperCase()) ?? null })
+}
+
 /** Every receipt BC has this tote on. Returns null when the table is not available. */
 export async function resolveTote(toteNo: string): Promise<ToteResolution | null> {
   const q = (toteNo ?? "").trim()
@@ -76,7 +122,7 @@ export async function resolveTote(toteNo: string): Promise<ToteResolution | null
     // Before the first sync after Run Migrations it is empty for every tote, which would turn every
     // lookup into "not in BC" — so an empty result defers to the caller's existing path instead.
     if (found.length === 0) return null
-    const rows = [...found].sort(byReceiptDesc)
+    const rows = await withVendorNames([...found].sort(byReceiptDesc))
     // A tote booked twice onto the SAME receipt (several lines) is not an ambiguity — it is one
     // consignment. Only distinct receipts count.
     const distinctReceipts = new Set(rows.map(r => r.receiptNo.trim().toUpperCase())).size
@@ -99,7 +145,11 @@ export async function resolveReceipt(receiptNo: string): Promise<{ vendorNo: str
     if (rows.length === 0) return null
     const vendors = [...new Set(rows.map(r => (r.vendorNo ?? "").trim().toUpperCase()).filter(Boolean))]
     const first = rows.find(r => r.vendorNo) ?? rows[0]
-    return { vendorNo: first.vendorNo ?? null, vendorName: first.vendorName ?? null, vendors }
+    const [named] = await withVendorNames([{
+      receiptNo: q, toteNo: "", vendorNo: first.vendorNo ?? null, vendorName: first.vendorName ?? null,
+      catalogued: false, bcCreatedAt: null, syncedAt: new Date(),
+    }])
+    return { vendorNo: first.vendorNo ?? null, vendorName: named?.vendorName ?? null, vendors }
   } catch {
     return null
   }
@@ -134,7 +184,7 @@ export async function searchReceiptTotes(q: string, take = 20): Promise<ReceiptT
         take,
       })
     }
-    return rows.length > 0 ? rows : null
+    return rows.length > 0 ? await withVendorNames(rows) : null
   } catch {
     return null
   }

@@ -2020,8 +2020,11 @@ export default function LotWizardTab({
                         may not be who it belongs to now.
                       </p>
                     )}
-                    <p className="text-[11px] text-gray-600 dark:text-gray-500 mt-1.5">
-                      From our copy of BC{toteMeta?.syncedAt ? `, ${fmtSyncAge(toteMeta.syncedAt)}` : ""}
+                    {/* ⚠ How old our copy of BC is. 11px on a tablet held at arm's length is not
+                        readable, and this is the line that tells a cataloguer whether the customer
+                        they are looking at could possibly be current. */}
+                    <p className={`text-gray-600 dark:text-gray-400 mt-1.5 ${tablet ? "text-sm" : "text-[11px]"}`}>
+                      From our copy of BC{toteMeta?.syncedAt ? `, ${fmtSyncAge(toteMeta.syncedAt)}` : ", not yet pulled"}
                       {stale ? " · a tote booked in since then will still show its previous customer" : ""}
                     </p>
                   </div>

@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"e7817db26a56c11115eabb7c83280c23c23e0875","author":"Jordan Orange","date":"2026-09-09T09:39:10+01:00","subject":"Databases: run ABC and BC separately, one search box, and sorting"},
   {"sha":"0a1fe4f2d4a22af2b943cdeb809cf660fb146268","author":"Jordan Orange","date":"2026-09-09T09:09:59+01:00","subject":"Website pull said \"Finished\" having downloaded nothing"},
   {"sha":"980fe9dbb4472fd8120e676a5d2f1d9b6d9cab37","author":"Jordan Orange","date":"2026-09-08T17:15:46+01:00","subject":"Vendor Locations: a sheet showing every vendor and why it got its country"},
   {"sha":"5e6ded85e311c829c683083c9d0c221c4a2b64f6","author":"Jordan Orange","date":"2026-09-08T16:55:51+01:00","subject":"Merge staging into main: vendor fixes, Vendor Locations report, nightly full sync"},
