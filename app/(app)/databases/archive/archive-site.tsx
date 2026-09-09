@@ -30,6 +30,25 @@ export default function ArchiveSite({ scope = "both" }: { scope?: "abc" | "bc" |
   }, [running, load])
   useEffect(() => { if (st && !running) router.refresh() }, [running]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [probe, setProbe] = useState<any[] | null>(null)
+  const [probing, setProbing] = useState(false)
+
+  // ⚠ The website answers this server differently from a desk in the office — 202 with an empty
+  // body where the office gets 774 lots. Guessing at that from an empty report wastes a day, so
+  // this shows exactly what it said: status, content type, size and the first of the body.
+  async function testSite() {
+    setProbing(true); setProbe(null); setError(null)
+    try {
+      const r = await fetch("/api/databases/archive/site-pull", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job: "site", action: "probe" }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setError(j?.error ?? "Couldn't reach the website"); return }
+      setProbe(j.probe ?? [])
+    } finally { setProbing(false) }
+  }
+
   async function act(job: "site" | "photos", action: "start" | "stop") {
     setError(null)
     const r = await fetch("/api/databases/archive/site-pull", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job, action, scope }) })
@@ -54,6 +73,7 @@ export default function ArchiveSite({ scope = "both" }: { scope?: "abc" | "bc" |
           {site?.running
             ? <button onClick={() => act("site", "stop")} className={plain}>⏹ Stop</button>
             : <button onClick={() => act("site", "start")} disabled={!st} className={primary}>{site?.done ? "🌐 Check for new sales" : site ? "▶ Resume pull" : "🌐 Pull from the website"}</button>}
+          <button onClick={testSite} disabled={probing} className={plain}>{probing ? "Testing…" : "Test the website"}</button>
         </div>
       </div>
       {site && (
@@ -65,6 +85,23 @@ export default function ArchiveSite({ scope = "both" }: { scope?: "abc" | "bc" |
           <div className="h-2 rounded bg-gray-200 dark:bg-gray-800 overflow-hidden"><div className={`h-full bg-violet-500 ${site.running ? "animate-pulse" : ""}`} style={{ width: site.done ? "100%" : "60%" }} /></div>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Sales {site.sales.toLocaleString()} · lots matched {site.matched.toLocaleString()} · lots only on the website (not added) {site.added.toLocaleString()}</p>
           {site.error && <p className="mt-1 text-xs text-red-700 dark:text-red-300">⚠ {site.error} — press Resume to carry on.</p>}
+        </div>
+      )}
+
+      {probe && (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#0d0f1a] p-3 text-xs space-y-2">
+          <p className="font-semibold text-gray-900 dark:text-white">What the website said to this server</p>
+          {probe.map((r: any) => (
+            <div key={r.siteId} className="font-mono text-gray-700 dark:text-gray-300 break-all">
+              sale {r.siteId} → {r.status} · {r.contentType} · {r.bytes} bytes · {r.lots == null ? "no lot list" : `${r.lots} lots`}
+              <div className="text-gray-500">{r.snippet}</div>
+            </div>
+          ))}
+          <p className="text-gray-600 dark:text-gray-400">
+            {probe.some((r: any) => (r.lots ?? 0) > 0)
+              ? "The website is answering properly, so the pull should work — press Pull from the website."
+              : "The website is not serving its lot feed to this server. It answers a browser here in the office, so this is a block at the website's end rather than something the Hub can fix — whoever runs the site needs to let the server through."}
+          </p>
         </div>
       )}
 

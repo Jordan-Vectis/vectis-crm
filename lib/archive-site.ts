@@ -25,6 +25,23 @@ import { uploadBufferToR2 } from "@/lib/r2"
 const SITE = "https://www.vectis.co.uk"
 export const SITE_IMAGES = "https://am-s3-bucket-assets.s3.eu-west-2.amazonaws.com/vectis/prod/"
 const UA = "VectisHub archive (IT@vectis.co.uk)"
+
+// ⚠⚠ THE SITE ANSWERS RAILWAY DIFFERENTLY FROM THE OFFICE. Measured 2026-09-09: the same request
+// that returns 774 lots for sale 2 from the office returns **202 with an empty body** for every id
+// from the Railway server. The lot feed is a Joomla AJAX task, and a request that does not look
+// like the site's own page calling it is the likeliest reason it is being quietly discarded — so
+// these are the headers that call would carry. If it still comes back empty, the block is at the
+// website's end and needs whoever runs it to let the server through; the "found no sales at all"
+// message says so rather than pretending the walk finished.
+const FEED_HEADERS = {
+  "User-Agent":       UA,
+  "Content-Type":     "application/x-www-form-urlencoded",
+  "Accept":           "application/json, text/javascript, */*; q=0.01",
+  "Accept-Language":  "en-GB,en;q=0.9",
+  "X-Requested-With": "XMLHttpRequest",
+  "Referer":          `${SITE}/`,
+  "Origin":           SITE,
+} as const
 const PAUSE = 250
 const MISSES_TO_STOP = 40          // this many empty site ids in a row = we're past the newest sale
 const FEED_PAGE = 500
@@ -46,7 +63,10 @@ const num = (v: unknown): number | null => { if (v == null || v === "") return n
 const str = (v: unknown): string | null => { const s = v == null ? "" : String(v).trim(); return s ? s : null }
 
 async function fetchSalePage(siteId: number): Promise<{ title: string; date: Date | null }> {
-  const res = await fetch(`${SITE}/bidding/0-x-${siteId}`, { headers: { "User-Agent": UA }, cache: "no-store" })
+  const res = await fetch(`${SITE}/bidding/0-x-${siteId}`, {
+    headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-GB,en;q=0.9" },
+    cache: "no-store",
+  })
   const html = res.ok ? await res.text() : ""
   const t = html.match(/<title>\s*Vectis Auctions\s*\|\s*([^<]*)<\/title>/i)
   const d = html.match(/\b(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})\b/)
@@ -78,7 +98,7 @@ async function fetchFeed(siteId: number, page: number): Promise<{ lots: FeedLot[
     cate_arr: "[]", sub_cate_arr: "[]", extended_attrs_obj: "{}", low_estimate: "", high_estimate: "", catalogue_layout_header_id: "0",
   })
   const res = await fetch(`${SITE}/index.php?option=com_bidding&format=json&task=commission.getLots`, {
-    method: "POST", headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" }, body, cache: "no-store",
+    method: "POST", headers: FEED_HEADERS, body, cache: "no-store",
   })
   // 4xx/5xx = there is no sale with that id.
   if (!res.ok) return { lots: [], total: 0, missing: true }
@@ -200,6 +220,38 @@ async function writeBcSale(auctionCode: string | null, lots: FeedLot[]): Promise
       "siteHammerPrice" = COALESCE(EXCLUDED."siteHammerPrice", "BcLotWeb"."siteHammerPrice"),
       "pulledAt" = now()`
   return rows.length
+}
+
+/**
+ * What does the website actually say to THIS server? Reports the raw answer for a couple of sale
+ * ids so a silent 202 can be seen for what it is, rather than guessed at from an empty report.
+ */
+export async function probeSite(ids: number[] = [2, 10]) {
+  const out: { siteId: number; status: number; contentType: string; bytes: number; lots: number | null; snippet: string }[] = []
+  for (const siteId of ids) {
+    try {
+      const body = new URLSearchParams({
+        per_page: "5", current_page: "1", auction_id: String(siteId), lot_order: "", sale_type: "", keyword: "",
+        cate_arr: "[]", sub_cate_arr: "[]", extended_attrs_obj: "{}", low_estimate: "", high_estimate: "", catalogue_layout_header_id: "0",
+      })
+      const res = await fetch(`${SITE}/index.php?option=com_bidding&format=json&task=commission.getLots`, {
+        method: "POST", headers: FEED_HEADERS, body, cache: "no-store",
+      })
+      const text = (await res.text()).trim()
+      let lots: number | null = null
+      try { const j = JSON.parse(text); lots = Array.isArray(j?.lots) ? j.lots.length : null } catch {}
+      out.push({
+        siteId, status: res.status,
+        contentType: res.headers.get("content-type") ?? "(none)",
+        bytes: text.length, lots,
+        snippet: text.slice(0, 160) || "(empty body)",
+      })
+    } catch (e: any) {
+      out.push({ siteId, status: 0, contentType: "(request failed)", bytes: 0, lots: null, snippet: e?.message ?? "unknown" })
+    }
+    await sleep(PAUSE)
+  }
+  return out
 }
 
 // ── "site" job ──────────────────────────────────────────────────────────────

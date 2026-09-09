@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getJob, requestStop, startPhotoCopy, startSitePull, type Scope } from "@/lib/archive-site"
+import { getJob, probeSite, requestStop, startPhotoCopy, startSitePull, type Scope } from "@/lib/archive-site"
 
 // Databases → Lot Archive: the two website jobs (see lib/archive-site.ts).
 //   GET                                   → { site, photos } as they stand
@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
     if (job !== "site" && job !== "photos") return NextResponse.json({ error: "Unknown job" }, { status: 400 })
     const by = session.user?.email ?? "unknown"
     if (action === "stop") { requestStop(job); return NextResponse.json({ ok: true }) }
+    // Ask the website what it says to THIS server, and report it verbatim.
+    if (action === "probe") return NextResponse.json({ ok: true, probe: await probeSite() })
     if (action !== "start") return NextResponse.json({ error: "Unknown action" }, { status: 400 })
     const sc: Scope = scope === "abc" || scope === "bc" ? scope : "both"
     const j = job === "site" ? await startSitePull(by, sc) : await startPhotoCopy(by, sc)
