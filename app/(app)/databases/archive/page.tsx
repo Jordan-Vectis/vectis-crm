@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import ArchiveImport from "./archive-import"
 import ArchiveSite from "./archive-site"
+import ArchiveTools from "./archive-tools"
 import { getSignedImageUrl } from "@/lib/r2"
 import { SITE_IMAGES } from "@/lib/archive-site"
 
@@ -17,15 +18,35 @@ const fmtGBP = (n: number | null) => n == null ? "—" : "£" + n.toLocaleString
 type SP = Record<string, string | string[] | undefined>
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? ""
 
-// How the results are ordered. ⚠ Hammer sorts put the unsold (null) at the end either way — a lot
-// with no result is not "cheapest", and floating them to the top of a low-to-high sort would bury
-// the actual cheap lots.
+// How the results are ordered.
+//
+// ⚠ Hammer and estimate sorts put the unsold / unpriced (null) at the END either way — a lot with
+// no result is not "cheapest", and floating them to the top of a low-to-high sort buries the
+// genuinely cheap ones.
+//
+// ⚠ Built from a FIXED MAP, never from the query string. An unknown value simply falls back to the
+// default, so nothing a visitor types reaches the ordering.
+//
+// The keys match the BC Database page (`<field>_<dir>`) so the two pages sort identically. The old
+// values — oldest / price_desc / price_asc / lot — are kept as aliases so a bookmark or a link
+// somebody saved still works.
 const ARCHIVE_ORDER: Record<string, any> = {
-  "":           [{ auctionDate: "desc" }, { auctionId: "desc" }, { lot: "asc" }],
-  oldest:       [{ auctionDate: "asc" }, { auctionId: "asc" }, { lot: "asc" }],
-  price_desc:   [{ hammerPrice: { sort: "desc", nulls: "last" } }, { auctionDate: "desc" }],
-  price_asc:    [{ hammerPrice: { sort: "asc",  nulls: "last" } }, { auctionDate: "desc" }],
-  lot:          [{ auctionId: "desc" }, { lot: "asc" }],
+  "":            [{ auctionDate: "desc" }, { auctionId: "desc" }, { lot: "asc" }],
+  date_desc:     [{ auctionDate: "desc" }, { auctionId: "desc" }, { lot: "asc" }],
+  date_asc:      [{ auctionDate: "asc" }, { auctionId: "asc" }, { lot: "asc" }],
+  sale_desc:     [{ saleTitle: "desc" }, { lot: "asc" }],
+  sale_asc:      [{ saleTitle: "asc" }, { lot: "asc" }],
+  lot_asc:       [{ auctionId: "desc" }, { lot: "asc" }],
+  lot_desc:      [{ auctionId: "desc" }, { lot: "desc" }],
+  est_desc:      [{ estimateLow: { sort: "desc", nulls: "last" } }, { auctionDate: "desc" }],
+  est_asc:       [{ estimateLow: { sort: "asc",  nulls: "last" } }, { auctionDate: "desc" }],
+  hammer_desc:   [{ hammerPrice: { sort: "desc", nulls: "last" } }, { auctionDate: "desc" }],
+  hammer_asc:    [{ hammerPrice: { sort: "asc",  nulls: "last" } }, { auctionDate: "desc" }],
+  // Aliases for the values this page used before the columns became sortable.
+  oldest:        [{ auctionDate: "asc" }, { auctionId: "asc" }, { lot: "asc" }],
+  price_desc:    [{ hammerPrice: { sort: "desc", nulls: "last" } }, { auctionDate: "desc" }],
+  price_asc:     [{ hammerPrice: { sort: "asc",  nulls: "last" } }, { auctionDate: "desc" }],
+  lot:           [{ auctionId: "desc" }, { lot: "asc" }],
 }
 
 export default async function ArchivePage({ searchParams }: { searchParams: Promise<SP> }) {
@@ -33,17 +54,29 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
   const isAdmin = session?.user?.role === "ADMIN"
   const sp = await searchParams
   const q = one(sp.q).trim(), year = one(sp.year).trim(), sale = one(sp.sale).trim()
+  const status = one(sp.status).trim(), photo = one(sp.photo).trim()
   const order = one(sp.order).trim()
   const min = parseFloat(one(sp.min)), max = parseFloat(one(sp.max))
   const page = Math.max(1, parseInt(one(sp.page)) || 1)
+  const FILTERS = ["q", "sale", "year", "min", "max", "status", "photo"] as const
+  const anyFilter = FILTERS.some(k => one(sp[k]).trim())
 
   const where: any = {}
   const and: any[] = []
-  if (q) and.push({ OR: [{ description: { contains: q, mode: "insensitive" } }, { saleTitle: { contains: q, mode: "insensitive" } }] })
+  // ⚠ The search covers the LotID too — looking a known lot up by the old system's id is one of
+  // the commonest reasons anyone opens this page, and it used to find nothing. Same reasoning as
+  // the unique ID on the BC Database page.
+  if (q) and.push({ OR: [{ description: { contains: q, mode: "insensitive" } }, { saleTitle: { contains: q, mode: "insensitive" } }, { lotId: { contains: q, mode: "insensitive" } }] })
   if (sale) and.push({ saleTitle: { contains: sale, mode: "insensitive" } })
   if (/^\d{4}$/.test(year)) and.push({ auctionDate: { gte: new Date(Date.UTC(+year, 0, 1)), lt: new Date(Date.UTC(+year + 1, 0, 1)) } })
   if (Number.isFinite(min)) and.push({ hammerPrice: { gte: min } })
-  if (Number.isFinite(max)) and.push({ hammerPrice: { lte: max } })
+  // ⚠ `> 0` as well, or an upper bound sweeps in every unsold lot — they have no hammer at all,
+  // which is not the same thing as a cheap one.
+  if (Number.isFinite(max)) and.push({ hammerPrice: { lte: max, gt: 0 } })
+  if (status === "sold")   and.push({ hammerPrice: { gt: 0 } })
+  if (status === "unsold") and.push({ OR: [{ hammerPrice: null }, { hammerPrice: { lte: 0 } }] })
+  if (photo === "yes") and.push({ OR: [{ photoKey: { not: null } }, { sitePhoto: { not: null } }] })
+  if (photo === "no")  and.push({ photoKey: null, sitePhoto: null })
   if (and.length) where.AND = and
 
   // Migration-safe: before Run Migrations the table isn't there — say so, don't 500.
@@ -82,14 +115,31 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
     tableError = /does not exist|relation/i.test(String(e?.message)) ? "The archive table isn't there yet — Run Migrations on this environment first." : (e?.message ?? "Couldn't read the archive")
   }
   const pages = Math.max(1, Math.ceil(total / PAGE))
-  const link = (p: number) => {
-    const u = new URLSearchParams(); if (q) u.set("q", q); if (year) u.set("year", year); if (sale) u.set("sale", sale)
-    // ⚠ Carry the sort across pages too, or page 2 quietly reverts to newest-first.
-    if (one(sp.min)) u.set("min", one(sp.min)); if (one(sp.max)) u.set("max", one(sp.max))
-    if (order) u.set("order", order); u.set("page", String(p))
+  // ⚠ EVERY filter travels with a page change AND with a sort. Page 2 quietly reverting to
+  // unfiltered and newest-first is what made the filters feel broken on the BC page.
+  const carry = () => {
+    const u = new URLSearchParams()
+    for (const k of FILTERS) { const v = one(sp[k]).trim(); if (v) u.set(k, v) }
+    return u
+  }
+  const link = (p: number) => { const u = carry(); if (order) u.set("order", order); u.set("page", String(p)); return `/databases/archive?${u}` }
+  // Clicking a column sorts it the way that column is normally wanted first — newest sale, biggest
+  // hammer, lot 1 upwards — and clicking it again turns it round. Same as the BC Database page.
+  const NATURAL: Record<string, "asc" | "desc"> = { date: "desc", sale: "asc", lot: "asc", est: "desc", hammer: "desc" }
+  // The old alias values have no arrow of their own; normalise them so a saved link still shows
+  // the column it is actually sorted by.
+  const ALIAS: Record<string, string> = { oldest: "date_asc", price_desc: "hammer_desc", price_asc: "hammer_asc", lot: "lot_asc" }
+  const current = ALIAS[order] ?? order ?? ""
+  const currentOr = current || "date_desc"
+  const sortHref = (f: string) => {
+    const nat = NATURAL[f]
+    const dir = currentOr === `${f}_${nat}` ? (nat === "desc" ? "asc" : "desc") : nat
+    const u = carry(); u.set("order", `${f}_${dir}`)
     return `/databases/archive?${u}`
   }
+  const arrow = (f: string) => currentOr === `${f}_desc` ? " ▼" : currentOr === `${f}_asc` ? " ▲" : ""
   const input = "rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1C1C1E] px-3 min-h-[44px] text-base text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:border-violet-500"
+  const sortCls = "hover:text-violet-600 dark:hover:text-violet-400"
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#0D0D0F] text-gray-900 dark:text-gray-100">
@@ -123,11 +173,18 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
           )
         })()}
 
-        {isAdmin && <ArchiveImport />}
-        {isAdmin && <ArchiveSite scope="abc" />}
+        {/* ⚠ TOOLS AS CHIPS, nothing on screen until asked for — the same as the BC Database page
+            (Jordan, 2026-09-09: "you have only fixed the UI in the BC database not in the ABC as
+            well"). Three admin panels stacked open pushed the lots, which is what the page is for,
+            below the fold. A running website job opens its own panel and keeps a live dot on the
+            chip, so hiding the tools can never hide a job that is going. */}
         {isAdmin && (
-          <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-5">
-            <summary className="cursor-pointer text-base font-bold text-gray-900 dark:text-white">Export &amp; handover — for a backup, or a future website</summary>
+          <ArchiveTools
+            importPanel={<ArchiveImport />}
+            jobs={<ArchiveSite scope="abc" />}
+            exportPanel={
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-5">
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">Export &amp; handover — for a backup, or a future website</h2>
             <div className="mt-3 space-y-3 text-sm text-gray-700 dark:text-gray-300">
               <div className="flex flex-wrap items-center gap-3">
                 <a href="/api/databases/archive/export" className="min-h-[44px] inline-flex items-center px-4 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">⬇ Export data (CSV)</a>
@@ -142,33 +199,42 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
               <pre className="overflow-x-auto rounded-lg bg-gray-100 dark:bg-gray-900 p-3 text-xs font-mono">rclone copy r2:{process.env.CLOUDFLARE_R2_BUCKET ?? "BUCKET"}/archive-photos  their-storage:their-bucket/archive-photos  --transfers 32</pre>
               <p className="text-gray-600 dark:text-gray-400">Each row's PhotoFullSizeFile column names its file in that folder, so the new site needs nothing else to pair pictures with lots. The database itself is backed up nightly with the rest of the Hub.</p>
             </div>
-          </details>
+          </div>
+            }
+          />
         )}
 
-        {/* ⚠ One box on show, the rest behind More filters (Jordan's choice, 2026-09-09). Five big
-            boxes across the page made the search look heavier than it is. The panel opens already
-            open when any of those filters is in use, so a narrowed list never looks unfiltered. */}
-        <form method="get" className="space-y-2">
+        {/* ⚠ THE FILTERS ARE ON SCREEN, not hidden behind "More filters" — matching the BC
+            Database page (Jordan, 2026-09-09: "the filtering options are still awful", then "you
+            have only fixed the UI in the BC database not in the ABC as well"). This page had the
+            collapsed version from earlier the same day; the BC page is the one he kept.
+            ⚠ Every filter is carried through paging AND through a sort, and every column that can
+            be ordered says which way it is going. */}
+        <form method="get" className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#141416] p-3 space-y-2">
           <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-            <input name="q" defaultValue={q} placeholder="Search descriptions — e.g. Dinky 105, Steiff, Palitoy Leia" className={input} />
-            <select name="order" defaultValue={order} className={input} aria-label="Order the results">
-              <option value="">Newest sale first</option>
-              <option value="oldest">Oldest sale first</option>
-              <option value="price_desc">Hammer: high to low</option>
-              <option value="price_asc">Hammer: low to high</option>
-              <option value="lot">Sale then lot number</option>
-            </select>
+            <input name="q" defaultValue={q} placeholder="Search descriptions or a LotID — e.g. Dinky 105, Steiff, Palitoy Leia" className={input} />
             <button type="submit" className="min-h-[44px] px-5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">Search</button>
+            <Link href="/databases/archive" className="min-h-[44px] inline-flex items-center px-4 rounded-lg border border-gray-300 dark:border-gray-700 hover:border-violet-500 text-sm text-gray-700 dark:text-gray-300">Clear</Link>
           </div>
-          <details open={!!(sale || year || one(sp.min) || one(sp.max))} className="rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
-            <summary className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">More filters</summary>
-            <div className="mt-2 grid gap-2 sm:grid-cols-4">
-              <input name="sale" defaultValue={sale} placeholder="Sale title" className={input} />
-              <input name="year" defaultValue={year} placeholder="Year" inputMode="numeric" className={input} />
-              <input name="min" defaultValue={one(sp.min)} placeholder="Min £" inputMode="numeric" className={input} />
-              <input name="max" defaultValue={one(sp.max)} placeholder="Max £" inputMode="numeric" className={input} />
-            </div>
-          </details>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <input name="sale" defaultValue={sale} placeholder="Sale title" className={input} />
+            <input name="year" defaultValue={year} placeholder="Year — e.g. 2014" inputMode="numeric" className={input} />
+            <select name="status" defaultValue={status} className={input} aria-label="Sold or unsold">
+              <option value="">Sold and unsold</option>
+              <option value="sold">Sold only</option>
+              <option value="unsold">Unsold only</option>
+            </select>
+            <select name="photo" defaultValue={photo} className={input} aria-label="Whether the lot has a photo">
+              <option value="">Any photo</option>
+              <option value="yes">Has a photo</option>
+              <option value="no">No photo yet</option>
+            </select>
+            <input name="min" defaultValue={one(sp.min)} placeholder="Hammer from £" inputMode="numeric" className={input} />
+            <input name="max" defaultValue={one(sp.max)} placeholder="Hammer to £" inputMode="numeric" className={input} />
+          </div>
+          {/* ⚠ Keeps the chosen sort when the form is submitted — without it every search threw
+              the ordering away and dropped back to newest-first. */}
+          {order && <input type="hidden" name="order" value={order} />}
         </form>
 
         {tableError ? (
@@ -177,13 +243,18 @@ export default async function ArchivePage({ searchParams }: { searchParams: Prom
           <p className="text-sm text-gray-600 dark:text-gray-400">The archive is empty. {isAdmin ? "Import the spreadsheet or pull from the website above to fill it." : "An admin needs to fill it first."}</p>
         ) : (
           <>
-            <p className="text-sm text-gray-600 dark:text-gray-400">{total.toLocaleString()} {total === 1 ? "lot" : "lots"}{(q || sale || year || one(sp.min) || one(sp.max)) ? " match" : ""} · page {page} of {pages}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{total.toLocaleString()} {total === 1 ? "lot" : "lots"}{anyFilter ? " match" : ""} · page {page} of {pages}</p>
             <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
               <table className="w-full text-sm">
                 <thead className="text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#141416]">
                   <tr>
-                    <th className="px-3 py-2"></th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Sale</th><th className="px-3 py-2 text-right">Lot</th>
-                    <th className="px-3 py-2">Description</th><th className="px-3 py-2 text-right">Estimate</th><th className="px-3 py-2 text-right">Hammer</th>
+                    <th className="px-3 py-2"></th>
+                    <th className="px-3 py-2"><Link href={sortHref("date")} className={sortCls}>Date{arrow("date")}</Link></th>
+                    <th className="px-3 py-2"><Link href={sortHref("sale")} className={sortCls}>Sale{arrow("sale")}</Link></th>
+                    <th className="px-3 py-2 text-right"><Link href={sortHref("lot")} className={sortCls}>Lot{arrow("lot")}</Link></th>
+                    <th className="px-3 py-2">Description</th>
+                    <th className="px-3 py-2 text-right"><Link href={sortHref("est")} className={sortCls}>Estimate{arrow("est")}</Link></th>
+                    <th className="px-3 py-2 text-right"><Link href={sortHref("hammer")} className={sortCls}>Hammer{arrow("hammer")}</Link></th>
                   </tr>
                 </thead>
                 <tbody>
