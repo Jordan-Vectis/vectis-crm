@@ -29,18 +29,30 @@ export async function GET(req: NextRequest) {
     // to WarehouseTote when the table is not migrated/populated yet, which is the old behaviour.
     const rt = await searchReceiptTotes(q)
     if (rt) {
+      // BC's free-text contents description isn't on the receipt-tote rows — it lives on the
+      // tote-keyed cache — so it is looked up once for the handful of totes being offered.
+      // Migration-safe: no column yet simply means no description.
+      const contentsByTote = new Map<string, string>()
+      try {
+        const rows = await prisma.warehouseTote.findMany({
+          where:  { toteNo: { in: [...new Set(rt.map(r => r.toteNo))] } },
+          select: { toteNo: true, contents: true },
+        })
+        for (const row of rows) if (row.contents) contentsByTote.set(row.toteNo.toUpperCase(), row.contents)
+      } catch { /* pre-migration — no contents to offer */ }
       return NextResponse.json(rt.map(r => ({
         toteNo:     r.toteNo,
         vendorNo:   r.vendorNo,
         vendorName: r.vendorName,
         receiptNo:  r.receiptNo,
         location:   null,
+        contents:   contentsByTote.get(r.toteNo.toUpperCase()) ?? null,
         catalogued: r.catalogued,
         syncedAt:   r.syncedAt,
       })))
     }
 
-    const select = {
+    const BASE = {
       toteNo:     true,
       vendorNo:   true,
       vendorName: true,
@@ -49,21 +61,23 @@ export async function GET(req: NextRequest) {
       catalogued: true,
       syncedAt:   true,
     } as const
+    // Migration-safe: `contents` ships with the deploy, Run Migrations comes later. A failure
+    // drops back to the columns that have always existed rather than emptying the dropdown.
+    let select: any = { ...BASE, contents: true }
 
-    let totes = await prisma.warehouseTote.findMany({
-      where:   { toteNo: { startsWith: q, mode: "insensitive" } },
-      select,
-      orderBy: { toteNo: "asc" },
-      take:    20,
-    })
+    const find = (where: any) =>
+      prisma.warehouseTote.findMany({ where, select, orderBy: { toteNo: "asc" }, take: 20 })
+
+    let totes: any[]
+    try {
+      totes = await find({ toteNo: { startsWith: q, mode: "insensitive" } })
+    } catch {
+      select = BASE
+      totes = await find({ toteNo: { startsWith: q, mode: "insensitive" } })
+    }
 
     if (totes.length === 0) {
-      totes = await prisma.warehouseTote.findMany({
-        where:   { toteNo: { contains: q, mode: "insensitive" } },
-        select,
-        orderBy: { toteNo: "asc" },
-        take:    20,
-      })
+      totes = await find({ toteNo: { contains: q, mode: "insensitive" } })
     }
 
     return NextResponse.json(totes)

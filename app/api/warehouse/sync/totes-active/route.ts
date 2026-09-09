@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getBCTokenAny, bcPageWithNext } from "@/lib/bc"
+import { getBCTokenAny, bcPageWithNext, pickBcContents } from "@/lib/bc"
 import { prisma } from "@/lib/prisma"
 import { isAuthedOrCron } from "@/lib/auth-or-cron"
 
@@ -72,6 +72,21 @@ export async function POST(req: NextRequest) {
     hasBcCreatedAt = !!row?.exists
   } catch { hasBcCreatedAt = false }
 
+  // Same deploy-before-migration guard for BC's free-text tote contents.
+  let hasContents = false
+  try {
+    const [row] = await prisma.$queryRaw<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'WarehouseTote' AND column_name = 'contents'
+      ) AS "exists"`
+    hasContents = !!row?.exists
+  } catch { hasContents = false }
+
+  // Which property this feed actually carries the contents description on — reported back to the
+  // Data Sync screen so "no descriptions appeared" can be told apart from "this feed has none".
+  let contentsField: string | null = null
+
   try {
     const urlOrEndpoint = nextLink ?? "Receipt_Totes_Excel"
     // No $orderby — Receipt_Totes_Excel has no sortable timestamp field
@@ -98,9 +113,15 @@ export async function POST(req: NextRequest) {
       for (const r of rows) {
         const toteNo = String(r.EVA_TOT_ToteNo ?? "").trim()
         if (!toteNo) continue
+        // ⚠ Never null out a description another feed already captured — same no-wipe rule as
+        // location/bcCreatedAt above. An empty string here means "this clerk wrote nothing".
+        const contents = pickBcContents(r as Record<string, unknown>)
+        if (contents.field && !contentsField) contentsField = contents.field
+        const contentsPatch = hasContents && contents.value ? { contents: contents.value } : {}
         upserts.push(prisma.warehouseTote.upsert({
           where:  { toteNo },
           update: {
+            ...contentsPatch,
             location:   String(r.EVA_TOT_ToteLocation  ?? "").trim() || null,
             receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
             vendorNo:   r.EVA_TOT_VendorNo   ?? null,
@@ -112,6 +133,7 @@ export async function POST(req: NextRequest) {
           },
           create: {
             toteNo,
+            ...contentsPatch,
             location:   String(r.EVA_TOT_ToteLocation  ?? "").trim() || null,
             receiptNo:  r.EVA_TOT_ReceiptNo  ?? null,
             vendorNo:   r.EVA_TOT_VendorNo   ?? null,
@@ -135,7 +157,7 @@ export async function POST(req: NextRequest) {
       where: { id: syncLog.id },
       data: { status: "complete", completedAt: new Date(), itemsProcessed },
     })
-    return NextResponse.json({ ok: true, itemsProcessed, more, nextLink: currentLink, full, pages: pageCount })
+    return NextResponse.json({ ok: true, itemsProcessed, more, nextLink: currentLink, full, pages: pageCount, contentsField })
 
   } catch (e: any) {
     await prisma.warehouseSyncLog.update({

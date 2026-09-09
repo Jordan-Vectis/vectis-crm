@@ -1707,6 +1707,11 @@ model WarehouseTote {
   // Shown on the Admin Centre's totes table so an admin can see what a customer sent in.
   category    String?
   subCategory String?
+  /// BC's own free-text "Contents Description" off the Receipt Totes screen — what the person
+  /// booking the goods in actually wrote ("Tonka 4x Boxes & 1x Tub", "Bears received 02.10.23").
+  /// Shown to the cataloguer in the lot wizard so they can tell at a glance they have the right
+  /// box. ⚠ Filled by whichever tote feed publishes it — see pickBcContents() in lib/bc.ts.
+  contents    String?
   // SystemCreatedAt from Receipt_Totes_Excel — when the tote was created in BC.
   // This is the date the Manager Portal's "Stock from" reads to work out how far
   // behind cataloguing is running. NOT syncedAt, which is just our sync stamp.

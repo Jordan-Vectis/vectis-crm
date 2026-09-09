@@ -3243,6 +3243,34 @@ Adding "🧾 Vendor / Tote Check" tipped the strip into overflow and drew a scro
 - The strip now **wraps instead of scrolling** (\`flex-wrap\`, 2026-08-03): with 14+ tabs it overflows a normal window, and a *hidden* horizontal scroll just loses the last tabs off the edge where nobody finds them. Keep new tab labels short anyway.`,
   },
   {
+    filename: "lot_wizard_tote_banner.md",
+    content: `---
+name: Lot wizard — the customer banner (Different tote on the LEFT + BC contents)
+purpose: Why the Different tote button sits on the left and where the tote contents line comes from. Read before touching the identity banner in lot-wizard-tab.tsx.
+last_updated: 2026-09-09
+---
+
+# The banner on every wizard step (2026-09-09)
+
+The bar showing the customer name plus \`vendor \u00b7 tote \u00b7 receipt\` from step 2 onwards.
+
+## \u26a0 Different tote is on the LEFT, and it stays there
+
+Jordan: *"the different tote and next button are way too close to each other \u2014 people keep pressing it on accident."* It used to sit at the right-hand end of the banner, about a hundred pixels below **Next \u2192**, which is the one control a cataloguer presses on every single lot. A miss cleared the tote, vendor and receipt and threw the batch back to step 1. It is now the FIRST child of that flex row, with the name block \`flex-1 min-w-0\` beside it \u2014 one row, so no height is taken off the tablet's form area. Do not move it back to the right for tidiness.
+
+It also **asks first** now (\`leaveToteConfirm\`), showing the customer/tote/receipt being left. \u26a0 The buttons are deliberately reversed \u2014 the safe "No, stay here" is on the right, under the thumb \u2014 because this dialog is reached by accident more often than on purpose.
+
+## Contents: what BC says is in the tote
+
+BC's Receipt Totes screen has a free-text **Contents Description** \u2014 "Tonka 4x Boxes & 1x Tub", "Bears received 02.10.23", "green box". It now shows under the codes, in plain grey: it is information, and colouring it amber alongside the real flags would teach people to ignore the amber. Nothing renders when BC has nothing (BC does not require it).
+
+Stored on \`WarehouseTote.contents\` (**NEEDS Run Migrations**), written by BOTH tote syncs, returned by \`/api/warehouse/vendor-lookup\` and \`/api/warehouse/tote-search\`.
+
+\u26a0\u26a0 **The BC property name is DISCOVERED, not assumed.** The two feeds spell the same column differently (\`Receipt_Totes_Excel\` serves \`EVA_TOT_*\` PascalCase, the eva/tot custom API serves camelCase) and this column had never been read, so neither spelling was on record. \`pickBcContents()\` in \`lib/bc.ts\` matches BC's own caption against the keys a row actually arrived with. If a feed does not publish the column, nothing is written and the **Data Sync log says so** \u2014 each tote stage prints "Contents description: read from BC's X" or "not published by this feed", so "no descriptions appeared" can be told apart from "BC has none".
+
+\u26a0 The contents live on the **tote-keyed cache**, not on BC's receipt-tote rows, so \`vendor-lookup\` fetches them once and merges them into every branch \u2014 an ambiguous tote and a bare shell row both still have a description, and those are the cases where knowing what should be in the box helps most.`,
+  },
+  {
     filename: "lot_wizard_resume.md",
     content: `---
 name: Lot Wizard — Resume an unfinished lot (REMOVED)

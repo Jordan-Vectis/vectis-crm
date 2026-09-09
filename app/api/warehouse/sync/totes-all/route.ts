@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getBCTokenAny, bcPageWithNext, bcTotApiUrl } from "@/lib/bc"
+import { getBCTokenAny, bcPageWithNext, bcTotApiUrl, pickBcContents } from "@/lib/bc"
 import { prisma } from "@/lib/prisma"
 import { isAuthedOrCron } from "@/lib/auth-or-cron"
 
@@ -92,6 +92,21 @@ export async function POST(req: NextRequest) {
     hasCategory = !!row?.exists
   } catch { hasCategory = false }
 
+  // Same guard for BC's free-text tote contents (added 2026-09-09 for the lot wizard).
+  let hasContents = false
+  try {
+    const [row] = await prisma.$queryRaw<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'WarehouseTote' AND column_name = 'contents'
+      ) AS "exists"`
+    hasContents = !!row?.exists
+  } catch { hasContents = false }
+
+  // Which property this feed carries the contents description on — reported to the Data Sync
+  // screen so "nothing showed up" can be told apart from "this feed doesn't publish it".
+  let contentsField: string | null = null
+
   try {
     const startUrl: string = nextLink ?? await bcTotApiUrl(token, "receiptTotes")
 
@@ -127,6 +142,9 @@ export async function POST(req: NextRequest) {
         // articleCategory / articleSubcategory (both can be an empty string).
         const category    = String(r.articleCategory    ?? "").trim()
         const subCategory = String(r.articleSubcategory ?? "").trim()
+        // ⚠ Spelling discovered from the row, not assumed — see pickBcContents in lib/bc.ts.
+        const contents    = pickBcContents(r as Record<string, unknown>)
+        if (contents.field && !contentsField) contentsField = contents.field
         const common = {
           receiptNo:  r.receiptNo ?? null,
           vendorNo:   r.vendorNo  ?? null,
@@ -136,6 +154,7 @@ export async function POST(req: NextRequest) {
           ...(hasBcCreatedAt && created ? { bcCreatedAt: created } : {}),
           ...(hasCategory && category    ? { category }    : {}),
           ...(hasCategory && subCategory ? { subCategory } : {}),
+          ...(hasContents && contents.value ? { contents: contents.value } : {}),
         }
         upserts.push(prisma.warehouseTote.upsert({
           where:  { toteNo },
@@ -217,7 +236,7 @@ export async function POST(req: NextRequest) {
       where: { id: syncLog.id },
       data: { status: "complete", completedAt: new Date(), itemsProcessed },
     })
-    return NextResponse.json({ ok: true, itemsProcessed, more, nextLink: currentLink, pages: pageCount })
+    return NextResponse.json({ ok: true, itemsProcessed, more, nextLink: currentLink, pages: pageCount, contentsField })
 
   } catch (e: any) {
     await prisma.warehouseSyncLog.update({

@@ -38,6 +38,29 @@ export async function GET(req: NextRequest) {
 
     // ── Tote lookup ─────────────────────────────────────────────────────────────
     if (tote) {
+      // ⚠ BC's free-text "Contents Description" — what the goods-in clerk actually wrote — lives on
+      // the tote-keyed cache no matter which of the branches below answers, because BC's
+      // receipt-tote rows carry no such column. Fetched once here and merged into every reply, so
+      // the wizard can show it whether the tote resolved from receipt-totes, WarehouseTote or a
+      // shell row. Migration-safe: the column ships with the deploy and Run Migrations comes later,
+      // so a failure falls back to the columns that have always existed.
+      let extra: { location: string | null; contents: string | null } = { location: null, contents: null }
+      try {
+        const row = await prisma.warehouseTote.findFirst({
+          where:  { toteNo: { equals: tote, mode: "insensitive" } },
+          select: { location: true, contents: true },
+        })
+        if (row) extra = { location: row.location ?? null, contents: row.contents ?? null }
+      } catch {
+        try {
+          const row = await prisma.warehouseTote.findFirst({
+            where:  { toteNo: { equals: tote, mode: "insensitive" } },
+            select: { location: true },
+          })
+          if (row) extra = { location: row.location ?? null, contents: null }
+        } catch { /* leave both blank — the lookup is best-effort */ }
+      }
+
       // ⚠⚠ FIRST: BC's own receipt-tote rows, where a tote is allowed to be on more than one
       // receipt — because in BC it can be. WarehouseTote below is unique on toteNo and therefore
       // answers with only one of them, chosen by whatever the sync wrote last. When BC has two,
@@ -47,6 +70,7 @@ export async function GET(req: NextRequest) {
       if (rt) {
         if (rt.ambiguous) {
           return NextResponse.json({
+            ...extra,
             vendorNo: null, vendorName: null, receiptNo: null,
             catalogued: null, syncedAt: rt.rows[0]?.syncedAt?.toISOString() ?? null,
             source: "receipt-tote", ambiguous: true,
@@ -61,6 +85,7 @@ export async function GET(req: NextRequest) {
         const c = rt.chosen
         if (c?.vendorNo) {
           return NextResponse.json({
+            ...extra,
             vendorNo:   c.vendorNo,
             vendorName: c.vendorName ?? null,
             receiptNo:  c.receiptNo,
@@ -79,6 +104,7 @@ export async function GET(req: NextRequest) {
       })
       if (wt?.vendorNo) {
         return NextResponse.json({
+          ...extra,
           vendorNo:   wt.vendorNo,
           vendorName: wt.vendorName ?? null,
           receiptNo:  wt.receiptNo ?? null,
@@ -94,7 +120,7 @@ export async function GET(req: NextRequest) {
       // empty "  ()" label with the not-found warning suppressed, which told the cataloguer
       // nothing at all.
       if (wt) {
-        return NextResponse.json({ ...empty, source: "tote-shell", knownTote: true })
+        return NextResponse.json({ ...empty, ...extra, source: "tote-shell", knownTote: true })
       }
       // Fallback: WarehouseItem (item-level data). ⚠ This is a HISTORICAL guess, not BC's record
       // of the tote: WarehouseItem.toteNo is the tote a line was CREATED FROM, so it can name a
@@ -106,11 +132,12 @@ export async function GET(req: NextRequest) {
       })
       if (wi?.vendorNo) {
         return NextResponse.json({
+          ...extra,
           vendorNo: wi.vendorNo, vendorName: wi.vendorName ?? null, receiptNo: null,
           catalogued: null, syncedAt: null, source: "item",
         })
       }
-      return NextResponse.json(empty)
+      return NextResponse.json({ ...empty, ...extra })
     }
 
     // ── Receipt lookup ───────────────────────────────────────────────────────────

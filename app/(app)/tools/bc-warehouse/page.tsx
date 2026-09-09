@@ -2345,6 +2345,14 @@ function DataSyncTab({ status, onComplete }: { status: SyncStatus | null; onComp
           setItemTotal(t => t + (data.itemsProcessed ?? 0))
           setBatchTotal(b => b + 1)
           addLog("ok", `  Batch ${batch} done — ${(data.itemsProcessed ?? 0).toLocaleString()} items in ${(ms / 1000).toFixed(1)}s · ${data.pages ?? 0} pages${data.more ? " · more remaining…" : " · finished"}`)
+          // The tote stages report which property BC actually carries the contents description on
+          // (the two feeds spell it differently, and neither spelling was on record). Said out loud
+          // once per stage so "no descriptions appeared in the wizard" can be told apart from
+          // "this feed doesn't publish the column at all".
+          if (batch === 1 && "contentsField" in data) {
+            addLog(data.contentsField ? "ok" : "warn",
+              `  Contents description: ${data.contentsField ? `read from BC's "${data.contentsField}"` : "not published by this feed"}`)
+          }
           addBcLog(
             data.more ? "info" : "warn",
             `[${label}] batch ${batch} → BC pages: ${data.pages ?? "?"}, items processed: ${data.itemsProcessed ?? "?"}, more: ${data.more}, nextLink: ${data.nextLink ? data.nextLink.slice(-80) : "(none)"}`,

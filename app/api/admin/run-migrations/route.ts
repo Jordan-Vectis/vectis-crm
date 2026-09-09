@@ -1574,6 +1574,8 @@ const MIGRATIONS = [
   // What's in a tote (BC's articleCategory / articleSubcategory) — shown on the Admin Centre.
   `ALTER TABLE "WarehouseTote" ADD COLUMN IF NOT EXISTS "category" TEXT`,
   `ALTER TABLE "WarehouseTote" ADD COLUMN IF NOT EXISTS "subCategory" TEXT`,
+  // BC's free-text "Contents Description" for a tote — shown to the cataloguer in the lot wizard.
+  `ALTER TABLE "WarehouseTote" ADD COLUMN IF NOT EXISTS "contents" TEXT`,
   // When a cataloguer last STARTED a lot, stamped by the server — the idle gap is measured
   // to here rather than to the save, so a lot's own working time isn't counted as a break.
   `CREATE TABLE IF NOT EXISTS "CataloguerLotStart" (

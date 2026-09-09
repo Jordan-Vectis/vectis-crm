@@ -393,3 +393,26 @@ export async function bcTotApiUrl(token: string, entitySet: string): Promise<str
   }
   return `${root}companies(${cachedTotCompanyId})/${entitySet}`
 }
+
+// ── "Contents Description" — the free text a goods-in clerk writes on a tote ────────────────
+//
+// ⚠ THE PROPERTY NAME IS DISCOVERED, NOT ASSUMED. The two tote feeds name the same BC column
+// differently — Receipt_Totes_Excel serves EVA_TOT_* PascalCase, the eva/tot custom API serves
+// camelCase — and this column had never been read, so neither spelling was on record here.
+// Guessing one silently yields `undefined` for ever and looks exactly like "BC has nothing".
+// So match BC's own caption against the keys a row ACTUALLY arrived with: if a feed publishes
+// the column under any spelling we get it, and if it doesn't publish it at all `field` comes
+// back null, the caller writes nothing, and the Data Sync log says which of the two happened.
+const CONTENTS_KEYS = new Set(["contentsdescription", "contentdescription", "contentsdesc"])
+
+export function pickBcContents(row: Record<string, unknown>): { value: string | null; field: string | null } {
+  for (const key of Object.keys(row)) {
+    // Case, punctuation and the EVA_TOT_ / EVA_ / PTE_ prefixes stripped, so one rule covers both
+    // feeds. ⚠ "evatot" must be tried before "eva" or the longer prefix never matches.
+    const norm = key.toLowerCase().replace(/[^a-z]/g, "").replace(/^(evatot|eva|pte)/, "")
+    if (!CONTENTS_KEYS.has(norm)) continue
+    const value = String(row[key] ?? "").trim()
+    return { value: value || null, field: key }
+  }
+  return { value: null, field: null }
+}
