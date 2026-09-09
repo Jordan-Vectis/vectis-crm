@@ -59,7 +59,20 @@ type FeedLot = {
   sef_link: unknown; isFinished: unknown
 }
 
-async function fetchFeed(siteId: number, page: number): Promise<{ lots: FeedLot[]; total: number }> {
+/**
+ * ⚠⚠ THE WEBSITE ANSWERS 500 FOR A SALE ID THAT DOES NOT EXIST. Probed live 2026-09-09: ids 2, 10,
+ * 20, 40, 41, 50, 100, 500 and 1000 all return 200 with hundreds of lots, while 1, 5, 1500 and 2000
+ * return 500. So a bad status is the site's way of saying "no such sale" — it is NOT an error, and
+ * throwing on it killed the walk on the very first id it tried.
+ *
+ * ⚠ And a body that will not parse is NOT an empty sale. It means the site handed back something
+ * other than its feed — a block page, a maintenance page, a login wall. The old code turned that
+ * into `{}`, which read as "this sale has no lots", and forty of those in a row made the job
+ * announce **"Finished — nothing beyond sale 0"** while having downloaded nothing at all. That is
+ * exactly what production was showing. A refusal must stop the run and say so, never look like
+ * success.
+ */
+async function fetchFeed(siteId: number, page: number): Promise<{ lots: FeedLot[]; total: number; missing: boolean }> {
   const body = new URLSearchParams({
     per_page: String(FEED_PAGE), current_page: String(page), auction_id: String(siteId), lot_order: "", sale_type: "", keyword: "",
     cate_arr: "[]", sub_cate_arr: "[]", extended_attrs_obj: "{}", low_estimate: "", high_estimate: "", catalogue_layout_header_id: "0",
@@ -67,20 +80,29 @@ async function fetchFeed(siteId: number, page: number): Promise<{ lots: FeedLot[
   const res = await fetch(`${SITE}/index.php?option=com_bidding&format=json&task=commission.getLots`, {
     method: "POST", headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" }, body, cache: "no-store",
   })
-  if (!res.ok) throw new Error(`The website's lot feed answered ${res.status} for sale ${siteId}`)
-  const j: any = await res.json().catch(() => ({}))
-  return { lots: Array.isArray(j?.lots) ? j.lots : [], total: Number(j?.total_lots) || 0 }
+  // 4xx/5xx = there is no sale with that id. Everything else has to be readable JSON.
+  if (!res.ok) return { lots: [], total: 0, missing: true }
+  const text = await res.text()
+  let j: any
+  try { j = JSON.parse(text) } catch {
+    throw new Error(`The website did not return its lot feed for sale ${siteId} — it answered ${res.status} with ${text.trim().slice(0, 80) || "an empty body"}`)
+  }
+  if (!Array.isArray(j?.lots)) {
+    throw new Error(`The website's reply for sale ${siteId} had no lot list in it`)
+  }
+  return { lots: j.lots, total: Number(j?.total_lots) || 0, missing: false }
 }
 
-async function fetchAllLots(siteId: number): Promise<FeedLot[]> {
+async function fetchAllLots(siteId: number): Promise<{ lots: FeedLot[]; missing: boolean }> {
   const out: FeedLot[] = []
   for (let p = 1; p <= 40; p++) {
-    const { lots, total } = await fetchFeed(siteId, p)
+    const { lots, total, missing } = await fetchFeed(siteId, p)
+    if (missing && p === 1) return { lots: [], missing: true }
     out.push(...lots)
     if (!lots.length || lots.length < FEED_PAGE || out.length >= total) break
     await sleep(PAUSE)
   }
-  return out
+  return { lots: out, missing: false }
 }
 
 const slugTitle = (sef: unknown) => {
@@ -193,7 +215,7 @@ async function runSitePull() {
   const ctl: Ctl = { stop: false }; active.set("site", ctl)
   try {
     const job = await prisma.archiveJob.findUniqueOrThrow({ where: { id: "site" } })
-    let cursor = job.cursor, misses = 0
+    let cursor = job.cursor, misses = 0, seen = 0
     while (!ctl.stop) {
       const siteId = cursor + 1
       const known = await prisma.archiveSale.findUnique({ where: { siteId } })
@@ -201,13 +223,42 @@ async function runSitePull() {
         cursor = siteId; await prisma.archiveJob.update({ where: { id: "site" }, data: { cursor } }); continue
       }
       const page = await fetchSalePage(siteId); await sleep(PAUSE)
-      const lots = await fetchAllLots(siteId)
+      // ⚠ A refusal is NOT an empty sale. Retry a few times, then stop with the reason — never let
+      // the site being unreachable look like having reached the end of it.
+      let lots: FeedLot[] = [], missing = false
+      let attempt = 0
+      for (;;) {
+        try { ({ lots, missing } = await fetchAllLots(siteId)); break }
+        catch (e: any) {
+          if (++attempt >= 4) {
+            await prisma.archiveJob.update({
+              where: { id: "site" },
+              data: { error: `${e?.message ?? "The website could not be read"} — stopped at sale ${siteId}, nothing was lost. Try again in a while.` },
+            })
+            return
+          }
+          await sleep(PAUSE * 8 * attempt)
+        }
+      }
       if (!lots.length && !page.title) {
         misses++
-        if (misses >= MISSES_TO_STOP) { await prisma.archiveJob.update({ where: { id: "site" }, data: { done: true, note: `Finished — nothing beyond sale ${siteId - misses}` } }); break }
+        if (misses >= MISSES_TO_STOP) {
+          const lastReal = siteId - misses
+          await prisma.archiveJob.update({
+            where: { id: "site" },
+            data: {
+              done: true,
+              note: seen > 0
+                ? `Finished — ${seen} sale${seen === 1 ? "" : "s"} read, nothing beyond sale ${lastReal}`
+                : `Stopped at sale ${siteId} without finding a single sale. The website answered for every id but had nothing in it, so this is worth looking at rather than treating as finished.`,
+            },
+          })
+          break
+        }
         cursor = siteId; await sleep(PAUSE); continue
       }
       misses = 0
+      seen++
       const m = String(lots[0]?.sef_link ?? "").match(/^bidding\/(\d+)-/)
       const auctionId = m ? +m[1] : null
       const codeM = String(lots[0]?.sef_link ?? "").match(/^bidding\/([A-Za-z]\d+)-/)     // a BC sale's URL starts with its code: D062-…
@@ -296,7 +347,25 @@ async function runPhotoCopy() {
         }
       } else {
         const bc = await prisma.bcLotWeb.findMany({ where: BC_PHOTO_TODO, select: { uniqueId: true, sitePhoto: true, photoKey: true, photoXlKey: true }, take: 40, orderBy: { uniqueId: "asc" } })
-        if (!bc.length) { await prisma.archiveJob.update({ where: { id: "photos" }, data: { done: true, note: "Every photo the site has is in the Hub, display and full-size, for both databases" } }); break }
+        if (!bc.length) {
+          // ⚠ "Nothing to copy" and "everything is copied" are not the same sentence. With no
+          // website pull yet there are no photo paths to copy from, and saying it was all done
+          // reads as success when nothing has happened.
+          const [siteJob, photoJob] = await Promise.all([
+            prisma.archiveJob.findUnique({ where: { id: "site" },   select: { sales: true } }),
+            prisma.archiveJob.findUnique({ where: { id: "photos" }, select: { added: true } }),
+          ])
+          await prisma.archiveJob.update({
+            where: { id: "photos" },
+            data: {
+              done: true,
+              note: (photoJob?.added ?? 0) > 0 || (siteJob?.sales ?? 0) > 0
+                ? "Every photo the site has is in the Hub, display and full-size, for both databases"
+                : "Nothing to copy yet — run \"Pull from the website\" first, so the lots have a photo to copy.",
+            },
+          })
+          break
+        }
         for (let i = 0; i < bc.length && !ctl.stop; i += 5) {
           await Promise.all(bc.slice(i, i + 5).map(async l => {
             const data = await copyOne(l as PhotoRow, "bc-photos", l.uniqueId.replace(/[^A-Za-z0-9_-]/g, ""))
