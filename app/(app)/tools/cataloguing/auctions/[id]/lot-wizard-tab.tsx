@@ -1003,9 +1003,10 @@ export default function LotWizardTab({
   // cached values they were deliberately correcting. toteInfo is now cleared only where the tote
   // TEXT actually changes, and the blur only looks the tote up when it describes a different one.
   const [toteInfoFor,   setToteInfoFor]   = useState("")
-  // Freshness / provenance of the BC answer, so a stale or already-catalogued row can be shown as
-  // amber rather than painted in the same confident teal as a fresh one. All of it comes from
-  // columns that were always in WarehouseTote and simply were not being returned.
+  // Provenance of the BC answer, so an already-catalogued tote or a vendor guessed from an old item
+  // shows amber rather than the same confident teal as a solid one.
+  // ⚠ syncedAt is still carried but is NOT shown — Jordan, 2026-09-09: "the cataloguers dont need to
+  // know that". Do not put the pulled-ago line back on this screen.
   const [toteMeta,      setToteMeta]      = useState<{ catalogued: boolean | null; syncedAt: string | null; source: string | null; knownTote?: boolean } | null>(null)
   // ⚠⚠ BC has this tote on MORE THAN ONE receipt. Nothing is filled in — the choice is shown and a
   // person picks. Guessing here is what put four correct lots onto the wrong receipt on F109.
@@ -1427,18 +1428,6 @@ export default function LotWizardTab({
       setStep(2)
       onCreated()
     })
-  }
-
-  // How old our copy of BC's tote data is. The tote sync runs at boot and every 12 hours, so a
-  // tote booked in this morning is invisible until the next run — the cataloguer needs to know
-  // whether the customer name they are being shown could possibly be current.
-  function fmtSyncAge(iso: string) {
-    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
-    if (!isFinite(mins) || mins < 0) return "just now"
-    if (mins < 60) return `pulled ${mins} min ago`
-    const h = Math.round(mins / 60)
-    if (h < 48) return `pulled ${h} hour${h === 1 ? "" : "s"} ago`
-    return `pulled ${Math.round(h / 24)} days ago`
   }
 
   // Whole minutes, ROUNDED UP — the popup deliberately shows no seconds
@@ -1996,8 +1985,9 @@ export default function LotWizardTab({
                   fills in a different consignment's customer; nothing else on this screen can
                   catch that. */}
               {toteInfo && toteInfo.vendorNo && (() => {
-                const stale = toteMeta?.syncedAt ? (Date.now() - new Date(toteMeta.syncedAt).getTime()) > 6 * 60 * 60 * 1000 : false
-                const flagged = !!toteMeta?.catalogued || stale || toteMeta?.source === "item"
+                // ⚠ Sync age no longer colours anything. Amber has to be explainable in a
+                // sentence next to it, and the sentence it had has gone.
+                const flagged = !!toteMeta?.catalogued || toteMeta?.source === "item"
                 return (
                   <div className={`mt-2 rounded-lg border px-3 py-2.5 ${flagged
                     ? "border-amber-500/60 bg-amber-500/10"
@@ -2020,13 +2010,11 @@ export default function LotWizardTab({
                         may not be who it belongs to now.
                       </p>
                     )}
-                    {/* ⚠ How old our copy of BC is. 11px on a tablet held at arm's length is not
-                        readable, and this is the line that tells a cataloguer whether the customer
-                        they are looking at could possibly be current. */}
-                    <p className={`text-gray-600 dark:text-gray-400 mt-1.5 ${tablet ? "text-sm" : "text-[11px]"}`}>
-                      From our copy of BC{toteMeta?.syncedAt ? `, ${fmtSyncAge(toteMeta.syncedAt)}` : ", not yet pulled"}
-                      {stale ? " · a tote booked in since then will still show its previous customer" : ""}
-                    </p>
+                    {/* ⚠ NOTHING ABOUT WHEN OUR COPY OF BC WAS PULLED (Jordan, 2026-09-09: "the
+                        cataloguers dont need to know that"). It is our plumbing, not their job, and
+                        a line they cannot act on is noise on a screen they use all day. The
+                        re-used-tote case is still covered in words by the "already catalogued"
+                        warning above, which is a fact about the tote rather than about our sync. */}
                   </div>
                 )
               })()}
