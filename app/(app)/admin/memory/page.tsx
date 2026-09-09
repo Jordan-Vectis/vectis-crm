@@ -4193,7 +4193,7 @@ name: Opening Message
 description: Copy and paste this at the start of every new Claude Code session to set expectations
 type: opening_message
 originSessionId: 30e4bce3-8e7b-41dd-9dea-f40497af1528
-modified: 2026-09-02T16:03:26.823Z
+modified: 2026-09-09T12:30:00.000Z
 ---
 # Opening Message — paste this at the start of every session
 
@@ -4228,6 +4228,8 @@ This is the **Vectis Hub** — an internal tool for Vectis Auctions. It is NOT a
 **Sandbox:** https://vectis-hub-sandbox.up.railway.app — staging's CODE against a Neon branch of PRODUCTION's data (added 2026-08-18, because staging's own data had drifted so far that screens looked right there and wrong on live). ⚠ Its background jobs are off ONLY because \`CRON_SECRET\` is unset — never add one, or it polls the real mailboxes and backs up to the real bucket. Deploys from \`staging\`, so one push updates staging and sandbox together.
 **Reports-only:** Separate Railway environment, deploys from \`reports-only\` branch (DIVERGED — has its own server.js and Logo handling)
 **GitHub:** https://github.com/Jordan-Vectis/vectis-hub
+
+**⚠ The customer website answers the office, not the server.** vectis.co.uk returns **202 with an empty body** to every request from Railway, but hands the lots over normally to a machine in the office (measured twice, 2026-09-09). Business Central publishes neither the full lot description nor the photo path, so the website's feed is the only source — and the Hub can never fetch it itself. They are collected on an office machine with scripts/collect-bc-lots.mjs and loaded at Databases → BC Database → **Update the BC lots** (the panel has a "Copy instructions for Claude" button that sets the sale range for you). Do not design around the server being able to pull them, and do not "fix" the Pull from the website button — it is not broken at our end.
 **Local path:** C:\\Dev apps\\vectis-hub
 
 I (Jordan) never run the app locally — always a Railway URL. Any feature that only works locally is useless.
