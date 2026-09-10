@@ -6,21 +6,28 @@ import { htmlToText, HTML_IN_TEXT_SQL } from "@/lib/html-text"
 // nothing because the lot says "Kammer").
 //
 // Three things, all built from our own data — nothing external, no AI call per search:
-//  1. TIDY WORDS — punctuation stripped, little words ("&", "and", "the") ignored, accents folded
-//     on BOTH sides (Kämmer = Kammer, Märklin = Marklin), capitals never matter.
+//  1. TIDY WORDS — punctuation stripped, little words ("&", "and", "the") ignored, capitals never
+//     matter. Accents don't matter either way: the typed word is searched as typed AND folded
+//     (Kämmer → kammer), and the spelling list knows the accented spellings our descriptions use
+//     (marklin → märklin).
 //  2. PLURALS — "buses" also finds "bus", "lorry" also finds "lorries".
 //  3. TYPOS — a spelling list of every word in our 1.2 million descriptions, with how often it
 //     appears, so "Reinhart", "Stieff" or "Merrythougt" also search the real word. Candidates come
 //     from a trigram index (pg_trgm) and are confirmed by edit distance here, which catches swapped
 //     letters (Stieff/Steiff) that trigrams alone score badly. Only unknown or rare words are
 //     corrected, and the page says what it also searched for, so it's never a mystery.
+//
+// ⚠⚠ NEVER fold or rewrite the DESCRIPTIONS at search time. Measured on production 2026-09-10:
+// translate() over ArchiveLot took 36 s for "halo" against 3.3 s for a plain ILIKE, and every search
+// timed out. The search stays a plain ILIKE on the stored text; the cleverness goes on the typed
+// words and into the spelling list, which is small and indexed.
 
-// ⚠ The SAME map on both sides: translate() in SQL, foldText() here. Change one, change both.
-// (translate is 1-to-1, so "ß" → "ss" can't be done; it's rare in our descriptions.)
+// Folds accents on the typed words (and, in the build, on the spelling list's keys).
+// (1-to-1, so "ß" → "ss" can't be done; it's rare in our descriptions.)
 export const FOLD_FROM = "ÀÁÂÃÄÅàáâãäåÈÉÊËèéêëÌÍÎÏìíîïÒÓÔÕÖØòóôõöøÙÚÛÜùúûüÇçÑñÝýÿ"
 export const FOLD_TO   = "AAAAAAaaaaaaEEEEeeeeIIIIiiiiOOOOOOooooooUUUUuuuuCcNnYyy"
 
-/** Accents folded with the same map the database uses, then lower-cased. */
+/** Accents folded with the same map the spelling list uses, then lower-cased. */
 export function foldText(s: string): string {
   let out = ""
   for (const ch of s) {
@@ -31,15 +38,23 @@ export function foldText(s: string): string {
 }
 
 const STOP_WORDS = new Set(["and", "the", "of", "with", "a", "an", "in", "to", "for", "by", "on", "at", "or"])
+const SPLIT = /[\s,;:!?()[\]{}<>"“”‘’'&+|*#~`=_\\]+/
 
-/** The words to search for: accents folded, lower case, punctuation stripped, little words dropped
- *  (unless they're all there is). Hyphens, dots and slashes INSIDE a word are kept — codes like
- *  R009030-1, No.102 and 1/43 need them. */
-export function tokenise(q: string, max = 8): string[] {
-  const parts = foldText(q).split(/[\s,;:!?()[\]{}<>"“”‘’'&+|*#~`=_\\]+/)
-  const words = parts.map(p => p.replace(/^[-./]+|[-./]+$/g, "")).filter(w => w.length >= 2)
-  const kept = words.filter(w => !STOP_WORDS.has(w))
-  return [...new Set(kept.length ? kept : words)].slice(0, max)
+/** One typed word: `word` is folded and lower case (what the spelling list is keyed on); `raw` is
+ *  lower case with its accents kept, so "Kämmer" still finds "Kämmer" before the list exists. */
+export type Token = { word: string; raw: string }
+
+/** The words to search for: punctuation stripped, little words dropped (unless they're all there
+ *  is). Hyphens, dots and slashes INSIDE a word are kept — codes like R009030-1, No.102 and 1/43
+ *  need them. */
+export function tokens(q: string, max = 8): Token[] {
+  const all = q.toLowerCase().split(SPLIT)
+    .map(p => p.replace(/^[-./]+|[-./]+$/g, ""))
+    .map(raw => ({ raw, word: foldText(raw) }))
+    .filter(t => t.word.length >= 2)
+  const kept = all.filter(t => !STOP_WORDS.has(t.word))
+  const seen = new Set<string>()
+  return (kept.length ? kept : all).filter(t => !seen.has(t.word) && !!seen.add(t.word)).slice(0, max)
 }
 
 // Words that end in s but aren't plurals — never trimmed.
@@ -61,7 +76,12 @@ export function pluralVariants(w: string): string[] {
 
 export type SpellingState = "ready" | "building" | "unavailable"
 
-type Mem = { building: boolean; lastAttempt: number; cache: { state: SpellingState; builtAt: number | null; at: number } | null }
+// Bump when what the build stores changes — the next search then rebuilds the list.
+// 2 = the accented spellings per word ("forms"), 2026-09-10.
+const BUILD_VERSION = 2
+
+type Snapshot = { state: SpellingState; builtAt: number | null; version: number; buildingSince: number | null; at: number }
+type Mem = { building: boolean; lastAttempt: number; cache: Snapshot | null }
 function mem(): Mem {
   const g = globalThis as unknown as { _searchWords?: Mem }
   return (g._searchWords ??= { building: false, lastAttempt: 0, cache: null })
@@ -69,25 +89,31 @@ function mem(): Mem {
 
 const REBUILD_AFTER_MS = 7 * 86_400_000
 const RETRY_AFTER_MS = 60 * 60_000
+// A build touches "buildingSince" after every batch. Older than this, whoever was building has gone
+// (a deploy restarts the Hub mid-build), so the next search may start again.
+const HEARTBEAT_STALE_MS = 3 * 60_000
 
 /** Is the spelling list there to use? Cached for a minute — it's asked on every search. */
-export async function spellingState(): Promise<{ state: SpellingState; builtAt: number | null }> {
+export async function spellingState(): Promise<Snapshot> {
   const m = mem()
   const now = Date.now()
-  if (m.cache && now - m.cache.at < 60_000) return m.building && m.cache.state !== "ready" ? { ...m.cache, state: "building" } : m.cache
-  try {
-    const rows = await prisma.$queryRaw<{ builtAt: Date | null; words: number; buildingSince: Date | null }[]>`
-      SELECT "builtAt", "words", "buildingSince" FROM "SearchWordState" WHERE "id" = 'current'`
-    const r = rows[0]
-    const building = m.building || (!!r?.buildingSince && now - r.buildingSince.getTime() < 30 * 60_000)
-    // An old list is still perfectly usable while a new one is being built.
-    const state: SpellingState = r?.builtAt && Number(r.words) > 0 ? "ready" : building ? "building" : "unavailable"
-    m.cache = { state, builtAt: r?.builtAt?.getTime() ?? null, at: now }
-  } catch {
-    // Before Run Migrations the table isn't there — the search simply works without spelling help.
-    m.cache = { state: "unavailable", builtAt: null, at: now }
+  if (!m.cache || now - m.cache.at >= 60_000) {
+    try {
+      const rows = await prisma.$queryRaw<{ builtAt: Date | null; words: number; buildingSince: Date | null; version: number }[]>`
+        SELECT "builtAt", "words", "buildingSince", "version" FROM "SearchWordState" WHERE "id" = 'current'`
+      const r = rows[0]
+      const since = r?.buildingSince?.getTime() ?? null
+      const busy = since != null && now - since < HEARTBEAT_STALE_MS
+      // An old list is still perfectly usable while a new one is being built.
+      const state: SpellingState = r?.builtAt && Number(r.words) > 0 ? "ready" : busy ? "building" : "unavailable"
+      m.cache = { state, builtAt: r?.builtAt?.getTime() ?? null, version: Number(r?.version ?? 0), buildingSince: since, at: now }
+    } catch {
+      // Before Run Migrations the tables aren't there — the search simply works without spelling help.
+      m.cache = { state: "unavailable", builtAt: null, version: 0, buildingSince: null, at: now }
+    }
   }
-  return m.cache
+  const c = m.cache
+  return c.state !== "ready" && m.building ? { ...c, state: "building" } : c
 }
 
 /** London evening or night — when a rebuild won't slow anyone down. */
@@ -96,47 +122,47 @@ function quietHour(): boolean {
   return h >= 19 || h < 7
 }
 
-/** Builds the list the first time it's needed, and refreshes it weekly (evenings only). Never waits:
- *  the search that set it off carries on without spelling help. ⚠ In-process, like the other Hub
- *  jobs — a deploy mid-build just means the next search starts it again. */
+/** Builds the list the first time it's needed (or when BUILD_VERSION changes), and refreshes it
+ *  weekly (evenings only). Never waits: the search that set it off carries on without spelling help.
+ *  ⚠ In-process, like the other Hub jobs — a deploy mid-build just means a later search starts again. */
 export function kickWordListBuild(): void {
   void (async () => {
     const m = mem()
     if (m.building || Date.now() - m.lastAttempt < RETRY_AFTER_MS) return
     const s = await spellingState()
+    if (s.buildingSince != null && Date.now() - s.buildingSince < HEARTBEAT_STALE_MS) return // already going
     const age = s.builtAt ? Date.now() - s.builtAt : Infinity
-    const needed = s.state === "unavailable" || (s.state === "ready" && age > REBUILD_AFTER_MS && quietHour())
+    const needed = !s.builtAt || s.version < BUILD_VERSION || (age > REBUILD_AFTER_MS && quietHour())
     if (!needed) return
     try {
-      const t = await prisma.$queryRaw<{ ok: boolean }[]>`SELECT to_regclass('"SearchWord"') IS NOT NULL AS ok`
-      if (!t[0]?.ok) return // not migrated yet
+      const t = await prisma.$queryRaw<{ ok: boolean }[]>`SELECT to_regclass('"SearchWordBuild"') IS NOT NULL AS ok`
+      // Not migrated yet — look again in a minute rather than on every search.
+      if (!t[0]?.ok) { m.lastAttempt = Date.now() - RETRY_AFTER_MS + 60_000; return }
     } catch { return }
     m.lastAttempt = Date.now()
     await buildWordList()
   })().catch(() => { /* never let a background build take anything down */ })
 }
 
-// Every word in our descriptions (accents folded, letters only, 3–30 long) with how often it
-// appears. A word seen only once is left out — it's more likely a typo in an old description than a
-// spelling worth steering anyone towards. BC's short descriptions are skipped: the website's full
-// ones (BcLotWeb) already contain them.
-const BUILD_SQL = `
-  WITH src AS (
-    SELECT translate("description", '${FOLD_FROM}', '${FOLD_TO}') AS d FROM "ArchiveLot"
-    UNION ALL SELECT translate("description", '${FOLD_FROM}', '${FOLD_TO}') FROM "BcLotWeb" WHERE "description" IS NOT NULL
-    UNION ALL SELECT translate("description", '${FOLD_FROM}', '${FOLD_TO}') FROM "CatalogueLot" WHERE "description" <> ''
-  )
-  SELECT w AS word, count(*)::int AS n
-  FROM src, regexp_split_to_table(lower(src.d), '[^a-z]+') AS w
-  WHERE length(w) BETWEEN 3 AND 30
-  GROUP BY w
-  HAVING count(*) >= 2`
+const pause = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+// Letters, including accented ones — measured on production (C.UTF-8): lower() and ILIKE both handle
+// accents, and this range splits "Märklin, Kämmer-Reinhardt" into Märklin / Kämmer / Reinhardt.
+const WORD_SPLIT = "[^A-Za-zÀ-ÖØ-öø-ÿ]+"
+// BC's short descriptions are skipped: the website's full ones (BcLotWeb) already contain them.
+const SOURCES = [
+  { table: "ArchiveLot", key: "id", where: "" },
+  { table: "BcLotWeb", key: "uniqueId", where: `AND "description" IS NOT NULL` },
+  { table: "CatalogueLot", key: "id", where: `AND "description" <> ''` },
+] as const
+// ~0.5–0.7 s a batch on production (measured 2026-09-10), so ~240 short queries, 2–3 minutes in all.
+const BATCH = 5000
 
 /** Step 1 of every build: turn any description still holding the website's HTML into plain text
  *  (BcLotWeb nearly all of it; a few ABC rows). Only rows that still carry tags or entities are
  *  touched, 500 at a time in key order, so it's cheap once done and safe to repeat. New lots arrive
  *  clean already — lib/archive-site.ts runs htmlToText before it stores them. */
-async function cleanStoredHtml(): Promise<number> {
+async function cleanStoredHtml(beat: () => Promise<unknown>): Promise<number> {
   let cleaned = 0
   for (const t of [{ table: "BcLotWeb", key: "uniqueId" }, { table: "ArchiveLot", key: "id" }] as const) {
     let after = ""
@@ -156,6 +182,8 @@ async function cleanStoredHtml(): Promise<number> {
       cleaned += rows.length
       after = keys[keys.length - 1]
       if (cleaned % 20_000 < 500) console.log(`[website-search] cleaned ${cleaned.toLocaleString("en-GB")} descriptions of HTML so far`)
+      await beat()
+      await pause(50)
     }
   }
   return cleaned
@@ -165,22 +193,63 @@ async function buildWordList(): Promise<void> {
   const m = mem()
   m.building = true
   m.cache = null
+  const beat = () => prisma.$executeRaw`UPDATE "SearchWordState" SET "buildingSince" = now() WHERE "id" = 'current'`
   try {
     await prisma.$executeRaw`
       INSERT INTO "SearchWordState" ("id", "buildingSince", "words") VALUES ('current', now(), 0)
       ON CONFLICT ("id") DO UPDATE SET "buildingSince" = now(), "error" = NULL`
-    const cleaned = await cleanStoredHtml()
+    const cleaned = await cleanStoredHtml(beat)
     if (cleaned) console.log(`[website-search] ${cleaned.toLocaleString("en-GB")} descriptions cleaned of website HTML`)
-    // ⚠ One transaction: searches keep using the old list (MVCC) until the new one is complete.
-    // DELETE rather than TRUNCATE for the same reason — TRUNCATE would lock searches out meanwhile.
-    await prisma.$transaction(async tx => {
-      await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = 900000`)
-      await tx.$executeRawUnsafe(`CREATE TEMP TABLE sw_new ON COMMIT DROP AS ${BUILD_SQL}`)
+
+    // ⚠ In batches, never one query over every description — that held the database for minutes
+    // and starved the searches themselves. Each batch counts its words into the scratch table.
+    await prisma.$executeRawUnsafe(`TRUNCATE "SearchWordBuild"`)
+    let rows = 0
+    for (const s of SOURCES) {
+      let after = ""
+      for (;;) {
+        const r = await prisma.$queryRawUnsafe<{ last: string | null; n: number }[]>(`
+          WITH b AS (
+            SELECT "${s.key}" AS k, "description" AS d FROM "${s.table}"
+            WHERE "${s.key}" > $1 ${s.where} ORDER BY "${s.key}" LIMIT ${BATCH}
+          ), w AS (
+            SELECT lower(x) AS raw FROM b, regexp_split_to_table(b.d, $2) AS x WHERE length(x) BETWEEN 3 AND 30
+          ), ins AS (
+            INSERT INTO "SearchWordBuild" ("raw", "n") SELECT raw, count(*)::int FROM w GROUP BY raw
+            ON CONFLICT ("raw") DO UPDATE SET "n" = "SearchWordBuild"."n" + EXCLUDED."n"
+          )
+          SELECT max(k) AS last, count(*)::int AS n FROM b`, after, WORD_SPLIT)
+        const got = Number(r[0]?.n ?? 0)
+        if (!got || !r[0]?.last) break
+        rows += got
+        after = r[0].last
+        await beat()
+        if (got < BATCH) break
+        await pause(100)
+      }
+      console.log(`[website-search] spelling list: read ${rows.toLocaleString("en-GB")} descriptions so far (${s.table} done)`)
+    }
+
+    // Swap in one short transaction: searches keep using the old list (MVCC) until the new one is
+    // complete. Keyed on the FOLDED word; "forms" keeps the accented spellings seen (commonest first).
+    // A word seen only once is left out — it's more likely a typo in an old description than a
+    // spelling worth steering anyone towards.
+    const n = await prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = 300000`)
       await tx.$executeRawUnsafe(`DELETE FROM "SearchWord"`)
-      const n = await tx.$executeRawUnsafe(`INSERT INTO "SearchWord" ("word", "n") SELECT word, n FROM sw_new`)
-      await tx.$executeRaw`UPDATE "SearchWordState" SET "builtAt" = now(), "words" = ${n}, "buildingSince" = NULL, "error" = NULL WHERE "id" = 'current'`
-    }, { timeout: 900_000, maxWait: 30_000 })
-    console.log("[website-search] spelling list rebuilt")
+      const n = await tx.$executeRawUnsafe(`
+        INSERT INTO "SearchWord" ("word", "n", "forms")
+        SELECT f, sum(n)::int, (array_agg(raw ORDER BY n DESC) FILTER (WHERE raw <> f))[1:5]
+        FROM (SELECT raw, n, lower(translate(raw, $1, $2)) AS f FROM "SearchWordBuild") s
+        GROUP BY f
+        HAVING sum(n) >= 2`, FOLD_FROM, FOLD_TO)
+      await tx.$executeRaw`
+        UPDATE "SearchWordState" SET "builtAt" = now(), "words" = ${n}, "version" = ${BUILD_VERSION}, "buildingSince" = NULL, "error" = NULL
+        WHERE "id" = 'current'`
+      return n
+    }, { timeout: 300_000, maxWait: 30_000 })
+    await prisma.$executeRawUnsafe(`TRUNCATE "SearchWordBuild"`).catch(() => {})
+    console.log(`[website-search] spelling list rebuilt: ${n.toLocaleString("en-GB")} words from ${rows.toLocaleString("en-GB")} descriptions`)
   } catch (e) {
     const msg = String((e as Error)?.message ?? e).slice(0, 500)
     console.warn("[website-search] spelling list build failed:", msg)
@@ -189,6 +258,19 @@ async function buildWordList(): Promise<void> {
     m.building = false
     m.cache = null
   }
+}
+
+/** The accented spellings our descriptions use for each word (marklin → märklin). Fails safe to none. */
+export async function accentForms(words: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>()
+  const ask = [...new Set(words)].filter(w => /^[a-z]+$/.test(w))
+  if (!ask.length) return out
+  try {
+    const rows = await prisma.$queryRaw<{ word: string; forms: string[] | null }[]>`
+      SELECT "word", "forms" FROM "SearchWord" WHERE "word" = ANY(${ask}::text[]) AND "forms" IS NOT NULL`
+    for (const r of rows) if (r.forms?.length) out.set(r.word, r.forms)
+  } catch { /* the list (or its forms column) isn't there yet */ }
+  return out
 }
 
 /** Optimal-string-alignment distance: insertions, deletions, substitutions and swapped neighbours

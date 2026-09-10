@@ -3009,14 +3009,22 @@ model FeedbackResponse {
 // with how often it appears, so a typo can be matched to a real word. Rebuilt by lib/search-words.ts.
 // ⚠ Its trigram index (gin_trgm_ops, needs the pg_trgm extension) lives only in lib/migrations.ts.
 model SearchWord {
-  word String @id
-  n    Int    @default(0)
+  word  String   @id // accents folded, lower case
+  n     Int      @default(0)
+  forms String[] // the accented spellings our descriptions use for it (marklin → märklin)
 }
 
 model SearchWordState {
   id            String    @id // always "current"
   builtAt       DateTime?
   words         Int       @default(0)
-  buildingSince DateTime?
+  buildingSince DateTime? // touched after every batch while a build runs
   error         String?   @db.Text
+  version       Int       @default(1)
+}
+
+// Scratch table the spelling-list build fills in batches; empty between builds. UNLOGGED (lib/migrations.ts).
+model SearchWordBuild {
+  raw String @id
+  n   Int    @default(0)
 }

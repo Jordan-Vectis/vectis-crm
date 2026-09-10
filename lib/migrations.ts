@@ -2088,6 +2088,16 @@ export const MIGRATIONS = [
     "error"         TEXT,
     CONSTRAINT "SearchWordState_pkey" PRIMARY KEY ("id")
   )`,
+  // 🔎 Spelling list v2 (2026-09-10): the accented spellings seen for each word (marklin → märklin),
+  // a version so a changed list rebuilds itself, and an UNLOGGED scratch table the build fills in
+  // 5,000-row batches — one query over 1.2 million descriptions held the database for minutes.
+  `ALTER TABLE "SearchWord" ADD COLUMN IF NOT EXISTS "forms" TEXT[]`,
+  `ALTER TABLE "SearchWordState" ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1`,
+  `CREATE UNLOGGED TABLE IF NOT EXISTS "SearchWordBuild" (
+    "raw" TEXT NOT NULL,
+    "n"   INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT "SearchWordBuild_pkey" PRIMARY KEY ("raw")
+  )`,
 ]
 
 // Fingerprint of every statement above. Changes the moment a migration is added,

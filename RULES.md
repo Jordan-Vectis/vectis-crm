@@ -1267,13 +1267,20 @@ It **replaced Description Finder**, which is gone — page, route, home card and
   leaves out ABC lots (they have none) — the response says so in `notes`.
 - Each query runs with `SET LOCAL statement_timeout` inside a transaction (the pooler's unit).
 - **Forgiving matching** (Jordan: *"if I add a , anywhere it doesnt find that one lot"*) lives in
-  `lib/search-words.ts`: punctuation stripped and little words (&, and, the) dropped; accents folded on
-  BOTH sides — ⚠ `translate()` in SQL and `foldText()` in JS use the SAME `FOLD_FROM`/`FOLD_TO` map,
-  change one and change both; plurals count; a misspelt word also searches its nearest real spellings.
-- **The spelling list** is `SearchWord` (+ `SearchWordState`) — every word in our descriptions seen
-  twice or more, with a pg_trgm index. Built in the background the first time it's needed and weekly in
-  London evenings; a search never waits for it. Only unknown or rare words are corrected, and the panel
-  says what it also searched for — a lot found by a guessed spelling must never be a mystery.
+  `lib/search-words.ts`: punctuation stripped and little words (&, and, the) dropped; plurals count;
+  accents don't matter either way — the typed word is searched as typed AND folded (Kämmer → kammer),
+  and the spelling list supplies the accented spellings our descriptions use (marklin → märklin); a
+  misspelt word also searches its nearest real spellings.
+- ⚠⚠ **Never fold or rewrite the DESCRIPTIONS at search time.** Measured on production 2026-09-10:
+  `translate()` over ArchiveLot took **36 s** for "halo" against **3.3 s** for a plain ILIKE, and every
+  search timed out on staging. Matching stays a plain ILIKE on the stored text; anything cleverer is an
+  extra spelling of the TYPED word, or goes into the spelling list.
+- **The spelling list** is `SearchWord` (+ `SearchWordState`, `SearchWordBuild`) — every word in our
+  descriptions seen twice or more, its accented spellings, and a pg_trgm index. Built in the background
+  in 5,000-row batches (~2–3 minutes; never one long query) the first time it's needed, whenever
+  `BUILD_VERSION` changes, and weekly in London evenings; a search never waits for it. Only unknown or
+  rare words are corrected, and the panel says what it also searched for — a lot found by a guessed
+  spelling must never be a mystery.
 - ⚠ **No HTML in stored descriptions.** The website hands BC lots over as HTML (`<p>`, `&nbsp;`,
   `&auml;`). `htmlToText()` in `lib/html-text.ts` is the one cleaner: `writeBcSale` stores new lots
   clean, the spelling-list build cleans old rows first, and every screen/export that shows them cleans
