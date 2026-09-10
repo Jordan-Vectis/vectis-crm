@@ -47,6 +47,11 @@ async function runMigrations() {
 // must not show a live banner until a clerk explicitly presses Start.
 async function resetStaleLiveAuctions() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+  // Same guard as lib/auction-socket.js: a connection dying while idle emits
+  // 'error' on the pool, and unheard it would crash the boot.
+  pool.on('error', (err) => {
+    console.warn(`> Stale-live-auction reset pool: idle connection lost (${err.code || 'no code'}): ${err.message}`)
+  })
   try {
     const { rowCount } = await pool.query(
       `UPDATE "LiveAuction" SET status = 'PENDING', "updatedAt" = NOW()

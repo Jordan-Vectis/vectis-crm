@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"987be3e865dd27734e09bc3c2042beec87680c4a","author":"Jordan Orange","date":"2026-09-10T14:27:32+01:00","subject":"AI Models: retire gemini-2.5-flash-preview-04-17 — six screens were still sending it"},
   {"sha":"4b6abbe6ca5d6ec16f7f99c06eaf733c7756169e","author":"Jordan Orange","date":"2026-09-10T14:16:32+01:00","subject":"Status Centre: is it us or a supplier? — and a bell for admins in the top bar"},
   {"sha":"9c9e2db9585ecd86c608b468c1b45b11740e7ee4","author":"Jordan Orange","date":"2026-09-10T10:18:36+01:00","subject":"Memory: index the 18 memory files the index had lost, and correct End of Day and any-sale photos"},
   {"sha":"e9f69ab898db8e94c308f29c49ecd4bcf0688cff","author":"Jordan Orange","date":"2026-09-10T09:22:13+01:00","subject":"Opening message: the read-only database day, the migrations lesson, and 2026-09-09's work"},
