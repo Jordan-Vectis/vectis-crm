@@ -4035,14 +4035,14 @@ Only allowed URL in AI-generated content: vectis.co.uk
     filename: "user_profile.md",
     content: `---
 name: User Profile
-description: Jordan Orange, works at Vectis toy auction house, non-technical, Windows 11
+description: Jordan Orange, IT at Vectis toy auction house, prefers short simple answers, Windows 11
 type: user
 ---
 
 - Name: Jordan Orange (jordan.orange@hambletongroup.com / it@vectis.co.uk)
 - Works at Vectis, a toy and collectables auction house
-- Non-technical — happy to defer to recommendations on stack, hosting, tooling
-- Prefers concise responses — one paragraph max, lead with the answer
+- Works in IT — technical (corrected 2026-09-10; never describe him as non-technical). Still happy to take a clear recommendation on stack, hosting, tooling
+- Prefers short, simple answers — lead with the answer, one paragraph max. Short, not dumbed down
 - Uses Windows 11, PowerShell, VS Code
 - GitHub username: Jordan-Vectis
 - Always accesses the app via a Railway URL — never runs it locally with npm run dev
@@ -5461,7 +5461,7 @@ type: reference
 
 # Memory Index
 
-- [User Profile](user_profile.md) — Jordan Orange, Vectis auction house, non-technical, always uses Railway URL never local
+- [User Profile](user_profile.md) — Jordan Orange, IT at Vectis auction house, technical but prefers short simple answers, always uses Railway URL never local
 - [Opening message](opening_message.md) — what Jordan pastes at the start of every session; a lesson that must change the next session belongs in it
 - [Vectis Hub Project](project_vectis_hub.md) — Full spec, stack, deployment, admin features
 - [Hub Workflow — lot lifecycle](project_hub_workflow.md) — goods in → catalogue → macro → 🔗 BC Match → Push to BC. ⚠ receiptUniqueId NULL until BC Match; barcode is the only pre-BC id. Read before any Hub↔BC mismatch
