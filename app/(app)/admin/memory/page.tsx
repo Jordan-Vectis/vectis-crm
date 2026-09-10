@@ -1752,7 +1752,7 @@ Confirmed with Jordan in conversation. The key insight that prompted it: unique-
     filename: "end_of_day_bc.md",
     content: `---
 name: End of Day → BC (/tools/cataloguing/end-of-day)
-purpose: One-click end-of-day hotkey sheet — every Hub lot not yet in BC, grouped by tote, in the exact ToteNumber/LotCount/Barcodes format the overnight macro runs. Read before touching it or the BC import flow.
+purpose: One-click end-of-day sheet — every Hub lot not yet in BC (barcode match only) as BC_Import.csv, ONE ROW PER RECEIPT (ReceiptNumber,LotCount,Barcodes), the file the overnight macro runs. Read before touching it or the BC import flow.
 last_updated: 2026-08-05
 ---
 
@@ -1776,7 +1776,7 @@ Jordan: "on the end of day remove the flag for empty totes it doesnt matter as w
 ## Checks (added same day)
 
 Every lot on the sheet is verified before it's trusted overnight — **shared \`lib/tote-check.ts\` \`checkLot()\`**, the same engine as the Tote Check tab, so the two can never disagree. Plus three sheet-specific checks:
-- **\`duplicate_barcode\`** — same barcode under two totes. ⚠ The ONLY check that pulls lots OFF the sheet (importing under the wrong tote puts the BC line on the wrong receipt) — shown in a red panel, never silent.
+- **\`duplicate_barcode\`** — same barcode under two RECEIPTS (it read "two totes" while the sheet was tote-keyed). ⚠ The ONLY check that pulls lots OFF the sheet (importing would create the BC line on the wrong receipt) — shown in a red panel, never silent.
 - **\`receipt_not_in_bc\`** — the lot's receipt exists in neither \`WarehouseTote.receiptNo\` nor \`WarehouseItem.receiptNo\` (variants trick both). Flagged, stays on the sheet.
 - **\`invalid_barcode\`** — fails the RULES.md format regexes after non-ASCII strip. Flagged, stays on the sheet.
 
@@ -1788,7 +1788,7 @@ Everything else (tote_unknown / receipt_mismatch / vendor_mismatch / unique_id_m
 
 ⚠⚠ **SCOPE = TONIGHT'S SHEET ONLY (fixed 2026-08-21 — Jordan: "on the end of day im only seeing 4 issues but when I press the fix what BC can prove box I have 70").** The page passed sale ids alone, and \`autocorrectLotsFromTotes\` does \`findMany({ where: { auctionId } })\` — **every lot in those sales, including the thousands already in BC** (his screen: 630 pending vs 4,663 already in BC). So the same engine that feeds the check panels (which only ever look at the lots on the sheet) previewed **70 lots would change** against panels showing 8 — not a counting bug, two different sets of lots. Fix: \`autocorrectLotsFromTotes(auctionId, apply, onlyBarcodes?)\` + \`autocorrectLotsForAuctions(ids, apply, sheetBarcodes?)\`, and the page sends \`data.receipts.flatMap(r => r.barcodes)\` — the exact barcodes on screen — so the preview can only ever count lots the checks above it looked at. ⚠ **Preview and Apply must send the SAME list** or Apply does more than it showed (both read one \`sheetBarcodes\` useMemo). ⚠ \`onlyBarcodes\` omitted/null = the whole sale, which is what **Tote Check → Match BC** still wants — that tab is unchanged and the one choke-point survives. An EMPTY array is a real scope ("nothing from this sale"), never "everything".
 
-**🔕 Ignore a warning** (added 2026-08-06, for flags that are wrong because the sync is behind): per lot + check type in the new **\`EodCheckDismissal\`** table (\`@@unique([lotId, checkKey])\`, migration in the MIGRATIONS array). Actions \`dismissEodChecks\` / \`restoreEodChecks\` (max 400 pairs, requireCataloguer). The API files dismissed rows under \`ignored\` per check (migration-safe — table missing = nothing ignored); panel header shows "· N ignored", collapsible list with Restore / Restore all. ⚠ **\`duplicate_barcode\` is never ignorable** (it changes what goes on the sheet) — enforced in the action AND the API split; \`no_tote\` gets no ignore link either (blocker, not warning). Report-only — nothing on the lot changes.
+**🔕 Ignore a warning** (added 2026-08-06, for flags that are wrong because the sync is behind): per lot + check type in the new **\`EodCheckDismissal\`** table (\`@@unique([lotId, checkKey])\`, migration in the MIGRATIONS array). Actions \`dismissEodChecks\` / \`restoreEodChecks\` (max 400 pairs, requireCataloguer). The API files dismissed rows under \`ignored\` per check (migration-safe — table missing = nothing ignored); panel header shows "· N ignored", collapsible list with Restore / Restore all. ⚠ **\`duplicate_barcode\` is never ignorable** (it changes what goes on the sheet) — enforced in the action AND the API split; \`no_receipt\` gets no ignore link either (it keeps a lot off the sheet); \`no_tote\` is gone from this page altogether (2026-09-04, above). Report-only — nothing on the lot changes.
 
 Measured on production 2026-08-05: **5 unique_id_mismatch, 93 tote_unknown, 64 receipt_not_in_bc, 0 duplicates** — it catches real issues on day one.
 
@@ -1796,7 +1796,7 @@ Measured on production 2026-08-05: **5 unique_id_mismatch, 93 tote_unknown, 64 r
 
 ## Manual intervention — tick lots, move them (added 2026-08-05)
 
-Every check panel (and the no-tote list, now the same panel type) has **tickboxes + "Tick all"**; ticking anything floats a **fixed bottom bar**: type a tote or receipt → **Check in BC** (\`lookupToteOrReceipt\` — the same verify-first flow as Manage Lots → Change Vendor; a number not in the BC data can't be applied) → confirmation line states what it belongs to → **Apply to ticked lots**.
+Every check panel (and the no-receipt / no-barcode problem panels) has **tickboxes + "Tick all"**; ticking anything floats a **fixed bottom bar**: type a tote or receipt → **Check in BC** (\`lookupToteOrReceipt\` — the same verify-first flow as Manage Lots → Change Vendor; a number not in the BC data can't be applied) → confirmation line states what it belongs to → **Apply to ticked lots**.
 
 - Apply = **\`setLotsVendorReceiptAcrossAuctions\`** → groups the selection by sale and loops the existing **\`setLotsVendorReceipt\`**, which gained an optional **\`tote\`** param (set only when the lookup was a tote; Manage Lots doesn't pass it — unchanged there). So: tote entered → tote + receipt + vendor all corrected; receipt entered → receipt + vendor only, totes left alone.
 - Same guarantees as Manage Lots: logged (\`vendor_change\` + batchId), **per-sale Undo** via CatalogueBulkUndo, existing unique IDs preserved (minted only for blanks), BC-locked sales skip for non-admins and are reported. Selection is cleared on every data refresh so stale lot ids can't be applied.
@@ -1808,7 +1808,7 @@ Every check panel (and the no-tote list, now the same panel type) has **tickboxe
 
 Two collapsible panels at the bottom of the page, plus a refresh-behaviour change:
 
-- **🩹 Import Check** — the SAME engine as Auction AI → BC Import Check, extracted to **\`lib/bc-import-sheets.ts\`** (readSheet/parseHotkeySheet/parseBcLinesExport/reconcileImport/buildHotkeyCsv — ⚠ ONE copy, both UIs import it; the Auction AI tab kept its dark styling, the End of Day panel is dual-theme). Extra convenience: "📄 Use tonight's sheet shown above" feeds \`data.totes\` as the hotkey side (tooltip warns: if a Data Sync ran since, upload the file that actually ran).
+- **🩹 Import Check** — the SAME engine as Auction AI → BC Import Check, extracted to **\`lib/bc-import-sheets.ts\`** (readSheet/parseHotkeySheet/parseBcLinesExport/reconcileImport/buildHotkeyCsv — ⚠ ONE copy, both UIs import it; the Auction AI tab kept its dark styling, the End of Day panel is dual-theme). Extra convenience: "📄 Use tonight's sheet shown above" feeds \`data.receipts\` as the hotkey side, one row per receipt (tooltip warns: if a Data Sync ran since, upload the file that actually ran).
 - **🔗 BC Match (all sales)** — the BC Lines export spans several Hub sales, so the per-sale AM modal can't take it. Action **\`matchBcLinesAcrossAuctions(rows, apply)\`**: client parses via \`parseBcLinesForMatch\` (Internal Barcode / Receipt No. / UniqueID), server matches by barcode across every NON-complete sale, **same rule as the AM modal: only a row whose receipt AGREES imports**; apply groups by auction and loops the per-sale **\`bulkAssignUniqueIds\`** (the ONE UniqueID-import choke-point — never import IDs any other way). Cap 10,000 rows; display lists capped (1,000 / 500), counts are the truth. Filter tiles: Ready to import / Receipt disagrees / Not in the Hub / **Didn't come back** (pending lots the export doesn't cover). BC-locked sales fail their own call and are counted.
 - **⚠ NO auto-refresh (Jordan's explicit call)** — after any apply/import/remap the page does NOT reload; it sets \`stale\`: amber banner + the ⟳ Refresh button turns amber/pulses. The heavy check suite re-runs only on the button. **Exception:** Ignore/Restore move rows locally (\`moveIgnored\`) — instant. Don't re-add auto \`load()\` calls after actions.
 - **Refresh feedback (2026-08-07)** — button shows "⟳ Pulling the lots in…" while loading, flashes green "✓ Refreshed" 2.5s; live readout underneath: "📥 Lots last pulled: 16:42 · 5m ago" (\`generatedAt\` via \`fmtPulled\`) + "🔄 BC data last synced" (\`toteLastSync\`), re-rendered each minute by an age tick.
@@ -5281,7 +5281,7 @@ Admin-only cards vs grantable apps (2026-07-15): a card in APP_CARD_DEFS with NO
     filename: "reference_photo_upload_any_sale.md",
     content: `---
 name: Photography -> Upload photos (any sale)
-description: The existing uploader with no sale picked - matches codes across every UNCOMPLETED sale, and holds photos whose lot does not exist yet. Read before touching either uploader or lib/photo-scan.ts.
+description: The existing uploader with no sale picked - matches codes across every UNCOMPLETED sale. A photo that matches no lot is NOT saved - the holding area was built then removed on Jordan's reversal; never rebuild it. Read before touching either uploader or lib/photo-scan.ts.
 metadata:
   type: reference
 ---
@@ -5428,21 +5428,92 @@ type: reference
 # Memory Index
 
 - [User Profile](user_profile.md) — Jordan Orange, Vectis auction house, non-technical, always uses Railway URL never local
-- [Vectis Hub Project](project_vectis_hub.md) — Full spec, stack, deployment, current admin features, planned iPad tracking
-- [Vectis Company Facts](vectis_company_facts.md) — Authoritative company facts; use in any AI-generated content prompt
-- [BC OData API Reference](bc_api_reference.md) — Endpoint field names, gotchas, cataloguing modes, bidstream WebSocket protocol + ntfy.sh push pattern
-- [PDF Generation Patterns](feedback_pdf_patterns.md) — pdf-lib (not pdfkit), sharp for SVG logos, bwip-js for barcodes, server-side over browser print
-- [General Feedback](feedback_vectis.md) — Keep responses short; don't build local-only features; don't overcomplicate simple requests; no console commands
-- [Memory Workflow](feedback_memory_workflow.md) — Always update the static memory page alongside memory files and push to staging
-- [File Saving Preference](feedback_file_saving.md) — Always ask where to save files before saving them
-- [App Naming](feedback_naming.md) — Don't call it a CRM; it's "the app"
-- [Migration Pattern](feedback_migrations.md) — Always add new migrations to run-migrations endpoint; prisma migrate deploy unreliable on Railway
-- [Git Workflow](feedback_git_workflow.md) — Pull from remote staging before every push; another dev works on the same branch
-- [New Claude Account Setup](reference_new_claude_account.md) — Steps to replicate this full Claude Code setup on a new account (permissions, hooks, memory, project files)
-- [App Access Control](reference_app_access_control.md) — hasAppAccess + per-app layouts, NOT role lists; "app missing from permissions" = card has no appKey
-- [Smart Scan Photo Upload](reference_smart_scan_photo_upload.md) — Upload Photos smart scan grouping rules, failure modes, and the 2026-07-15 rework
-- [Photography Section](reference_photography_section.md) — /tools/cataloguing/photography; Upload Photos removed from Auction Manager; new sidebar sections are hidden from users with configured sections
-- [Upload photos — any sale](reference_photo_upload_any_sale.md) — the same uploader with no sale picked: matches codes across every UNCOMPLETED sale, shared engine in lib/photo-scan.ts, and photos whose lot doesn't exist yet are HELD and attach on BC Match`,
+- [Opening message](opening_message.md) — what Jordan pastes at the start of every session; a lesson that must change the next session belongs in it
+- [Vectis Hub Project](project_vectis_hub.md) — Full spec, stack, deployment, admin features
+- [Hub Workflow — lot lifecycle](project_hub_workflow.md) — goods in → catalogue → macro → 🔗 BC Match → Push to BC. ⚠ receiptUniqueId NULL until BC Match; barcode is the only pre-BC id. Read before any Hub↔BC mismatch
+- [Vectis Company Facts](vectis_company_facts.md) — Thornaby HQ, 1988, departments, brand voice — use in any AI-content prompt
+- [🌍 Vendor Locations report](reference_vendor_locations_report.md) — BC holds NO country for ANY vendor (0 of 28,998); worked out from the address. bcApiUrl path is per publisher: evo/base, api/v2.0, eva/tot
+- [BC OData API Reference](bc_api_reference.md) — endpoint names + gotchas; cache was upsert-only until 2026-08-19 (reconcile-deleted = stage 8); bcPersonName(); numbering TOP-UP sync. Read before any BC integration
+- [Git workflow](feedback_git_workflow.md) — work on staging; pull before every push (another dev pushes too); NEVER ask to push to main, Jordan says when
+- [⚠⚠ Slow buttons must show REAL progress](feedback_progress_feedback.md) — Jordan called this a REPEATED failing; a number that moves, client-driven paging, a Stop, never a fake percentage
+- [⚠ No long review loops before a push](feedback_no_long_review_loops.md) — tsc + build, push, tell him; never gate on multi-agent review or open a browser
+- [⚠ Ask before agents](feedback_ask_before_agents.md) — ask before spawning any subagent or workflow (2026-09-03); never for simple tasks
+- [⚠ Ask before any Workflow](feedback_ask_before_workflows.md) — review workflows / multi-agent fan-outs burn huge tokens and hit session limits mid-message
+- [General feedback](feedback_vectis.md) — keep responses short; nothing local-only; don't overcomplicate simple requests; no console commands
+- [Full width](feedback_full_width.md) — pages and tables use the whole screen width, never a narrow centred column
+- [PDF Generation Patterns](feedback_pdf_patterns.md) — pdf-lib never pdfkit; sharp for the logo; bwip-js barcodes; drawRectangle has NO borderRadius (breaks the build); WinAnsi only, no emoji
+- [Migration Pattern](feedback_migrations.md) — every migration also goes in the run-migrations MIGRATIONS array; prisma migrate deploy is unreliable on Railway
+- [Memory Workflow](feedback_memory_workflow.md) — change a memory file → change its /admin/memory ENTRIES copy in the same push to staging
+- [File Saving](feedback_file_saving.md) — ask where a file should go before saving it
+- [App Naming](feedback_naming.md) — it's the Hub, never "the CRM"
+- [New Claude Account Setup](reference_new_claude_account.md) — replicate this Claude Code setup (permissions, hooks, memory, project config) on a new account
+- [Photo Prep — AI edit](reference_photo_ai_edit.md) — 13 Gemini image presets fix the PHOTO never the ITEM. Read before adding a preset
+- [Photography section](reference_photography_section.md) — its own Cataloguing section (sale list → Start photography); Upload Photos left Auction Manager; a new sidebar section stays hidden from users with configured sections until an admin ticks it
+- [Smart Scan photo upload](reference_smart_scan_photo_upload.md) — label reading + grouping, its failure modes, the 2026-07-15 rework
+- [Upload photos — any sale](reference_photo_upload_any_sale.md) — no sale picked, matched across every UNCOMPLETED sale; ONE engine in lib/photo-scan.ts; a photo matching nothing is NOT saved — never rebuild the holding area
+- [AI cost — caching + price estimator](reference_ai_cost.md) — cachePrefix caching, rates in lib/ai-pricing.ts; unknown model = "Price not set" never $0
+- [Patches & Changes (admin)](reference_patches_changes.md) — /admin/changes; committed seed is the only history; \`npm run changelog:seed\` AMENDS into your work commit
+- [Auto Pipeline overnight queue](reference_pipeline_queue.md) — server-side queue + ✨ AI UPGRADE jobs; runner calls the same AI routes; catalogue overrules stale saved rows. Read before touching
+- [🧪 Instructions Testing tab](reference_instructions_testing.md) — Auto Pipeline on 5–10 lots, PREVIEW ONLY, never writes
+- [Marketing Business Plan tab](reference_marketing_plan.md) — GA snapshot FROZEN on the plan; lib/marketing-plan.ts is client-imported
+- [Two AI Providers — Gemini + Claude](reference_ai_providers.md) — model id decides provider; only claudeOk slots may use Claude. Read before touching any AI route
+- [BC Source Code on Disk + In-App](reference_bc_source_code.md) — Evo-auction AL source on OneDrive + IT Tools → BC Source
+- [Admin Centre (/tools/lot-lookup)](reference_admin_centre.md) — ONE page, five search-by buttons; "In BC" = barcode match; deliberately oversized UI
+- [BC Warehouse — Excel filters + PDF](reference_warehouse_filter_table.md) — shared <FilterTable>; PDF prints what's on screen
+- [End of Day → BC](reference_end_of_day_bc.md) — lots not yet in BC (barcode only) → BC_Import.csv, ONE ROW PER RECEIPT; checks via lib/tote-check.ts; fix scoped to tonight's sheet; NO no_tote flag (2026-09-04). Read before touching BC import flow
+- [BC Connector (OAuth)](reference_bc_connector.md) — per-user BC token + ?return= flow
+- [BC Import Macro (AHK)](reference_bc_macro_ahk.md) — Jordan's AutoHotkey macro + Macro Calibrator; declined the watchdog idea
+- [Auto Clerk.ahk](reference_auto_clerk_ahk.md) — screen-reading AHK clerk with Windows OCR; v1 one screen
+- [⚠ Saleroom Trainer FROZEN](feedback_saleroom_trainer_frozen.md) — never edit trainer files during Auto Clerk work; copy into auto-clerk-*.html
+- [Auto Clerk — review fixes](reference_auto_clerk_review.md) — rig undo, onlineBidAt feed, gap-relay ordering. Read with the reference card
+- [⚠⚠ Read-only database day (2026-09-09)](reference_db_readonly_incident.md) — Neon compute read-only + a POISONED POOLER connection (7/25) that outlived it; sample MANY connections never one; pg_is_in_recovery lies on Neon; prisma update() reads the whole row back; the MIGRATIONS array is the only route
+- [Sandbox environment](reference_sandbox_environment.md) — staging code on a Neon branch of PROD data; crons off only because CRON_SECRET unset — never add one; shares R2
+- [Deploy Skew](reference_deploy_skew.md) — "Failed to find Server Action" = deploy skew; silent reload
+- [Local Boot Safety](reference_local_dev_boot.md) — server.js gates migrations/crons on !dev; .env = REAL DB
+- [Receipt Unique ID Assignment](reference_unique_id_assignment.md) — SUPERSEDED: Hub mints NO unique IDs; never re-add
+- [Phantom Cataloguing Counts](reference_phantom_catalogue_counts.md) — orphaned timing logs; never blame cataloguers
+- [Access Log + /hub Bounce](reference_access_log.md) — /admin/access-log; 3 failure shapes
+- [Auction Manager ⭐ favourites](reference_auction_favourites.md) — per user, not a status
+- [Departments — sale access](reference_departments.md) — no department = sees everything (deliberate)
+- [Facilities → Site Plan + First Aid](reference_first_aid_public.md) — /first-aid is the ONE public page; exact-match allowlist; pins as percentages
+- [Facilities → Induction](reference_induction.md) — slides + signed forms on a tablet; signer has no account
+- [App Access Control](reference_app_access_control.md) — hasAppAccess + per-app layouts, not role lists; "app missing from permissions" = card has no appKey
+- [Data & Compliance page](reference_compliance_page.md) — /admin/compliance, a static data-protection note; keep its lists in step when an integration changes
+- [Data map — every Prisma table](reference_data_map.md) — one plain-English sentence per table on Data & Compliance, with a self-check for undescribed ones. Read before adding a Prisma model
+- [🎥📸 Screen Recorder + Screenshots (IT Tools)](reference_screen_recorder.md) — record/capture into R2; retry never re-uploads; screenshots stream through the Hub; livestream NOT built
+- [🏢 BC Database (Databases)](reference_bc_database.md) — /databases/bc: BC sync + the website's FULL description/photo/link. ⚠⚠ the site answers Railway 202+empty but an OFFICE machine normally → collected by scripts/collect-bc-lots.mjs and uploaded; BC sales = site 1062–1558; siteSaleId says where to carry on
+- [📚 ABC Database / Lot Archive (Databases)](reference_lot_archive.md) — pre-BC lots: sheet STREAMED from R2 + website pull (LotID = site unique_id, photos keyed on it, match by AuctionID+lot). Read before touching old sold prices/photos
+- [💬 Help box (top bar)](reference_help_box.md) — permissions by FILTERING context server-side (allowedHelpContext); getEffectiveSession() not auth(); DESTINATIONS list
+- [Lens — identify from photo](reference_lens.md) — Gemini + our sold prices; 4 matching traps
+- [Measurement flags](reference_measurement_flags.md) — a size differing from the maker is never a mistake; only self-contradicting pairs
+- [Dolls & Bears Descriptions](reference_dolls_bears_descriptions.md) — no ** bold; cleanBearsDescription; strict/relaxed KP modes
+- [AI instruction house style](reference_ai_instruction_house_style.md) — the ONE shape for description instructions; repeat rules where they apply; 5,000–6,500 chars; delivered as text to paste
+- [AI Instructions Single Source](reference_ai_instructions_single_source.md) — AiPreset DB is the ONE source; archive hides from every dropdown; resolveInstruction never checks archived
+- [Auto Pipeline — appliedDesc](reference_auto_pipeline_apply.md) — appliedDesc is the only record of an apply; model read LIVE via refs
+- [⚠ AI apply keeps the condition line](reference_condition_line_on_ai_apply.md) — keepConditionLine (lib/condition.ts) in all four AI-apply paths; "Add Conditions is glitchy" was never the button
+- [⚠ Leaked tool call ≠ a description](reference_ai_tool_call_leak.md) — stripToolCallLeak universal; MALFORMED_FUNCTION_CALL retried. Read before any AI description route
+- [Locking Check — final gate](reference_locking_check.md) — reuses tote-check + condition; tote checks skipped if BC totes fail
+- [💷 Reserves](reference_reserves.md) — deliberately simple, does NOT check BC; no reserve column; updateLot preserves startingBid/reserve
+- [Vendor / Tote Check tab](reference_tote_check.md) — read-only vs WarehouseTote; stale = amber
+- [⚠⚠ Wrong vendors — the 2026-09-08 review](reference_vendor_flow_faults.md) — ⚠ the tote is TYPED never scanned; a mistyped-but-valid tote is invisible to every check; BC keys receipt-totes on (receipt,line) but our cache is UNIQUE on toteNo; dead duplicate guard. Wizard + cache FIXED (on production since the 2026-09-09 merge); Match BC/End of Day left alone by his decision. Read before touching the tote lookup, wizard step 1 or Match BC
+- [Review Tab — issues, kp mistakes, fix all](reference_review_tab_issues.md) — key points are upstream of the description
+- [Lot Wizard — Resume](reference_lot_wizard_resume.md) — REMOVED 2026-08-07; don't rebuild without discussing
+- [Manual cataloguers](reference_manual_cataloguer.md) — server-side in all five creation paths
+- [Lot Wizard — customer banner](reference_lot_wizard_tote_banner.md) — Different tote on the LEFT + confirms; Contents from BC via a DISCOVERED field name (pickBcContents)
+- [Lot Wizard Warnings](reference_lot_wizard_warnings.md) — goNext() stop-and-warn guards
+- [Lot Change Log](reference_lot_change_log.md) — every lot mutation logs via lib/lot-log.ts
+- [Idle-Gap Detector](reference_idle_gaps_detector.md) — /admin/unaccounted-time; diagnose on production data
+- [Scan Timer Split](reference_scan_timer_split.md) — blue timer separate from activity prompt
+- [Idle gap ends at LOT START](reference_idle_gap_ends_at_lot_start.md) — evaluateIdleGate(userId, "lot-start"); server-stamped starts
+- [Idle Timer Mobile Bypass](reference_idle_timer_mobile_bypass.md) — server-authoritative hours + IdleGateDecision
+- [Within-lot idle = server-confirmed](reference_idle_within_lot_server_confirm.md) — mid-lot popup GONE; walk-away raised at save; never check on taps
+- [Cataloguer Activity Report](reference_idle_report.md) — "idle" banned in UI; code keeps it
+- [Activity Popup + Preview](reference_activity_popup_preview.md) — markup in TWO places, keep in sync
+- [iPad AUP Terms Popup](reference_terms_aup.md) — lib/terms.ts; bump TERMS_VERSION
+- [Cataloguing Performance PDFs](reference_reports_pdf.md) — one route + one builder, period-scoped
+- [Report Day Exclusion](reference_report_day_exclusion.md) — hides days from report maths only
+- [Manage Lots — Filters/Bulk/Undo](reference_manage_lots_bulk_undo.md) — chunked mass actions, one undo per press; Change Vendor clears the tote. Read before touching bulk actions
+- [⚠ Lock = Catalogued; "In BC" is measured](reference_bc_lock_and_in_bc_column.md) — requireNotBCLocked on Catalogued; "In BC" = barcode count vs sync; addedToBC a note only`,
   },
 ]
 
