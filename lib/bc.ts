@@ -418,3 +418,135 @@ export function pickBcContents(row: Record<string, unknown>): { value: string | 
   }
   return { value: null, field: null }
 }
+
+// ── Status Centre (🚦 /admin/status, 2026-09-10) ─────────────────────────────────────────────
+//
+// The Business Central light has to say WHOSE sign-in the background work is borrowing — there is
+// NO company-wide BC account, so "BC is fine" means little unless a person can be named — and a
+// status check must never write to the database. getBCTokenAny() can do neither, and is left alone
+// because every sync stage relies on it:
+//   • it returns a bare string, so nothing can say whose key it was;
+//   • its refresh branch is findFirst with NO orderBy — Postgres's physical row order moves after
+//     every UPDATE, so the pick is arbitrary and drifts — and it tries that ONE row only;
+//   • refreshBCToken throws Microsoft's reason away (`if (!res.ok) return null`), so an expired
+//     app key, a withdrawn sign-in and a database fault all read as "not connected";
+//   • it WRITES the renewed key back. On a read-only database day (2026-09-09) that write fails,
+//     refreshBCToken returns null, and BC looks down when the fault is the database.
+
+/** One stored sign-in Microsoft would not renew. Never carries message text — only a short code. */
+export interface BCRenewFailure {
+  userId: string
+  /** refused = that person's sign-in no longer renews (expired, withdrawn, password changed)
+   *  app-key = Microsoft refused the Hub's OWN app key or settings — every renewal will fail the same way
+   *  unreachable = Microsoft's sign-in service didn't answer · rate-limited = asked too often */
+  kind: "refused" | "app-key" | "unreachable" | "rate-limited"
+  /** e.g. "AADSTS700082", "invalid_grant", "HTTP 503", "timeout". */
+  code: string
+}
+
+export type BCStatusToken =
+  | { ok: true; token: string; userId: string; renewed: boolean; failures: BCRenewFailure[] }
+  | { ok: false; reason: "no-sign-ins" | "none-renewable" | "not-configured" | "renewals-failed"; failures: BCRenewFailure[] }
+
+// Entra error codes that mean the Hub's own app registration is at fault, not the person:
+// 7000222 secret expired · 7000215 wrong secret · 7000218 secret missing · 700016 app not in tenant ·
+// 90002 / 900023 tenant not found or malformed · 7000112 app disabled · 70011 the scope the Hub asks
+// for is invalid. Any of these would refuse every person alike, so trying the next one only adds calls.
+const APP_KEY_CODES = new Set([7000222, 7000215, 7000218, 700016, 90002, 900023, 7000112, 70011])
+
+async function renewForStatus(
+  tenant: string, clientId: string, clientSecret: string, refreshToken: string, timeoutMs: number,
+): Promise<{ ok: true; token: string } | { ok: false; kind: BCRenewFailure["kind"]; code: string }> {
+  try {
+    const res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type:    "refresh_token",
+        client_id:     clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        scope:         "https://api.businesscentral.dynamics.com/user_impersonation offline_access",
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    if (res.ok) {
+      const json = (await res.json().catch(() => null)) as { access_token?: unknown } | null
+      return typeof json?.access_token === "string" && json.access_token
+        ? { ok: true, token: json.access_token }
+        : { ok: false, kind: "unreachable", code: "no key in the answer" }
+    }
+    // An unread body keeps the connection open until garbage collection — release it at once.
+    if (res.status === 429) { void res.body?.cancel().catch(() => {}); return { ok: false, kind: "rate-limited", code: "HTTP 429" } }
+    if (res.status >= 500)  { void res.body?.cancel().catch(() => {}); return { ok: false, kind: "unreachable",  code: `HTTP ${res.status}` } }
+    const json = (await res.json().catch(() => null)) as { error?: unknown; error_codes?: unknown } | null
+    const err = typeof json?.error === "string" ? json.error : ""
+    const rawCodes = json?.error_codes
+    const codes = Array.isArray(rawCodes) ? rawCodes.filter((n): n is number => typeof n === "number") : []
+    const appKey = err === "invalid_client" || err === "unauthorized_client" || codes.some(c => APP_KEY_CODES.has(c))
+    return { ok: false, kind: appKey ? "app-key" : "refused", code: codes.length ? `AADSTS${codes[0]}` : (err || `HTTP ${res.status}`) }
+  } catch (e) {
+    const name = (e as { name?: string })?.name
+    return { ok: false, kind: "unreachable", code: name === "TimeoutError" || name === "AbortError" ? "timeout" : "no answer" }
+  }
+}
+
+/**
+ * For the Status Centre ONLY: a BC key the way getBCTokenAny gets one, but it says whose it is and
+ * NEVER writes to the database.
+ *
+ * 1. A key still valid for over a minute — what getBCTokenAny tries first, so no Microsoft call at
+ *    all. The one expiring LAST (the most recently renewed) is taken, so the pick is stable and
+ *    nameable rather than arbitrary.
+ * 2. Otherwise renew one IN MEMORY, most recently renewed person first. A refused sign-in falls
+ *    through to the next person (up to `maxTries`); an app-key refusal, an unreachable Microsoft
+ *    or a 429 stops at once, because every other person would fail the same way and trying them
+ *    all would only hammer the sign-in service.
+ *
+ * ⚠ The renewed key is deliberately NOT saved. Microsoft does not withdraw a refresh token when it
+ * is redeemed (it stays valid until its own expiry), so the stored key keeps working for the Hub's
+ * real renewals, and a database refusing writes can't be mistaken for BC being down. The price is
+ * one free sign-in call per check whenever nobody holds a live key (overnight).
+ */
+export async function getBCTokenForStatus(
+  opts: { maxTries?: number; timeoutMs?: number } = {},
+): Promise<BCStatusToken> {
+  const maxTries  = Math.max(1, opts.maxTries ?? 3)
+  const timeoutMs = Math.min(15_000, opts.timeoutMs ?? 8_000)
+
+  const valid = await prisma.bCToken.findFirst({
+    where:   { expiresAt: { gt: new Date(Date.now() + 60_000) } },
+    orderBy: { expiresAt: "desc" },
+    select:  { userId: true, accessToken: true },
+  })
+  if (valid?.accessToken) return { ok: true, token: valid.accessToken, userId: valid.userId, renewed: false, failures: [] }
+
+  const rows = await prisma.bCToken.findMany({
+    where:   { refreshToken: { not: "" } },
+    orderBy: { updatedAt: "desc" },
+    take:    maxTries,
+    select:  { userId: true, refreshToken: true },
+  })
+  if (!rows.length) {
+    const stored = await prisma.bCToken.count()
+    return { ok: false, reason: stored ? "none-renewable" : "no-sign-ins", failures: [] }
+  }
+
+  const tenant = process.env.BC_TENANT_ID, clientId = process.env.BC_CLIENT_ID, clientSecret = process.env.BC_CLIENT_SECRET
+  if (!tenant || !clientId || !clientSecret) return { ok: false, reason: "not-configured", failures: [] }
+
+  const failures: BCRenewFailure[] = []
+  for (const row of rows) {
+    const r = await renewForStatus(tenant, clientId, clientSecret, row.refreshToken, timeoutMs)
+    if (r.ok) return { ok: true, token: r.token, userId: row.userId, renewed: true, failures }
+    failures.push({ userId: row.userId, kind: r.kind, code: r.code })
+    if (r.kind !== "refused") break
+  }
+  return { ok: false, reason: "renewals-failed", failures }
+}
+
+/** The ODataV4 address of one web service, e.g. bcODataUrl("Totes_Excel") — for a caller that needs
+ *  its own fetch, such as the Status Centre's probe with a 15 s timeout instead of bcPage's 45 s. */
+export function bcODataUrl(endpoint: string): string {
+  return baseUrl() + endpoint
+}

@@ -95,6 +95,10 @@ app.prepare().then(async () => {
     console.log(`> Vectis Hub ready on http://localhost:${port}`)
     console.log(`> Socket.IO live auction server active`)
 
+    // When this process started — the Status Centre's "The Hub" light shows it, so a
+    // restart (a crash, or a deploy) is visible after the fact.
+    globalThis._bootedAt = Date.now()
+
     // The loops below drive real integrations: they back up the shared DB to R2
     // and turn real IT@vectis.co.uk / condition-report emails into records. On a
     // dev machine they no-op only because CRON_SECRET happens to be absent from
@@ -258,5 +262,37 @@ app.prepare().then(async () => {
       runConditionMailboxSync()
       setInterval(runConditionMailboxSync, CONDITION_MAILBOX_INTERVAL_MS)
     }, 100 * 1000)
+
+    // 🚦 Status Centre — checks every outside service the Hub relies on and records the
+    // result, so /admin/status can answer "is it us or a supplier?" and the admin bell can
+    // say when something breaks or recovers. Each tick runs only the checks that are due.
+    //
+    // ⚠ PRODUCTION ONLY. On staging and sandbox it would wake their Neon branches every tick
+    // (the database check opens ~28 connections) and ring bells about test copies of
+    // production's data. There, the page's "Check now" runs the same checks on demand.
+    // ⚠ Not gated on CRON_SECRET like the loops above: each check is read-only (no emails,
+    // no orders, no AI generation, no probe rows), and it proves itself to its own route
+    // with a token made fresh at boot and held only in this process.
+    globalThis._statusToken = require('crypto').randomBytes(24).toString('hex')
+    const STATUS_INTERVAL_MS = 5 * 60 * 1000
+    let statusBusy = false
+    function runStatusChecks() {
+      if (process.env.RAILWAY_ENVIRONMENT_NAME !== 'production') return
+      if (statusBusy) return
+      statusBusy = true
+      fetch(`http://localhost:${port}/api/status/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-status-token': globalThis._statusToken },
+        body: '{}',
+      })
+        .then(r => r.json())
+        .then(d => { if (d && d.changed && d.changed.length) console.log(`[status] changed: ${d.changed.join(', ')}`) })
+        .catch(e => console.warn('[status] error:', e.message))
+        .finally(() => { statusBusy = false })
+    }
+    setTimeout(() => {
+      runStatusChecks()
+      setInterval(runStatusChecks, STATUS_INTERVAL_MS)
+    }, 2 * 60 * 1000)
   })
 })

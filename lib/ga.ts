@@ -182,3 +182,22 @@ export async function getMarketingReport(range: GaRange, excludeBots = false, se
   METRIC_KEYS.forEach((k) => { deltas[k] = previous[k] > 0 ? (current[k] - previous[k]) / previous[k] : null })
   return { summary: current, previous, deltas, series, sections }
 }
+
+// ─── Status Centre health check ──────────────────────────────────────────────
+// 🚦 For lib/status/checks/analytics.ts only. Proves the Hub can log in with the
+// same key Marketing Reports uses and open this property, WITHOUT running a
+// report: getMetadata only lists the property's report fields, so no visitor
+// figures are read. It needs the same Viewer access a report does, so a removed
+// service account or a wrong property id fails here exactly as it would there.
+// ⚠ A malformed GA_SERVICE_ACCOUNT_JSON is RETURNED, never thrown: V8's JSON.parse
+//   error quotes a slice of the text it choked on, and that text is the private key.
+// ⚠ retry: null — gax would otherwise retry some failures by itself, and a health
+//   check must never hammer a supplier that is already struggling.
+export async function gaMetadataCheck(timeoutMs = 12_000): Promise<
+  { ok: true; dimensions: number; metrics: number } | { ok: false; reason: "malformed-key" }
+> {
+  let c: BetaAnalyticsDataClient
+  try { c = client() } catch { return { ok: false, reason: "malformed-key" } }
+  const [meta] = await c.getMetadata({ name: `${propertyPath()}/metadata` }, { timeout: timeoutMs, retry: null })
+  return { ok: true, dimensions: meta.dimensions?.length ?? 0, metrics: meta.metrics?.length ?? 0 }
+}

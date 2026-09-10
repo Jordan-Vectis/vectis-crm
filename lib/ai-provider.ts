@@ -14,6 +14,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import Anthropic from "@anthropic-ai/sdk"
 import { GEMINI_SAFETY_SETTINGS } from "@/lib/ai-safety"
+import { isRateLimitError, geminiErrorKind } from "@/lib/gemini-retry"
+import { noteAiOutcome } from "@/lib/status/signals"
 
 export type AiProvider = "gemini" | "anthropic"
 
@@ -128,16 +130,31 @@ async function generateGemini(req: AiRequest): Promise<string> {
   }
 
   const turns = cleanHistory(req.history)
-  const result = turns.length > 0
-    ? await model.startChat({ history: turns.map(t => ({ role: t.role, parts: [{ text: t.text }] })) }).sendMessage(parts)
-    : await model.generateContent(parts)
+  let result: Awaited<ReturnType<typeof model.generateContent>>
+  try {
+    result = turns.length > 0
+      ? await model.startChat({ history: turns.map(t => ({ role: t.role, parts: [{ text: t.text }] })) }).sendMessage(parts)
+      : await model.generateContent(parts)
+  } catch (e) {
+    // 🚦 The Status Centre's passive signal (lib/status/signals.ts). It is the only
+    // way to see Google refusing REAL work: a probe of its own would spend the
+    // 4-a-minute allowance it is trying to measure. Recorded, then re-thrown as is.
+    noteAiOutcome({ provider: "gemini", model: req.model, outcome: isRateLimitError(e) ? "rate_limited" : "error", kind: geminiErrorKind(e) })
+    throw e
+  }
   const response = result.response
 
   // ⚠ RULES: check BOTH of these before calling .text() — calling it on a
   // blocked response throws and loses the reason.
   const blocked = response.promptFeedback?.blockReason
-  if (blocked) throw new AiBlockedError(`Gemini blocked the request: ${blocked}${blockMeaning(blocked)}${safetyDetail(response)}`)
   const finish = response.candidates?.[0]?.finishReason
+  // A block is Google ANSWERING, not failing — recorded as "blocked" so the Status
+  // Centre never counts a refused lot as an outage.
+  const refused = !!blocked || (!!finish && finish !== "STOP" && finish !== "MAX_TOKENS")
+  noteAiOutcome(refused
+    ? { provider: "gemini", model: req.model, outcome: "error", kind: "blocked" }
+    : { provider: "gemini", model: req.model, outcome: "ok" })
+  if (blocked) throw new AiBlockedError(`Gemini blocked the request: ${blocked}${blockMeaning(blocked)}${safetyDetail(response)}`)
   if (finish && finish !== "STOP" && finish !== "MAX_TOKENS") {
     throw new AiBlockedError(`Gemini stopped: ${finish}${blockMeaning(finish)}${safetyDetail(response)}`)
   }
@@ -146,6 +163,23 @@ async function generateGemini(req: AiRequest): Promise<string> {
 }
 
 // ── Anthropic (Claude) ───────────────────────────────────────────────────────
+
+// 🚦 How a Claude request failed, for the Status Centre's passive signal — a short
+// word, never the message. ⚠ "credit" matters most: an empty account still has a
+// perfectly good key (the models endpoints answer 200), so a failed real request
+// is the ONLY place the Hub can see it.
+function claudeFailure(e: unknown): { outcome: "rate_limited" | "error"; kind: string } {
+  try {
+    if (e instanceof Anthropic.APIConnectionTimeoutError) return { outcome: "error", kind: "timeout" }
+    if (e instanceof Anthropic.APIConnectionError) return { outcome: "error", kind: "network" }
+    if (e instanceof Anthropic.APIError) {
+      if (e.status === 429) return { outcome: "rate_limited", kind: "429" }
+      if (e.type === "billing_error" || /credit balance/i.test(String(e.message))) return { outcome: "error", kind: "credit" }
+      if (typeof e.status === "number") return { outcome: "error", kind: String(e.status) }
+    }
+  } catch { /* never break the AI call */ }
+  return { outcome: "error", kind: "other" }
+}
 
 async function generateAnthropic(req: AiRequest): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -200,16 +234,27 @@ async function generateAnthropic(req: AiRequest): Promise<string> {
     { role: "user" as const, content },
   ]
 
-  const stream = client.messages.stream({
-    model:      req.model,
-    max_tokens: maxTokens,
-    // Block form (not a bare string) so the system prompt can carry a cache
-    // marker — it is the same on every call a tool makes, so it is the single
-    // best thing to cache.
-    ...(req.system ? { system: [{ type: "text" as const, text: req.system, cache_control: { type: "ephemeral" as const } }] } : {}),
-    messages,
-  })
-  const message = await stream.finalMessage()
+  let message: Anthropic.Message
+  try {
+    const stream = client.messages.stream({
+      model:      req.model,
+      max_tokens: maxTokens,
+      // Block form (not a bare string) so the system prompt can carry a cache
+      // marker — it is the same on every call a tool makes, so it is the single
+      // best thing to cache.
+      ...(req.system ? { system: [{ type: "text" as const, text: req.system, cache_control: { type: "ephemeral" as const } }] } : {}),
+      messages,
+    })
+    message = await stream.finalMessage()
+  } catch (e) {
+    // 🚦 Status Centre passive signal — recorded, then re-thrown unchanged.
+    noteAiOutcome({ provider: "anthropic", model: req.model, ...claudeFailure(e) })
+    throw e
+  }
+  // A refusal is Claude answering, not failing — "blocked", never counted as an outage.
+  noteAiOutcome(message.stop_reason === "refusal"
+    ? { provider: "anthropic", model: req.model, outcome: "error", kind: "blocked" }
+    : { provider: "anthropic", model: req.model, outcome: "ok" })
 
   // Cache effectiveness is invisible unless you look — log it so a silent
   // invalidator (a timestamp or an id creeping into the prefix) shows up as

@@ -6,6 +6,7 @@ import EnvSelector from "@/components/env-selector"
 import Logo from "@/components/logo"
 import ThemeToggle from "@/components/theme-toggle"
 import BcStatusButton from "@/components/bc-status-button"
+import NotificationBell from "@/components/notification-bell"
 import HelpButton from "@/components/help-button"
 import { signOutAction } from "@/lib/actions/auth"
 
@@ -72,6 +73,7 @@ export default function TopBar({ userName, isAdmin, hasDashboard }: TopBarProps)
         <EnvSelector />
         <ThemeToggle />
         <BcStatusButton />
+        {isAdmin && <NotificationBell />}
         {isAdmin && (
           <Link href="/admin" title="Admin settings" className="text-gray-400 hover:text-white transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

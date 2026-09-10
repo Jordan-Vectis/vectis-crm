@@ -7,6 +7,12 @@ type Card = { href: string; label: string; description: string; icon: string }
 
 const GROUPS: { label: string; cards: Card[] }[] = [
   {
+    label: "Status",
+    cards: [
+      { href: "/admin/status", label: "Status Centre", description: "Is every outside service the Hub relies on working right now? When staff say something's broken, this shows whether it's us or a supplier.", icon: "🚦" },
+    ],
+  },
+  {
     label: "People & Access",
     cards: [
       { href: "/admin/users",         label: "Users & Permissions", description: "Add and remove users, set roles and control which apps each person can access.", icon: "👤" },

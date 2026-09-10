@@ -16,6 +16,38 @@ const JORDAN_ONLY = new Set(["jordan_secret_menu.md"])
 
 const ENTRIES: Entry[] = [
   {
+    filename: "reference_status_centre.md",
+    content: `---
+name: status-centre
+description: Admin → Status Centre (/admin/status) + the admin bell, built 2026-09-10. "Is it us or a supplier?" — 15 read-only checks in lib/status/checks; automatic loop on PRODUCTION only; the bell rings after 2 bad checks and on recovery. Read before touching any of it.
+metadata:
+  type: reference
+---
+
+# Status Centre + admin bell — built 2026-09-10
+
+The job (Jordan): "staff say something's broken — is it us or a supplier?" The banner at the top of /admin/status answers exactly that (the "hub" group is inside the Hub, everything else is a supplier). First section on the Admin page. Rules: RULES.md → "Status Centre + the admin bell".
+
+Jordan's choices: a bell in the top bar (admins only, just before the settings cog) INSTEAD of email alerts — the Hub sends no email at all. No outside uptime monitor, so if the whole Hub is down nothing can say so.
+
+Where things are:
+- lib/status/types.ts (contract), registry.ts (the 15 checks in page order), engine.ts (runs, stores, alerts, builds the view), signals.ts (in-memory passive signals: refused saves, AI outcomes), checks/*.ts (one per service).
+- lib/notifications.ts, /api/notifications (+ /seen), components/notification-bell.tsx. Tables StatusService, StatusCheck (30-day history), Notification, NotificationSeen.
+- /api/status (the view) and /api/status/run (the loop's in-process token, or an admin's Check now — one service per request, with a live count and a Stop).
+- server.js loop: PRODUCTION ONLY, every 5 minutes, not gated on CRON_SECRET. Off production only Check now runs checks: the database check opens ~28 connections and would wake the staging/sandbox Neon branches and ring bells about test copies of production's data.
+- The MIGRATIONS array moved to lib/migrations.ts the same day (a Next route file can only export its handlers; the Hub light compares MIGRATIONS_HASH).
+
+Design decisions worth keeping:
+- Green = the Hub can do its job with it, not "a host answered". Grey = couldn't tell / not used here — never counted as working and never rings the bell.
+- Database: 25 pooled connections each hold a plain BEGIN while reading the read-only settings, so a transaction-mode pooler has to hand each a different server connection; plus 3 direct connections (pooler stripped), Prisma latency, and saves refused in createLot / saveLastLotFields. Red on even one read-only connection.
+- Gemini / Claude: model lists only, so no quota is spent. Refusals are only seen on paths through lib/ai-provider.ts and withGeminiRetry — the batch run, KP/DC and the pipeline call Google directly and aren't counted.
+- Business Central: there is no company account. The check renews a person's sign-in IN MEMORY (never saved) when nobody holds a live key — about 4 Microsoft sign-in log entries an hour overnight for that person. Helpers getBCTokenForStatus / bcODataUrl in lib/bc.ts.
+- The website's 202-with-nothing to Railway is expected and never red; that light is how fresh the office collection is. The Bidpath live-bid feed is checked from the viewer's own browser.
+- Staging/sandbox databases are production branches with stale timestamps, so checks test the environment first and return "off".
+
+Open points for Jordan: the Royal Mail read endpoints and ntfy's /v1/health have never been tried (the first production run may show grey "check needs looking at"); Royal Mail with no key is grey everywhere; IT emails go amber after ~2 working days of silence; the website goes amber when a sale 7+ days old is uncollected; Neon's pooler must lend ~25 server connections (check "Different connections reached" on the first production run).`,
+  },
+  {
     filename: "bc_database.md",
     content: `---
 name: bc-lots-database
@@ -3282,7 +3314,7 @@ The writes were **refused**, so no rows ever existed — a point-in-time restore
 ## ⚠⚠ Two traps proved the same day — they apply to ALL work here
 
 1. **\`prisma.x.update()\` reads the whole row back**, so it names EVERY column in the model. A column that has shipped in code but not yet in the database breaks an update that never touched it — the BC photo job died on \`BcLotWeb.siteSaleId\` while writing only photo keys. **Pass a minimal \`select\` on any update that must survive a pending migration.**
-2. **The \`MIGRATIONS\` array in \`app/api/admin/run-migrations/route.ts\` is the ONLY route a schema change reaches Railway.** \`siteSaleId\` had a Prisma migration FILE but was never added to the array — so staging had the column, production did not, and the symptom was production-only, which reads like a failed deploy. The same button press applied two other columns perfectly.`,
+2. **The \`MIGRATIONS\` array in \`lib/migrations.ts\` (moved out of the run-migrations route 2026-09-10) is the ONLY route a schema change reaches Railway.** \`siteSaleId\` had a Prisma migration FILE but was never added to the array — so staging had the column, production did not, and the symptom was production-only, which reads like a failed deploy. The same button press applied two other columns perfectly.`,
   },
   {
     filename: "lot_wizard_tote_banner.md",
@@ -4364,7 +4396,7 @@ Key config notes:
 
 ## Database migrations
 
-Whenever a new Prisma migration is added, ALSO add the equivalent SQL (\`CREATE TABLE IF NOT EXISTS\` / \`ALTER TABLE ... ADD COLUMN IF NOT EXISTS\`) to the \`MIGRATIONS\` array in \`app/api/admin/run-migrations/route.ts\`. The Run Migrations button on /admin is the one-click fix for Railway — \`prisma migrate deploy\` is unreliable there.
+Whenever a new Prisma migration is added, ALSO add the equivalent SQL (\`CREATE TABLE IF NOT EXISTS\` / \`ALTER TABLE ... ADD COLUMN IF NOT EXISTS\`) to the \`MIGRATIONS\` array in \`lib/migrations.ts\` (moved out of the run-migrations route 2026-09-10). The Run Migrations button on /admin is the one-click fix for Railway — \`prisma migrate deploy\` is unreliable there.
 
 ⚠⚠ **A migration FILE on its own does nothing on Railway — only the array does.** Proved 2026-09-09: \`BcLotWeb.siteSaleId\` had a Prisma migration but was missing from the array, so staging had the column, production didn't, and the fault showed on production ONLY — which reads exactly like a failed deploy or a broken button. The same Run Migrations press applied two other columns perfectly.
 
@@ -5070,7 +5102,7 @@ Don't give Jordan commands to run — not to fix things, and not to check them e
 
 **Why:** Jordan (2026-07-01) said the reminders are annoying; he escalated on 2026-07-15 — he doesn't want them AT ALL, and asked for the app to surface it instead of me. So a **pending-migrations banner** was built (2026-07-15): admins see an amber app-wide banner with a "Run migrations now" button whenever the MIGRATIONS array has changed since it was last run; it disappears once run. See the shared /admin/memory entry.
 
-**How to apply:** Keep adding new SQL to the \`MIGRATIONS\` array in \`app/api/admin/run-migrations/route.ts\` as always (that rule stands — see [[feedback_migrations]]) — but say NOTHING to Jordan about running it: no "NEEDS Run Migrations", no wrap-up bullet, no "one time on record" note. The banner is the notification. Same spirit for any routine step he already knows (pull-before-push, etc.) — don't narrate them.
+**How to apply:** Keep adding new SQL to the \`MIGRATIONS\` array in \`lib/migrations.ts\` (moved out of the run-migrations route 2026-09-10) as always (that rule stands — see [[feedback_migrations]]) — but say NOTHING to Jordan about running it: no "NEEDS Run Migrations", no wrap-up bullet, no "one time on record" note. The banner is the notification. Same spirit for any routine step he already knows (pull-before-push, etc.) — don't narrate them.
 
 ---
 
@@ -5163,7 +5195,7 @@ type: feedback
 
 Database migration errors are a recurring problem on Railway staging/production. \`prisma migrate deploy\` can fail silently on startup.
 
-**Rule:** Whenever a new Prisma migration is added, also add the equivalent \`CREATE TABLE IF NOT EXISTS\` or \`ALTER TABLE ... ADD COLUMN IF NOT EXISTS\` SQL to the \`MIGRATIONS\` array in \`app/api/admin/run-migrations/route.ts\`.
+**Rule:** Whenever a new Prisma migration is added, also add the equivalent \`CREATE TABLE IF NOT EXISTS\` or \`ALTER TABLE ... ADD COLUMN IF NOT EXISTS\` SQL to the \`MIGRATIONS\` array in \`lib/migrations.ts\` (moved out of the run-migrations route 2026-09-10).
 
 **Why:** The Run Migrations button on /admin gives Jordan a one-click fix without needing console commands or redeployment.
 

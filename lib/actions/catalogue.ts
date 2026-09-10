@@ -13,6 +13,7 @@ import { evaluateIdleGate, logIdleDecision, clockLooksTampered } from "@/lib/idl
 import { buildToteMap, checkLot, toteLookupVariants, duplicateToteNumbers, norm } from "@/lib/tote-check"
 import { ukDayStartUtc } from "@/lib/cataloguing-reports"
 import { isReadOnlyDbError, dbReadOnlyBlock, DB_READ_ONLY_MESSAGE } from "@/lib/db-readonly"
+import { noteRefusedWrite } from "@/lib/status/signals"
 import { getDepartmentAccessForSession, canSeeAuction } from "@/lib/departments"
 import { shouldKeepFlag } from "@/lib/measurement-check"
 import { withConditionSentence, stripConditionSentences, hasConditionSentence, keepConditionLine } from "@/lib/condition"
@@ -504,7 +505,11 @@ export async function saveLastLotFields(
     // for the next lot, and when it silently failed on 2026-09-09 cataloguers saw their vendor
     // revert to the previous batch with no explanation — which read as the app losing their work
     // at random rather than as the one fault it actually was.
-    if (isReadOnlyDbError(e)) return { ok: false, dbReadOnly: true, error: DB_READ_ONLY_MESSAGE }
+    if (isReadOnlyDbError(e)) {
+      // Counted for the Status Centre (in memory — the database can't record it while read-only).
+      noteRefusedWrite()
+      return { ok: false, dbReadOnly: true, error: DB_READ_ONLY_MESSAGE }
+    }
     return { ok: false, error: e?.message ?? "Could not remember these numbers" }
   }
 }
@@ -1316,6 +1321,8 @@ export async function createLot(auctionId: string, formData: FormData) {
   } catch (e) {
     if (isReadOnlyDbError(e)) {
       console.error("createLot: database is read-only, lot NOT saved")
+      // Counted for the Status Centre (in memory — the database can't record it while read-only).
+      noteRefusedWrite()
       return dbReadOnlyBlock()
     }
     throw e

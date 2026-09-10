@@ -2913,3 +2913,53 @@ model TrainingSignature {
   @@index([userId])
   @@index([signedAt])
 }
+
+// 🚦 Status Centre (/admin/status) — the current state of each outside service the Hub relies
+// on, one row per check key (lib/status/checks/*). Written only by lib/status/engine.ts.
+model StatusService {
+  service       String    @id
+  state         String    // ok | degraded | down | unknown | off
+  summary       String    @db.Text
+  detail        Json?     // { facts: [{ label, value, tone? }] } — never secrets
+  latencyMs     Int?
+  since         DateTime  @default(now()) // when the current state began
+  lastCheckedAt DateTime  @default(now())
+  lastOkAt      DateTime?
+  badSince      DateTime? // when the current bad spell began, for "had problems for 25 min"
+  failStreak    Int       @default(0)
+  notifiedState String?   // the state the bell last rang for; null once recovered
+}
+
+// Every check result — the uptime history behind the Status Centre's bars. Pruned after 30 days.
+model StatusCheck {
+  id        String   @id @default(cuid())
+  service   String
+  state     String
+  summary   String   @db.Text
+  latencyMs Int?
+  checkedAt DateTime @default(now())
+
+  @@index([service, checkedAt])
+  @@index([checkedAt])
+}
+
+// 🔔 The admin bell's notifications (top bar, before the settings cog). kind "status" = raised
+// by the Status Centre. Chosen over email alerts by Jordan, 2026-09-10.
+model Notification {
+  id        String   @id @default(cuid())
+  kind      String
+  level     String   // info | warning | error | success
+  title     String
+  body      String?  @db.Text
+  href      String?
+  audience  String   @default("ADMIN")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// When each person last opened the bell — everything created after it is unread.
+model NotificationSeen {
+  userId String   @id
+  seenAt DateTime
+}

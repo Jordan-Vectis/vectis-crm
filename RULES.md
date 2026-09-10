@@ -1181,6 +1181,45 @@ hand-written `DESTINATIONS` list for the tabs that appear in neither.
 - Model slot: `help_assistant` in `AI_TOOLS`. Distinct from **IT Help** (`/tools/it-help`), which
   answers computer problems from knowledge articles and tickets.
 
+## 🚦 Status Centre + the admin bell (2026-09-10)
+
+`/admin/status` — the **Status** section, first on the Admin page. Its one job (Jordan): **"staff say
+something's broken — is it us or a supplier?"** The banner at the top answers exactly that: services
+in the `hub` group are "inside the Hub", everything else is a supplier.
+
+- **One file per service** in `lib/status/checks/`, each default-exporting a `StatusCheckDef`
+  (`lib/status/types.ts`), listed in `lib/status/registry.ts`. `lib/status/engine.ts` runs them and
+  keeps the current state (`StatusService`) and the history (`StatusCheck`, pruned after 30 days).
+- ⚠⚠ **Every check is READ-ONLY and FREE.** Never send an email, publish a notification, create an
+  order or a row, spend AI generation quota (the whole Google project gets 4 generate requests a
+  minute) or credits, or download a big file. Anything that can only be proven by a side effect is
+  shown passively ("last email arrived …") or as grey.
+- ⚠⚠ **Green must mean the Hub can do its job with it, not that a host answered.** The database
+  check samples many connections and goes red on even one that refuses saves — one `SELECT` would
+  have been green all through the 2026-09-09 read-only day. A check that couldn't run is grey
+  ("Couldn't tell"), never green and never red.
+- ⚠ **Environment first.** Anything that depends on background jobs or production-only data returns
+  `off` ("Not used here") unless `ctx.backgroundJobsExpected` / `ctx.isProduction` — the staging and
+  sandbox databases are branches of production holding timestamps that stopped the day they were made.
+- ⚠ **The website's 202-with-nothing to Railway is expected** and never red; that light is about how
+  fresh the office collection is.
+- **Its loop in `server.js` runs on PRODUCTION ONLY, every 5 min** (each check also has its own
+  minimum interval). On staging/sandbox it would wake their Neon branches every tick and ring bells
+  about test copies of production's data — there, "Check now" on the page runs the checks on demand.
+  It isn't gated on `CRON_SECRET`: it proves itself to `/api/status/run` with a token made at boot and
+  held in memory (`globalThis._statusToken`).
+- **The bell** (`components/notification-bell.tsx`, admins only, just before the settings cog) — Jordan
+  chose it over email alerts; the Hub sends no email. It rings after **2 bad checks in a row** (one blip
+  is not an outage) and again on recovery; grey never rings it. `Notification` + `NotificationSeen`
+  (unread = newer than when you last opened the bell). `createNotification()` in `lib/notifications.ts`
+  is general-purpose, but the Status Centre is its only writer today.
+- While the database is refusing saves the engine keeps results in memory, so the page still tells the
+  truth, and files the bad spell as an alert as soon as the database can record it.
+- **Adding a service:** a new file in `lib/status/checks/` plus one line in the registry. **Never rename
+  an existing `key`** — it keys the history and every alert's link.
+- ⚠ **The `MIGRATIONS` array now lives in `lib/migrations.ts`** (moved the same day, so the Hub light
+  can compare `MIGRATIONS_HASH` — a Next route file may only export its handlers). New SQL goes there.
+
 ## Hardcoded Constants
 
 | Constant | Value | Location |
