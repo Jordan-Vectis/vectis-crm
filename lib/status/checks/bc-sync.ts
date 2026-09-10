@@ -109,6 +109,26 @@ function plainError(raw: string | null, max: number): string {
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
+/** Whose side a stored sync failure is on (types.ts `cause`), read from the same raw text plainError
+ *  words — so the light never says "inside the Hub" beside "Business Central answered with error 503".
+ *  BC erroring, throttling or not answering stays on BC's side; our sign-in or settings refused, and
+ *  the Hub's own job or database failing, are the Hub's. */
+function errorIsHubSide(raw: string | null): boolean {
+  if (!raw || !raw.trim()) return false // no reason recorded — genuinely can't say whose
+  const bc = raw.match(/BC API (?:companies )?(\d{3})/)
+  if (bc) {
+    const s = Number(bc[1])
+    // 401/403 = our borrowed sign-in refused; 400/404 = the Hub asking for something BC hasn't got.
+    return !(s >= 500 || s === 429 || s === 408)
+  }
+  if (/BC_NOT_CONNECTED/.test(raw)) return true // nobody's BC sign-in is usable
+  // ⚠ Before the timeout test: Prisma's "Timed out fetching a new connection from the connection pool"
+  // is OUR database, and plainError would word it the same as BC not answering.
+  if (/prisma|connection pool|\bP[12]\d{3}\b/i.test(raw)) return true
+  if (/timed? ?out|aborted|fetch failed|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|other side closed/i.test(raw)) return false
+  return true // anything else is the job's own code, e.g. BC_COMPANY not in BC's company list
+}
+
 type Verdict = {
   part: Part
   lastMs: number | null
@@ -224,32 +244,46 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     const summary = newestMainAge === Infinity
       ? "The Hub's copy of BC has never finished refreshing its receipts, lot numbers or tote list here — usually nobody's BC sign-in works, the timed jobs aren't running, or the database is refusing saves."
       : `The Hub's copy of BC hasn't refreshed its receipts, lot numbers or tote list for ${fmtAge(newestMainAge)} — usually nobody's BC sign-in works, the timed jobs have stopped, or the database is refusing saves.`
-    return { state: "down", summary, facts }
+    // The Hub's own copy gone stale, and every cause the summary names is ours. A BC outage long
+    // enough to do this on its own would already be red on the Business Central light.
+    return { state: "down", summary, facts, cause: "hub" }
   }
 
   // Problems, most important first: the parts the working screens depend on, then the rest.
-  const problems: string[] = []
+  // Each carries whose side it's on, and the FIRST one's decides the light's cause — it's the one the
+  // summary leads with. A pass left "running" (a deploy or restart killed it) and a part the timed job
+  // simply hasn't refreshed are the Hub's own job; a failure is judged by its recorded error. An empty
+  // tote list stays on BC's side: BC answered the key, and why its feed came back empty can't be told
+  // from here.
+  const problems: { text: string; hub: boolean }[] = []
   for (const group of [main, verdicts.filter(v => !v.part.main)]) {
     for (const v of group) if (v.failedMs != null) {
-      problems.push(`${v.part.label}: the last refresh failed ${fmtAge(now - v.failedMs)} ago — ${plainError(v.failedError, 80)}.`)
+      problems.push({
+        text: `${v.part.label}: the last refresh failed ${fmtAge(now - v.failedMs)} ago — ${plainError(v.failedError, 80)}.`,
+        hub: errorIsHubSide(v.failedError),
+      })
     }
     for (const v of group) if (v.stuckMs != null) {
-      problems.push(`${v.part.label}: a refresh started ${fmtLondon(v.stuckMs)} and never finished, and nothing has refreshed it since.`)
+      problems.push({ text: `${v.part.label}: a refresh started ${fmtLondon(v.stuckMs)} and never finished, and nothing has refreshed it since.`, hub: true })
     }
     for (const v of group) if (v.failedMs == null && v.stuckMs == null && v.ageMs > FRESH_H * HOUR) {
-      problems.push(v.lastMs == null
-        ? `${v.part.label}: has never finished refreshing here.`
-        : `${v.part.label}: last refreshed ${fmtAge(v.ageMs)} ago — it should be every 12 hours.`)
+      problems.push({
+        text: v.lastMs == null
+          ? `${v.part.label}: has never finished refreshing here.`
+          : `${v.part.label}: last refreshed ${fmtAge(v.ageMs)} ago — it should be every 12 hours.`,
+        hub: true,
+      })
     }
     for (const v of group) if (v.empty && v.failedMs == null && v.stuckMs == null && v.ageMs <= FRESH_H * HOUR) {
-      problems.push(`${v.part.label}: refreshed, but Business Central sent no totes in the last ${FRESH_H} hours.`)
+      problems.push({ text: `${v.part.label}: refreshed, but Business Central sent no totes in the last ${FRESH_H} hours.`, hub: false })
     }
   }
 
   if (problems.length) {
     const more = problems.length - 1
-    const summary = more ? `${problems[0].replace(/\.$/, "")} (and ${more} more — see details).` : problems[0]
-    return { state: "degraded", summary, facts }
+    const first = problems[0]
+    const summary = more ? `${first.text.replace(/\.$/, "")} (and ${more} more — see details).` : first.text
+    return { state: "degraded", summary, facts, ...(first.hub ? { cause: "hub" as const } : {}) }
   }
 
   const receipts = verdicts.find(v => v.part.key === "receipt_lines")

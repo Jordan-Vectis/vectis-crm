@@ -162,8 +162,11 @@ const check: StatusCheckDef = {
       }
     }
     if (status === 401 || status === 403) {
+      // ⚠ cause "hub": Royal Mail answered, so it is up — it's OUR key it turned away, and replacing
+      // ROYAL_MAIL_API_KEY is ours to do. Every other bad answer below is Royal Mail's own side.
       return {
         state: "down",
+        cause: "hub",
         summary: "Royal Mail refused the Hub's key, so labels can't be printed.",
         facts: [...facts, { label: "Key", value: `Refused (${status}) — it may have been changed or revoked in Click & Drop`, tone: "bad" }, ...passive],
         latencyMs: ms,

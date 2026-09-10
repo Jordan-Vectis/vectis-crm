@@ -145,7 +145,12 @@ const secs = (from: number, nowMs: number) => Math.max(0, Math.round((nowMs - fr
 const pct = (v: number | null) => (v == null ? "—" : `${Number.isInteger(v) ? v : v.toFixed(1)}%`)
 const clip = (s: string) => s.trim().replace(/[.!]+$/, "")
 const isBad = (s: ViewState | null | undefined) => s === "down" || s === "degraded"
-const isHub = (s: ServiceView) => s.group === "hub"
+/** Whose side a problem is on: everything in the "hub" group, plus a supplier whose check says the fault is the
+ *  Hub's own — a setting, key, sign-in or job (2026-09-10: tools set to a model Google had retired were blamed on
+ *  "a supplier" when the fix was one click in Admin → AI Models). */
+const isOurs = (s: ServiceView) => s.group === "hub" || s.cause === "hub"
+const sideLabel = (s: ServiceView) =>
+  s.group === "hub" ? "inside the Hub" : s.cause === "hub" && isBad(s.state) ? "a supplier — but this fault is on the Hub's side" : "a supplier"
 
 function joinNames(names: string[]): string {
   if (names.length <= 1) return names.join("")
@@ -172,6 +177,7 @@ function safeView(v: StatusResponse): StatusResponse {
     services: v.services.map(s => ({
       ...s,
       state: s.state === "pending" ? "pending" : safeState(s.state),
+      cause: s.cause === "hub" ? "hub" : "supplier",
       facts: Array.isArray(s.facts) ? s.facts : [],
       hours: Array.isArray(s.hours) ? s.hours.map(bucket) : [],
       days: Array.isArray(s.days) ? s.days.map(bucket) : [],
@@ -366,9 +372,9 @@ function answerFor(services: ServiceView[], feed: FeedResult | null): Answer {
 
   const downFirst = (l: ServiceView[]) => [...l].sort((a, b) => (a.state === "down" ? 0 : 1) - (b.state === "down" ? 0 : 1))
   const describe = (l: ServiceView[]) => (l.length === 1 ? `${l[0].name} — ${clip(l[0].summary)}` : joinNames(l.map(s => s.name)))
-  const inHub = services.filter(isHub)
-  const hubBad = downFirst(inHub.filter(s => isBad(s.state)))
-  const supBad = downFirst(services.filter(s => !isHub(s) && isBad(s.state)))
+  const inHub = services.filter(s => s.group === "hub")
+  const hubBad = downFirst(services.filter(s => isOurs(s) && isBad(s.state)))
+  const supBad = downFirst(services.filter(s => !isOurs(s) && isBad(s.state)))
   const hubUnsure = inHub.filter(s => s.state === "unknown" || s.state === "pending")
   const unknown = services.filter(s => s.state === "unknown")
   const pending = services.filter(s => s.state === "pending")
@@ -392,7 +398,7 @@ function answerFor(services: ServiceView[], feed: FeedResult | null): Answer {
     problems = supBad
     notes.push(hubUnsure.length
       ? `The Hub's own ${joinNames(hubUnsure.map(s => s.name))} couldn't be confirmed, so a problem inside the Hub can't be ruled out yet.`
-      : "Everything inside the Hub that could be checked is working, so this is on the supplier's side — or the Hub's login to them (the details say which).")
+      : "Everything inside the Hub that could be checked is working, and the Hub's own settings and keys for them look right, so this is on the supplier's side.")
   } else if (pending.length + off.length === services.length) {
     nothingChecked = true
     tone = "neutral"
@@ -534,7 +540,10 @@ function ServiceTile({ s, nowMs, checking, onOpen }: { s: ServiceView; nowMs: nu
         <Badge state={s.state} />
       </div>
       <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3">{s.summary}</p>
-      {checking && <p className="text-xs font-semibold text-sky-700 dark:text-sky-300 animate-pulse">Checking now…</p>}
+      {s.group !== "hub" && s.cause === "hub" && isBad(s.state) && (
+        <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">The fix is on the Hub&apos;s side — a setting, key or sign-in, not the supplier.</p>
+      )}
+      {checking &&<p className="text-xs font-semibold text-sky-700 dark:text-sky-300 animate-pulse">Checking now…</p>}
       <p className="text-xs text-gray-500 dark:text-gray-400">
         {Number.isFinite(since) && s.state !== "pending" && <>{STATE_META[s.state].word} since {when(since, nowMs)} · </>}
         {Number.isFinite(checked) ? <>checked {ago(checked, nowMs)}</> : <>never checked here</>}
@@ -619,7 +628,7 @@ function ServicePanel({ s, nowMs, checkingSince, result, disabled, onCheck, onSt
   const checked = Date.parse(s.lastCheckedAt ?? "")
   const lastOk = Date.parse(s.lastOkAt ?? "")
   return (
-    <PanelShell title={s.name} subtitle={`${GROUP_LABELS[s.group]} · ${isHub(s) ? "inside the Hub" : "a supplier"}`} closeRef={closeRef} onClose={onClose}>
+    <PanelShell title={s.name} subtitle={`${GROUP_LABELS[s.group]} · ${sideLabel(s)}`} closeRef={closeRef} onClose={onClose}>
       <div className="space-y-2">
         <Badge state={s.state} large />
         <p className="text-base text-gray-900 dark:text-gray-100">{s.summary}</p>

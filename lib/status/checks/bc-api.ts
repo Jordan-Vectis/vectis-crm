@@ -26,6 +26,11 @@ import type { CheckContext, CheckResult, Fact, StatusCheckDef } from "../types"
 //
 // Green means "BC answers the Hub's background key right now" — never "the copy is up to date".
 // That is bc-sync's job.
+//
+// Whose side (types.ts `cause`): "hub" whenever the fix is ours — our BC settings, our app key, a
+// person's sign-in to redo, nobody left with a renewable one, or BC saying the Hub asked for
+// something it hasn't got (400/404). Left out when Microsoft's sign-in service or BC itself is down,
+// slow, erroring or throttling, or when an odd answer can't be placed on either side.
 
 const PROBE_TIMEOUT_MS = 15_000
 const RENEW_TIMEOUT_MS = 6_000
@@ -87,7 +92,7 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     return { state: "off", summary: "Checked on production only — it borrows a person's BC sign-in." }
   }
   if (!process.env.BC_TENANT_ID) {
-    return { state: "down", summary: "The Hub's Business Central settings are missing on this server, so nothing can reach BC." }
+    return { state: "down", summary: "The Hub's Business Central settings are missing on this server, so nothing can reach BC.", cause: "hub" }
   }
 
   // How many people have a sign-in stored. ⚠ count() with a filter — the token columns are never selected here.
@@ -138,10 +143,11 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     facts.push(background)
     const last = pick.failures[pick.failures.length - 1]
     if (pick.reason === "not-configured") {
-      return { state: "down", summary: "The Hub's Business Central app settings are missing on this server, so no sign-in can be renewed.", facts }
+      return { state: "down", summary: "The Hub's Business Central app settings are missing on this server, so no sign-in can be renewed.", facts, cause: "hub" }
     }
     if (last?.kind === "app-key") {
-      return { state: "down", summary: "Microsoft refused the Hub's own app key, so nobody's BC sign-in can be renewed — it has probably expired and needs renewing in Microsoft Entra.", facts }
+      // Our app registration's secret, not Microsoft failing — Microsoft is answering, and saying no.
+      return { state: "down", summary: "Microsoft refused the Hub's own app key, so nobody's BC sign-in can be renewed — it has probably expired and needs renewing in Microsoft Entra.", facts, cause: "hub" }
     }
     if (last?.kind === "unreachable") {
       return { state: "down", summary: "Microsoft's sign-in service didn't answer, so the Hub couldn't get into Business Central.", facts }
@@ -155,9 +161,11 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
         state: "down",
         summary: `None of the ${pick.failures.length} most recently used BC sign-ins can be renewed — someone needs to press the BC button in the top bar and sign in.`,
         facts,
+        cause: "hub",
       }
     }
-    return { state: "down", summary: NOBODY, facts }
+    // Every remaining way here is ours: no sign-in stored, none renewable, or the last one refused.
+    return { state: "down", summary: NOBODY, facts, cause: "hub" }
   }
 
   // ── One tiny read ─────────────────────────────────────────────────────────────────────────────
@@ -191,11 +199,15 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     const summary =
       s === 401 ? `Business Central refused ${who} — they may need to press the BC button in the top bar and sign in again.`
       : s === 403 ? `${who[0].toUpperCase()}${who.slice(1)} isn't allowed to read Business Central's tote list — their BC permissions may have changed.`
-      : s === 404 ? "Business Central couldn't find the tote list — the environment or company setting, or BC's published web services, have changed."
+      : s === 404 ? "Business Central couldn't find the tote list — the Hub's environment or company setting, or BC's published web services, have changed."
       : s === 400 ? "Business Central rejected the Hub's request — its settings or the tote list's layout may have changed."
       : s >= 500 ? `Business Central is having problems at Microsoft's end (error ${s}).`
       : `Business Central answered with an unexpected error (${s}).`
-    return { state: "down", summary, facts, latencyMs: ms }
+    // ⚠ BC ANSWERED, so none of these four is Microsoft failing: 401/403 are our borrowed sign-in
+    // refused, 400/404 the Hub asking for something BC hasn't got (BC_ENVIRONMENT / BC_COMPANY, or a
+    // layout the Hub no longer matches). Only a 5xx, or a code nobody can place, stays on BC's side.
+    const hubSide = s === 401 || s === 403 || s === 404 || s === 400
+    return { state: "down", summary, facts, latencyMs: ms, ...(hubSide ? { cause: "hub" as const } : {}) }
   }
 
   let body: unknown = null
@@ -220,9 +232,10 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     facts.push(background)
     return {
       state: "down",
-      summary: `Business Central answered but sent no totes — the company or environment setting may be wrong, or ${who} may have lost access.`,
+      summary: `Business Central answered but sent no totes — the Hub's company or environment setting may be wrong, or ${who} may have lost access.`,
       facts,
       latencyMs: ms,
+      cause: "hub", // unfiltered, so empty can only be our settings or our borrowed sign-in's access
     }
   }
   const toteNo = String((rows[0] as { EVA_No?: unknown } | null)?.EVA_No ?? "").trim()
@@ -243,6 +256,7 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
       summary: `Business Central is answering, but no stored sign-in can be renewed — background BC work stops when ${who} runs out, within the hour.`,
       facts,
       latencyMs: ms,
+      cause: "hub", // BC is fine; someone needs to sign in again
     }
   }
   const refused = pick.failures.filter(f => f.kind === "refused")
@@ -255,6 +269,7 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
       summary: `Business Central is answering, but ${dead}'s stored sign-in no longer renews — the timed BC copy can pick it and fail until they sign in again.`,
       facts,
       latencyMs: ms,
+      cause: "hub", // BC is fine; a person's sign-in needs redoing
     }
   }
   return { state: "ok", summary: `Business Central answered in ${fmtMs(ms)} using ${who}.`, facts, latencyMs: ms }

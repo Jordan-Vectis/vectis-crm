@@ -27,7 +27,7 @@ const DEFAULT_TIMEOUT_MS = 25_000
 const KEEP_CHECK_DAYS = 30
 const KEEP_ALERT_DAYS = 90
 
-type Snapshot = { state: StatusState; summary: string; facts: Fact[]; latencyMs: number | null; checkedAt: number }
+type Snapshot = { state: StatusState; summary: string; facts: Fact[]; latencyMs: number | null; checkedAt: number; cause?: "hub" | "supplier" }
 type Unrecorded = { firstBadAt: number; lastBadAt: number; count: number; summary: string }
 type Mem = {
   latest: Map<string, Snapshot>
@@ -97,6 +97,7 @@ async function runOne(def: StatusCheckDef, ctx: CheckContext): Promise<CheckResu
       summary: scrub(r.summary),
       facts: (r.facts ?? []).map(f => ({ ...f, label: scrub(f.label), value: scrub(f.value) })),
       latencyMs: typeof r.latencyMs === "number" ? Math.round(r.latencyMs) : undefined,
+      cause: r.cause === "hub" || r.cause === "supplier" ? r.cause : undefined,
     }
   } catch (e) {
     return {
@@ -114,7 +115,9 @@ async function record(def: StatusCheckDef, r: CheckResult): Promise<boolean> {
   const m = mem()
   const now = new Date()
   const prevSnap = m.latest.get(def.key)
-  m.latest.set(def.key, { state: r.state, summary: r.summary, facts: r.facts ?? [], latencyMs: r.latencyMs ?? null, checkedAt: now.getTime() })
+  m.latest.set(def.key, { state: r.state, summary: r.summary, facts: r.facts ?? [], latencyMs: r.latencyMs ?? null, checkedAt: now.getTime(), cause: r.cause })
+  // A supplier's light whose fault is the Hub's own (a setting, key, sign-in or job) says so in the alert too.
+  const ours = def.group !== "hub" && r.cause === "hub" ? " — the fix is on the Hub's side" : ""
   const changedInMemory = !prevSnap || prevSnap.state !== r.state
 
   try {
@@ -135,8 +138,8 @@ async function record(def: StatusCheckDef, r: CheckResult): Promise<boolean> {
     let alert: { level: NotificationView["level"]; title: string; body: string | null } | null = null
     if (isBad(r.state) && failStreak >= NOTIFY_AFTER && notifiedState !== r.state) {
       alert = r.state === "down"
-        ? { level: "error",   title: `🔴 ${def.name} is down`,              body: r.summary }
-        : { level: "warning", title: `🟠 ${def.name} is having problems`, body: r.summary }
+        ? { level: "error",   title: `🔴 ${def.name} is down${ours}`,              body: r.summary }
+        : { level: "warning", title: `🟠 ${def.name} is having problems${ours}`, body: r.summary }
       notifiedState = r.state
     } else if (r.state === "ok" && notifiedState && notifiedState !== "ok") {
       const from = prev?.badSince?.getTime()
@@ -157,7 +160,7 @@ async function record(def: StatusCheckDef, r: CheckResult): Promise<boolean> {
     const data = {
       state: r.state,
       summary: r.summary,
-      detail: JSON.parse(JSON.stringify({ facts: r.facts ?? [] })),
+      detail: JSON.parse(JSON.stringify({ facts: r.facts ?? [], cause: r.cause ?? null })),
       latencyMs: r.latencyMs ?? null,
       since: prev && prevState === r.state ? prev.since : now,
       lastCheckedAt: now,
@@ -309,6 +312,7 @@ export async function getStatusView(): Promise<StatusResponse> {
     const useSnap = snap && (!row || snap.checkedAt > row.lastCheckedAt.getTime() + 1000)
     const facts = useSnap ? snap!.facts : (((row?.detail as { facts?: Fact[] } | null)?.facts) ?? [])
     const state: ServiceView["state"] = useSnap ? snap!.state : ((row?.state as StatusState | undefined) ?? "pending")
+    const storedCause = useSnap ? snap!.cause : (row?.detail as { cause?: string } | null)?.cause
     const hm = hourMap.get(def.key)
     const dm = dayMap.get(def.key)
     return {
@@ -319,6 +323,7 @@ export async function getStatusView(): Promise<StatusResponse> {
       whenDown: def.whenDown,
       statusPage: def.statusPage ?? null,
       state,
+      cause: def.group === "hub" || storedCause === "hub" ? "hub" : "supplier",
       summary: useSnap ? snap!.summary : (row?.summary ?? "Not checked yet on this environment."),
       facts,
       latencyMs: useSnap ? snap!.latencyMs : (row?.latencyMs ?? null),

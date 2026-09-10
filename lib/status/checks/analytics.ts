@@ -43,16 +43,18 @@ function classify(e: unknown): CheckResult {
     return { state: "down", summary: `The Hub couldn't reach Google Analytics at all, ${NO_FIGURES}.`, facts }
   }
   // "No key or keyFile set" = the key setting is valid JSON but has no private_key in it.
+  // cause "hub" on this and the next two: Google answered, so it is up — it's OUR key, OUR Google
+  // project, OUR access to the property or OUR property number that is wrong, and the fix is ours.
   if (code === 16 || /invalid_grant|invalid_client|unauthorized_client|Getting metadata from plugin failed|DECODER routines|PEM|private key|client_email|No key or keyFile/i.test(msg)) {
-    return { state: "down", summary: `Google refused the Analytics key on this environment (it may have been deleted, replaced or pasted wrongly), ${NO_FIGURES}.`, facts }
+    return { state: "down", summary: `Google refused the Analytics key on this environment (it may have been deleted, replaced or pasted wrongly), ${NO_FIGURES}.`, facts, cause: "hub" }
   }
   if (code === 7) {
     return reason === "SERVICE_DISABLED"
-      ? { state: "down", summary: `The Google Analytics Data API is switched off on the key's Google project, ${NO_FIGURES}.`, facts }
-      : { state: "down", summary: `Google Analytics refused the Hub access to the website's property (its account may have been removed from it), ${NO_FIGURES}.`, facts }
+      ? { state: "down", summary: `The Google Analytics Data API is switched off on the key's Google project, ${NO_FIGURES}.`, facts, cause: "hub" }
+      : { state: "down", summary: `Google Analytics refused the Hub access to the website's property (its account may have been removed from it), ${NO_FIGURES}.`, facts, cause: "hub" }
   }
   if (code === 5 || code === 3) {
-    return { state: "down", summary: `Google Analytics doesn't recognise the property number set on this environment, ${NO_FIGURES}.`, facts }
+    return { state: "down", summary: `Google Analytics doesn't recognise the property number set on this environment, ${NO_FIGURES}.`, facts, cause: "hub" }
   }
   if (code === 8) {
     return { state: "degraded", summary: "Google Analytics says the website's allowance is used up for now, so Marketing Reports may show no figures until it resets.", facts }
@@ -83,10 +85,12 @@ async function run(): Promise<CheckResult> {
       return { state: "down", summary: `Google Analytics didn't answer within ${HARD_TIMEOUT_MS / 1000} seconds, so Marketing Reports are likely to show no figures.`, latencyMs }
     }
     if (!r.ok) {
+      // cause "hub": Google was never even asked — the key on OUR server can't be read.
       return {
         state: "down",
         summary: `The Google Analytics key saved on this environment is malformed, so the Hub can't log in and Marketing Reports show no figures.`,
         facts: [{ label: "What to fix", value: "GA_SERVICE_ACCOUNT_JSON on Railway must be the whole service-account key file, on one line.", tone: "bad" }],
+        cause: "hub",
       }
     }
     return {

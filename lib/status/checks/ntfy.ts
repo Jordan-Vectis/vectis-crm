@@ -177,6 +177,9 @@ const ntfy: StatusCheckDef = {
       ...SCOPE_FACTS,
     ]
 
+    // ⚠ No cause: "hub" here, on purpose. The Hub holds no ntfy key or setting and sends nothing
+    // on the health read, so every failure above (timeout, DNS, refused, 5xx, unhealthy) is
+    // ntfy.sh's side or the network between — even a 401/403 is ntfy turning the address away.
     if (m.streak >= DEGRADED_AFTER) {
       return {
         state: "degraded",

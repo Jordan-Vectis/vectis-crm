@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { CLAUDE_MODELS } from "@/lib/ai-models"
 import type { CheckContext, CheckResult, Fact, StatusCheckDef } from "../types"
 import {
-  FAILURES_FOR_AMBER, REFUSALS_FOR_AMBER, failureReason, isClaudeId, lastAnswerFact, listNames, plural,
+  FAILURES_FOR_AMBER, REFUSALS_FOR_AMBER, failureCause, failureReason, isClaudeId, lastAnswerFact, listNames, plural,
   readToolModels, resolveSlots, tallyAi, tallyFact, type SlotModel,
 } from "./gemini"
 
@@ -31,7 +31,8 @@ const WHY_NOT_CLAUDE: Record<NonNullable<SlotModel["claudeSkipped"]>, string> = 
   "unknown-model": "the Hub doesn't know that Claude model",
 }
 
-type Verdict = { state: "down" | "degraded" | "unknown"; summary: string; reason: string | null }
+/** `cause` as on CheckResult: "hub" when Anthropic is up and answering and the fix is ours. */
+type Verdict = { state: "down" | "degraded" | "unknown"; summary: string; reason: string | null; cause?: "hub" }
 
 /** What a failed models lookup means. */
 function classify(e: unknown): Verdict {
@@ -44,11 +45,13 @@ function classify(e: unknown): Verdict {
   }
   if (e instanceof Anthropic.APIError) {
     const s = e.status
-    if (s === 401) return { state: "down", summary: "Anthropic refused the Claude key, so anything set to Claude fails.", reason }
-    if (s === 403) return { state: "down", summary: "Anthropic refused the Claude key access to the models, so anything set to Claude fails.", reason }
+    // cause "hub": Anthropic answered, so it is up — it's OUR key it turned away.
+    if (s === 401) return { state: "down", summary: "Anthropic refused the Claude key, so anything set to Claude fails.", reason, cause: "hub" }
+    if (s === 403) return { state: "down", summary: "Anthropic refused the Claude key access to the models, so anything set to Claude fails.", reason, cause: "hub" }
     if (s === 429) return { state: "degraded", summary: "Anthropic is rate-limiting the Hub right now — even the free model lookup was refused.", reason }
+    // cause "hub": Anthropic is working — it's our account that needs topping up.
     if (e.type === "billing_error" || /credit balance/i.test(String(e.message))) {
-      return { state: "down", summary: "Anthropic says the account has run out of credit, so anything set to Claude fails.", reason }
+      return { state: "down", summary: "Anthropic says the account has run out of credit, so anything set to Claude fails.", reason, cause: "hub" }
     }
     if (s === 529) return { state: "down", summary: "Anthropic is overloaded right now, so anything set to Claude is likely to fail.", reason }
     if (typeof s === "number" && s >= 500) return { state: "down", summary: `Anthropic's service is failing — it answered the Hub with error ${s}.`, reason }
@@ -137,10 +140,13 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     }
     if (sidelined.length) {
       const n = sidelined.length
+      // cause "hub": Anthropic isn't even being asked — the key is missing from OUR server, or the
+      // AI Models setting should be changed back. Either way the fix is ours.
       return {
         state: "degraded",
         summary: `${n} ${plural(n, "tool is", "tools are")} set to Claude, but there's no Claude key here, so ${plural(n, "it's", "they're")} quietly running on Gemini instead.`,
         facts: sidelinedFacts,
+        cause: "hub",
       }
     }
     return { state: "off", summary: "Not set up — there's no Claude key on this environment, and no tool is set to Claude." }
@@ -174,10 +180,13 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
 
   if (stop) {
     const reasonFact: Fact[] = stop.reason ? [{ label: "Anthropic's reason", value: stop.reason, tone: "bad" }] : []
-    return { state: stop.state, summary: stop.summary, facts: [...reasonFact, ...modelFacts, ...common], latencyMs }
+    return { state: stop.state, summary: stop.summary, facts: [...reasonFact, ...modelFacts, ...common], latencyMs, cause: stop.cause }
   }
 
-  const problems: { state: "down" | "degraded"; summary: string }[] = []
+  // cause "hub" on the model problems below: Anthropic is up and answering — it's the Hub that is
+  // set to, or still offers, a model Anthropic no longer has, or that has chosen Claude for a tool
+  // that can't use it. Only what Anthropic did with real requests can be Anthropic's.
+  const problems: { state: "down" | "degraded"; summary: string; cause?: "hub" }[] = []
   const inUse = new Set(onClaude.map(s => s.model))
   const goneInUse = missing.filter(id => inUse.has(id))
   const goneOffered = missing.filter(id => !inUse.has(id))
@@ -186,36 +195,40 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     problems.push({
       state: hit.length === onClaude.length ? "down" : "degraded",
       summary: `Anthropic says ${listNames(goneInUse)} ${plural(goneInUse.length, "doesn't", "don't")} exist, so ${hit.length} ${plural(hit.length, "tool set to it fails", "tools set to them fail")}.`,
+      cause: "hub",
     })
   }
   if (goneOffered.length) {
     problems.push({
       state: "degraded",
       summary: `Anthropic says ${listNames(goneOffered)} ${plural(goneOffered.length, "doesn't", "don't")} exist, but the model pickers still offer ${plural(goneOffered.length, "it", "them")}.`,
+      cause: "hub",
     })
   }
   if (sidelined.length) {
     const n = sidelined.length
-    problems.push({ state: "degraded", summary: `${n} ${plural(n, "tool is", "tools are")} set to Claude but ${plural(n, "is", "are")} running on Gemini instead.` })
+    problems.push({ state: "degraded", summary: `${n} ${plural(n, "tool is", "tools are")} set to Claude but ${plural(n, "is", "are")} running on Gemini instead.`, cause: "hub" })
   }
 
   // ── What Anthropic did with real requests ──
   const outOfCredit = tally.latest?.kind === "credit"
   if (outOfCredit) {
-    problems.push({ state: "down", summary: "Anthropic accepted the key but refused the last Claude request because the account is out of credit, so tools set to Claude fail." })
+    // cause "hub": Anthropic is working — it's our account that needs topping up.
+    problems.push({ state: "down", summary: "Anthropic accepted the key but refused the last Claude request because the account is out of credit, so tools set to Claude fail.", cause: "hub" })
   }
   if (tally.refused >= REFUSALS_FOR_AMBER) {
     problems.push({ state: "degraded", summary: `Anthropic refused ${tally.refused} Claude requests in the last 30 minutes for going over the rate limit.` })
   }
   if (tally.failed >= FAILURES_FOR_AMBER && !outOfCredit) {
-    problems.push({ state: "degraded", summary: `${tally.failed} Claude requests failed in the last 30 minutes — ${failureReason(tally.failedKinds, "Anthropic")}.` })
+    problems.push({ state: "degraded", summary: `${tally.failed} Claude requests failed in the last 30 minutes — ${failureReason(tally.failedKinds, "Anthropic")}.`, cause: failureCause(tally.failedKinds) })
   }
 
   const facts: Fact[] = [{ label: "Key", value: "Accepted by Anthropic", tone: "good" }, ...modelFacts, ...common]
   const headline = problems.find(p => p.state === "down") ?? problems[0]
   if (headline) {
     const also: Fact[] = problems.filter(p => p !== headline).map(p => ({ label: "Also", value: p.summary, tone: p.state === "down" ? "bad" : "warn" }))
-    return { state: headline.state, summary: headline.summary, facts: [...also, ...facts], latencyMs }
+    // The headline's cause, never a mix: the banner names whichever problem the tile leads with.
+    return { state: headline.state, summary: headline.summary, facts: [...also, ...facts], latencyMs, cause: headline.cause }
   }
   if (unchecked.length) {
     return {

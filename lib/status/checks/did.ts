@@ -86,6 +86,8 @@ const check: StatusCheckDef = {
         }
       }
       if (list.length === 0) {
+        // Left as the supplier's side: the key was accepted, and whether the empty list is D-ID's
+        // catalogue or what our plan is allowed can't be told from here — genuinely ambiguous.
         return {
           state: "degraded",
           summary: "D-ID accepted the key but offered no presenters, so the tool has nobody to show.",
@@ -104,8 +106,11 @@ const check: StatusCheckDef = {
     }
 
     if (status === 401 || status === 403) {
+      // ⚠ cause "hub": D-ID answered, so it is up — it's OUR key it turned away (often pasted in the
+      // wrong format, see below), and fixing DID_API_KEY is ours to do.
       return {
         state: "down",
+        cause: "hub",
         summary: "D-ID refused the Hub's key, so the presenter won't start.",
         facts: [
           { label: "Key", value: `Refused (${status})`, tone: "bad" },
@@ -117,15 +122,20 @@ const check: StatusCheckDef = {
       }
     }
     if (status === 402) {
+      // ⚠ cause "hub": D-ID is up and answering — it's the Hub's own account that needs paying or
+      // renewing, and that is ours to do, not an outage at D-ID.
       return {
         state: "down",
-        summary: "D-ID refused the account (payment required) — the plan or credits may have run out.",
+        cause: "hub",
+        summary: "D-ID refused the Hub's account (payment required) — the plan or credits may have run out.",
         facts: [{ label: "D-ID", value: "Payment required (402)", tone: "bad" }, NOTE],
         latencyMs: ms,
       }
     }
     if (status === 404) {
       // Exactly the address the tool itself calls, so if it has gone the tool fails the same way.
+      // Left as the supplier's side: D-ID moved or withdrew its own address — no Hub setting, key or
+      // sign-in would bring it back.
       return {
         state: "down",
         summary: "D-ID's presenter list has moved or gone, so the presenter won't start.",

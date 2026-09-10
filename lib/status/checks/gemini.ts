@@ -139,9 +139,11 @@ export type AiTally = {
   latest: { outcome: string; kind?: string; at: number } | null
 }
 
-/** Kinds that mean the SUPPLIER failed. "blocked" is a content refusal — the supplier ANSWERED —
- *  and "400"/"other" are nearly always a problem with what the Hub sent. Neither is an outage,
- *  so neither may turn a light amber. */
+/** Kinds that mean the request failed AT the supplier. "blocked" is a content refusal — the supplier
+ *  ANSWERED — and "400"/"other" are nearly always a problem with what the Hub sent. Neither is an
+ *  outage, so neither may turn a light amber. ⚠ Failing at the supplier is not the supplier's FAULT:
+ *  a refused key, a model that doesn't exist and an empty account all count here, but failureCause()
+ *  puts them on the Hub's side. */
 const supplierFailure = (kind?: string) =>
   !!kind && (/^5\d\d$/.test(kind) || ["timeout", "network", "401", "403", "404", "credit"].includes(kind))
 
@@ -164,9 +166,20 @@ export function tallyAi(provider: "gemini" | "anthropic", nowMs: number): AiTall
   return t
 }
 
+/** The kind behind most of the failures — the one failureReason() and failureCause() both describe. */
+const topKind = (kinds: Record<string, number>) => Object.entries(kinds).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ""
+
+/** Whose side most of the failures are on (see CheckResult.cause). A refused key (ours), a model that
+ *  doesn't exist (the Hub's AI Models setting, or a model saved on someone's device) and an empty
+ *  account (ours to top up) all have the supplier up and answering — the fix is in the Hub's hands.
+ *  ⚠ Keyed on the same top kind as failureReason(), so the words and the blame can never disagree. */
+export function failureCause(kinds: Record<string, number>): "hub" | undefined {
+  return ["401", "403", "404", "credit"].includes(topKind(kinds)) ? "hub" : undefined
+}
+
 /** Why most of the failures happened, in words. */
 export function failureReason(kinds: Record<string, number>, who: string): string {
-  const top = Object.entries(kinds).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ""
+  const top = topKind(kinds)
   if (top === "credit") return `${who} said the account is out of credit`
   if (top === "timeout" || top === "network") return `${who} didn't answer`
   if (top === "404") return `${who} said the model doesn't exist`
@@ -255,19 +268,21 @@ function listFailure(r: GoogleFail): CheckResult {
   }
   const s = r.status ?? 0
   // Google answers a bad key with 400 API_KEY_INVALID, not 401 — hence the reason test.
+  // cause "hub": Google answered, so it is up — it's OUR key, or OUR Google project, it turned away.
   if (s === 401 || s === 403 || (s === 400 && /API_KEY/.test(r.reason ?? ""))) {
     return {
       state: "down",
       summary: r.reason === "SERVICE_DISABLED"
         ? "Google has AI switched off for the Hub's Google project, so every AI button fails."
         : "Google refused the Gemini key, so every AI button fails.",
-      facts, latencyMs: r.ms,
+      facts, latencyMs: r.ms, cause: "hub",
     }
   }
   // Google's answer when it won't serve the Gemini API to the project at all — typically billing
   // not set up on the Google project, or the server's region not supported. Not the check's fault.
+  // cause "hub": both are ours to fix — the billing on our Google project, or where our server runs.
   if (s === 400 && r.reason === "FAILED_PRECONDITION") {
-    return { state: "down", summary: "Google won't serve its AI to the Hub's Google project (usually a billing or location problem), so every AI button fails.", facts, latencyMs: r.ms }
+    return { state: "down", summary: "Google won't serve its AI to the Hub's Google project (usually a billing or location problem), so every AI button fails.", facts, latencyMs: r.ms, cause: "hub" }
   }
   if (s === 429) return { state: "degraded", summary: "Google is rate-limiting the Hub right now — even the free model list was refused.", facts, latencyMs: r.ms }
   if (s === 404) return { state: "down", summary: "Google's AI model list has moved or gone, so the Hub's AI connection needs attention.", facts, latencyMs: r.ms }
@@ -296,8 +311,9 @@ async function onHubRetiredList(id: string, slots: SlotModel[], deadline: number
 async function run(ctx: CheckContext): Promise<CheckResult> {
   const key = process.env.GEMINI_API_KEY
   if (!key) {
+    // cause "hub": a variable missing from OUR server — nothing Google can fix.
     return ctx.isProduction
-      ? { state: "down", summary: "No Gemini key is set on the live Hub, so every AI button fails." }
+      ? { state: "down", summary: "No Gemini key is set on the live Hub, so every AI button fails.", cause: "hub" }
       : { state: "off", summary: "Not set up — there's no Gemini key on this environment, so AI tools won't work here." }
   }
   const nowMs = ctx.now.getTime()
@@ -379,7 +395,11 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     ]
   }
 
-  const problems: { state: "down" | "degraded"; summary: string }[] = []
+  // cause "hub" on every model problem below: Google is up and answering — it's the Hub that is set
+  // to (or has queued a sale with) a model Google no longer offers, and the fix is Admin → AI Models.
+  // ⚠ This is the 2026-09-10 case: the banner said "a supplier is having problems: Gemini AI" when
+  // the fault was the Hub's own setting. Only what Google did with real requests can be Google's.
+  const problems: { state: "down" | "degraded"; summary: string; cause?: "hub" }[] = []
   const facts: Fact[] = [{ label: "Key", value: "Accepted by Google", tone: "good" }]
   if (!catalogue.complete) {
     facts.push({ label: "Google's model list", value: "Only partly read in time — models missing from it were asked about one by one instead.", tone: "warn" })
@@ -388,11 +408,12 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
   if (slots) {
     const broken = geminiSlots.filter(s => gone.has(s.model))
     if (broken.length && broken.length === geminiSlots.length) {
-      problems.push({ state: "down", summary: "Google doesn't offer any of the AI models the Hub is set to use, so every AI button fails." })
+      problems.push({ state: "down", summary: "Google doesn't offer any of the AI models the Hub is set to use, so every AI button fails.", cause: "hub" })
     } else if (broken.length) {
       problems.push({
         state: "degraded",
         summary: `${broken.length} AI ${plural(broken.length, "tool is", "tools are")} set to a model Google doesn't offer, so ${plural(broken.length, "it fails", "they fail")}: ${listNames(broken.map(b => b.label))}.`,
+        cause: "hub",
       })
     }
   } else {
@@ -420,12 +441,12 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     } else if (isClaudeId(fallback)) {
       facts.push({ label: "Fallback model", value: `${fallback} — a Claude model, which Admin → AI Models never offers here; worth checking.`, tone: "warn" })
     } else if (gone.has(fallback)) {
-      problems.push({ state: "degraded", summary: `The fallback model (${fallback}) isn't offered by Google, so there's no second model to try when the main one fails.` })
+      problems.push({ state: "degraded", summary: `The fallback model (${fallback}) isn't offered by Google, so there's no second model to try when the main one fails.`, cause: "hub" })
     } else if (unconfirmed.has(fallback)) {
       facts.push({ label: "Fallback model", value: `${fallback} — couldn't be confirmed with Google`, tone: "warn" })
     } else if (slots && await onHubRetiredList(fallback, slots, deadline)) {
       // ⚠ getFallbackModel() silently drops a retired name, so this means NO fallback at all.
-      problems.push({ state: "degraded", summary: `The fallback model (${fallback}) is on the Hub's retired list, so it's ignored and there's no second model to try.` })
+      problems.push({ state: "degraded", summary: `The fallback model (${fallback}) is on the Hub's retired list, so it's ignored and there's no second model to try.`, cause: "hub" })
       facts.push({ label: "Fallback model", value: `${fallback} — on the Hub's retired list, so it's ignored`, tone: "bad" })
     } else {
       facts.push({ label: "Fallback model", value: `${fallback} — offered by Google`, tone: "good" })
@@ -433,7 +454,7 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
   }
 
   if (envCondition && gone.has(envCondition)) {
-    problems.push({ state: "degraded", summary: `The model set on the server for reading condition report emails (${envCondition}) isn't offered by Google.` })
+    problems.push({ state: "degraded", summary: `The model set on the server for reading condition report emails (${envCondition}) isn't offered by Google.`, cause: "hub" })
   }
 
   // ── Sales waiting for the overnight run ──
@@ -444,7 +465,7 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
   } else {
     const hit = [...new Set(queue.filter(q => gone.has(q.model) || gone.has(q.fallbackModel)).map(q => q.code))]
     if (hit.length) {
-      problems.push({ state: "degraded", summary: `Overnight ${plural(hit.length, "sale", "sales")} ${listNames(hit)} ${plural(hit.length, "is", "are")} queued with a model Google doesn't offer.` })
+      problems.push({ state: "degraded", summary: `Overnight ${plural(hit.length, "sale", "sales")} ${listNames(hit)} ${plural(hit.length, "is", "are")} queued with a model Google doesn't offer.`, cause: "hub" })
     } else {
       const unsure = [...new Set(queue.filter(q => unconfirmed.has(q.model) || unconfirmed.has(q.fallbackModel)).map(q => q.code))]
       const waiting = `${queue.length} ${plural(queue.length, "sale", "sales")} waiting`
@@ -472,7 +493,7 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
     problems.push({ state: "degraded", summary: `Google refused ${tally.refused} AI requests in the last 30 minutes for going over the allowance.` })
   }
   if (tally.failed >= FAILURES_FOR_AMBER) {
-    problems.push({ state: "degraded", summary: `${tally.failed} AI requests to Google failed in the last 30 minutes — ${failureReason(tally.failedKinds, "Google")}.` })
+    problems.push({ state: "degraded", summary: `${tally.failed} AI requests to Google failed in the last 30 minutes — ${failureReason(tally.failedKinds, "Google")}.`, cause: failureCause(tally.failedKinds) })
   }
   facts.push(...passiveFacts)
   facts.push({
@@ -487,7 +508,8 @@ async function run(ctx: CheckContext): Promise<CheckResult> {
   const headline = problems.find(p => p.state === "down") ?? problems[0]
   if (headline) {
     const also: Fact[] = problems.filter(p => p !== headline).map(p => ({ label: "Also", value: p.summary, tone: p.state === "down" ? "bad" : "warn" }))
-    return { state: headline.state, summary: headline.summary, facts: [...also, ...facts], latencyMs }
+    // The headline's cause, never a mix: the banner names whichever problem the tile leads with.
+    return { state: headline.state, summary: headline.summary, facts: [...also, ...facts], latencyMs, cause: headline.cause }
   }
   if (!config) {
     return { state: "unknown", summary: "Google accepted the key, but the Hub couldn't read its AI Models settings, so the models couldn't be checked.", facts, latencyMs }

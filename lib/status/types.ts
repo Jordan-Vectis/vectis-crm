@@ -37,6 +37,13 @@ export interface CheckResult {
   facts?: Fact[]
   /** How long the service took to answer, when that means something. */
   latencyMs?: number
+  /** Whose side a bad result is on, for a SUPPLIER's light. "hub" = the fix is in the Hub's own hands —
+   *  a setting (Admin → AI Models), a key or variable missing or refused, a person's sign-in that needs
+   *  redoing, the Hub's own job or copy gone stale — e.g. tools set to a model Google has retired.
+   *  Leave it out when the supplier itself is down, slow, erroring or rate-limiting.
+   *  Ignored for group "hub", which is always inside the Hub. (Jordan, 2026-09-10: the banner blamed
+   *  "a supplier" for what was the Hub's own AI Models setting.) */
+  cause?: "hub" | "supplier"
 }
 
 export interface CheckContext {
@@ -82,6 +89,8 @@ export interface ServiceView {
   statusPage: string | null
   /** "pending" = never checked yet on this environment. */
   state: StatusState | "pending"
+  /** Whose side the current problem is on: always "hub" for the hub group; for a supplier, what its check said. */
+  cause: "hub" | "supplier"
   summary: string
   facts: Fact[]
   latencyMs: number | null

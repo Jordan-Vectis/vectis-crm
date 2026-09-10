@@ -39,6 +39,8 @@ Where things are:
 
 Design decisions worth keeping:
 - Green = the Hub can do its job with it, not "a host answered". Grey = couldn't tell / not used here — never counted as working and never rings the bell.
+- "Us or a supplier" follows the FIX, not the logo: a supplier's check sets cause "hub" when the fix is a Hub setting, key, sign-in, job or office task, so the banner says "Problem inside the Hub" and the tile and bell say "the fix is on the Hub's side". Added after the first run blamed Google for tools that our own AI Models settings had pointed at a model Google retired.
+- That first run found a real bug: gemini-2.5-flash-preview-04-17 (retired by Google) was the built-in default for 8 tools AND the browser-side starting model of BC Marketing, Lot History and Lotting Up, so those screens failed on production unless someone picked another model. It is now on RETIRED_MODELS and the defaults are gemini-3-flash-preview.
 - Database: 25 pooled connections each hold a plain BEGIN while reading the read-only settings, so a transaction-mode pooler has to hand each a different server connection; plus 3 direct connections (pooler stripped), Prisma latency, and saves refused in createLot / saveLastLotFields. Red on even one read-only connection.
 - Gemini / Claude: model lists only, so no quota is spent. Refusals are only seen on paths through lib/ai-provider.ts and withGeminiRetry — the batch run, KP/DC and the pipeline call Google directly and aren't counted.
 - Business Central: there is no company account. The check renews a person's sign-in IN MEMORY (never saved) when nobody holds a live key — about 4 Microsoft sign-in log entries an hour overnight for that person. Helpers getBCTokenForStatus / bcODataUrl in lib/bc.ts.

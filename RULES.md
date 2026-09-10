@@ -1198,6 +1198,11 @@ in the `hub` group are "inside the Hub", everything else is a supplier.
   check samples many connections and goes red on even one that refuses saves — one `SELECT` would
   have been green all through the 2026-09-09 read-only day. A check that couldn't run is grey
   ("Couldn't tell"), never green and never red.
+- ⚠ **"Us or a supplier" follows the FIX, not the logo.** A supplier's check returns `cause: "hub"` when
+  the fix is in the Hub's own hands — a setting (Admin → AI Models), a key or variable missing or
+  refused, a sign-in that needs redoing, the Hub's own job or copy gone stale, an office task not done.
+  The banner then says "Problem inside the Hub" and the bell adds "the fix is on the Hub's side". Found
+  on the first run: tools set to a model Google had retired were blamed on "a supplier".
 - ⚠ **Environment first.** Anything that depends on background jobs or production-only data returns
   `off` ("Not used here") unless `ctx.backgroundJobsExpected` / `ctx.isProduction` — the staging and
   sandbox databases are branches of production holding timestamps that stopped the day they were made.

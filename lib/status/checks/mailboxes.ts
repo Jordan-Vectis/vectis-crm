@@ -59,8 +59,9 @@ const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 type AuthRow = { connectedBy: string | null; lastSyncAt: Date | null; updatedAt: Date; folderName?: string | null }
 type Read = { row: AuthRow | null; error?: undefined } | { row?: undefined; error: string }
 
-/** One mailbox's verdict. "unused" = not connected (or connected with no address), so it can't count against the light. */
-type Verdict = { state: StatusState | "unused"; line: string; fact: Fact }
+/** One mailbox's verdict. "unused" = not connected (or connected with no address), so it can't count against the light.
+ *  `cause` is set on a red whose fix is ours (see CheckResult.cause) and carried onto the light by the worst verdict. */
+type Verdict = { state: StatusState | "unused"; line: string; fact: Fact; cause?: "hub" }
 
 function judge(opts: {
   name: string
@@ -93,9 +94,11 @@ function judge(opts: {
     return { state: "unused", line: "", fact: { label, value: `${by}, but no inbox address is set (CONDITION_MAILBOX), so it isn't being read` } }
   }
 
+  // cause "hub": the settings are missing from OUR server — nothing Microsoft can fix.
   if (missingGraph.length) {
     return {
       state: "down",
+      cause: "hub",
       line: `the ${name} is connected but this server is missing its Microsoft sign-in settings (${missingGraph.join(", ")}), so it can't be read`,
       fact: { label, value: `${by} · can't be read: Microsoft sign-in settings missing`, tone: "bad" },
     }
@@ -130,8 +133,11 @@ function judge(opts: {
   }
 
   const since = row.lastSyncAt ? `hasn't been read for ${durationText(now - row.lastSyncAt.getTime())}` : "has never been read successfully"
+  // cause "hub": the usual fix is a person reconnecting their Microsoft sign-in. A real
+  // Microsoft outage would look the same here, but the headline says sign-in, so this follows it.
   return {
     state: "down",
+    cause: "hub",
     line: `the ${name} is connected but ${since} — usually the Microsoft sign-in has expired, and reconnecting it fixes it`,
     fact: { label, value: `${by} · ${lastRead}${folder} · reconnect: ${reconnect}`, tone: "bad" },
   }
@@ -234,7 +240,10 @@ const mailboxes: StatusCheckDef = {
     }
 
     const problems = used.filter(v => v.state !== "ok").sort((a, b) => RANK[b.state] - RANK[a.state])
-    return { state: worst.state, summary: `${capitalise(problems.map(p => p.line).join("; "))}.`, facts }
+    // The headline (worst) problem decides whose side the light is on. Only reds carry a
+    // cause, so a grey "waiting for the next poll" never claims one.
+    const cause = problems[0].cause
+    return { state: worst.state, summary: `${capitalise(problems.map(p => p.line).join("; "))}.`, facts, ...(cause ? { cause } : {}) }
   },
 }
 

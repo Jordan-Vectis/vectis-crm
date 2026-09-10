@@ -209,9 +209,11 @@ const itEmail: StatusCheckDef = {
     // ⚠ A missing key is not silence — it is a certain failure: the route answers 401 to
     // every delivery, and Make switches a scenario off after repeated errors (it has done
     // so before). So this one is red, unlike the quiet-spell amber below.
+    // cause "hub": it is OUR variable on OUR server — Make.com is doing nothing wrong.
     if (!keySet) {
       return {
         state: "down",
+        cause: "hub",
         summary: "The key Make.com uses to deliver IT emails isn't set on this server, so every IT email is being turned away.",
         facts: [
           { label: "Last IT email on the board", value: last ? `${when(last)} (${agoText(now - last.getTime())})` : "None yet", tone: "bad" },
@@ -220,6 +222,9 @@ const itEmail: StatusCheckDef = {
       }
     }
 
+    // ⚠ No cause on the two ambers below, on purpose: silence can't say which link broke —
+    // the Outlook rule, Power Automate, or Make.com switching the scenario off — so it is
+    // left as a supplier's problem rather than guessed at.
     if (!last) {
       return {
         state: "degraded",

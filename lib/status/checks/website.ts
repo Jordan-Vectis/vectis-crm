@@ -224,8 +224,11 @@ const check: StatusCheckDef = {
 
     if (waiting.length) {
       const n = waiting.length
+      // ⚠ cause "hub": the website blocking our server is its normal state (see the header), so a sale
+      // waiting here is an office task not done yet — collecting and uploading it is ours to do.
       return {
         state: "degraded",
+        cause: "hub",
         summary: `${n} sale${n === 1 ? " is" : "s are"} waiting to be collected from an office computer.`,
         facts,
       }
