@@ -230,6 +230,8 @@ export default function WebsiteSearchButton({ tablet = false }: { tablet?: boole
   const [results, setResults] = useState<SearchResult[] | null>(null)
   const [counts, setCounts] = useState<SearchResponse["counts"]>(null)
   const [notes, setNotes] = useState<string[]>([])
+  const [corrections, setCorrections] = useState<SearchResponse["corrections"]>([])
+  const [spelling, setSpelling] = useState<SearchResponse["spelling"] | null>(null)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [busy, setBusy] = useState<{ since: number; more: boolean } | null>(null)
@@ -283,6 +285,8 @@ export default function WebsiteSearchButton({ tablet = false }: { tablet?: boole
         setResults(j.results)
         setCounts(j.counts)
         setNotes(j.notes ?? [])
+        setCorrections(Array.isArray(j.corrections) ? j.corrections : [])
+        setSpelling(j.spelling ?? null)
         setShowFilters(false)
       } else {
         setResults(prev => [...(prev ?? []), ...j.results])
@@ -367,7 +371,8 @@ export default function WebsiteSearchButton({ tablet = false }: { tablet?: boole
       </div>
       <p className="text-xs leading-relaxed text-gray-500">
         Hammer and sold/unsold leave out Hub lots (not sold yet); a category leaves out ABC lots (they have none).
-        Every word you type must appear in the lot — the description, its ID or the sale.
+        Every word you type must appear in the lot&apos;s description (or its ID). Accents, capitals and punctuation
+        don&apos;t matter, plurals count, and a misspelt word also searches the real spelling — the results say when.
       </p>
       <div className="flex gap-2">
         <button type="submit" disabled={!!busy} style={{ background: ACCENT, touchAction: "manipulation" }}
@@ -455,6 +460,19 @@ export default function WebsiteSearchButton({ tablet = false }: { tablet?: boole
                 </p>
 
                 {notes.map(n => <p key={n} className="mb-2 rounded-lg border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">{n}</p>)}
+
+                {/* Say what the smarter matching did, so a lot found by a corrected spelling is never a mystery. */}
+                {corrections.length > 0 && !busy && (
+                  <p className="mb-2 text-sm text-gray-400">
+                    Also searched for{" "}
+                    {corrections.map((c, i) => (
+                      <span key={c.typed}>{i ? " · " : ""}<b className="text-gray-100">{c.also.join(" / ")}</b> (you typed “{c.typed}”)</span>
+                    ))}
+                  </p>
+                )}
+                {spelling === "building" && !busy && (
+                  <p className="mb-2 text-xs text-gray-500">Spelling help is being set up (first time only, a few minutes) — until then a misspelt word won&apos;t find the right one.</p>
+                )}
 
                 {results === null && !busy && !error && (
                   <div className="mx-auto max-w-xl py-12 text-center text-gray-400">

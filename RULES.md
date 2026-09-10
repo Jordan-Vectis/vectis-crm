@@ -1266,6 +1266,18 @@ It **replaced Description Finder**, which is gone — page, route, home card and
 - A search needs a word, a sale or a category. Hammer/sold filters leave out Hub lots; a category
   leaves out ABC lots (they have none) — the response says so in `notes`.
 - Each query runs with `SET LOCAL statement_timeout` inside a transaction (the pooler's unit).
+- **Forgiving matching** (Jordan: *"if I add a , anywhere it doesnt find that one lot"*) lives in
+  `lib/search-words.ts`: punctuation stripped and little words (&, and, the) dropped; accents folded on
+  BOTH sides — ⚠ `translate()` in SQL and `foldText()` in JS use the SAME `FOLD_FROM`/`FOLD_TO` map,
+  change one and change both; plurals count; a misspelt word also searches its nearest real spellings.
+- **The spelling list** is `SearchWord` (+ `SearchWordState`) — every word in our descriptions seen
+  twice or more, with a pg_trgm index. Built in the background the first time it's needed and weekly in
+  London evenings; a search never waits for it. Only unknown or rare words are corrected, and the panel
+  says what it also searched for — a lot found by a guessed spelling must never be a mystery.
+- ⚠ **No HTML in stored descriptions.** The website hands BC lots over as HTML (`<p>`, `&nbsp;`,
+  `&auml;`). `htmlToText()` in `lib/html-text.ts` is the one cleaner: `writeBcSale` stores new lots
+  clean, the spelling-list build cleans old rows first, and every screen/export that shows them cleans
+  on the way out too.
 - If it ever feels slow: a pg_trgm index on `ArchiveLot.description` (~500 MB) is the next step — ask first.
 - Gate: the Cataloguing app, read fresh from the database.
 

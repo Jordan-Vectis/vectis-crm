@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { Prisma } from "@/app/generated/prisma/client"
 import { getSignedImageUrl } from "@/lib/r2"
 import { SITE_IMAGES } from "@/lib/archive-site"
+import { htmlToText } from "@/lib/html-text"
 import ArchiveSite from "../archive/archive-site"
 import BcCollect from "./bc-collect"
 import BcTools from "./bc-tools"
@@ -268,8 +269,9 @@ export default async function BcDatabasePage({ searchParams }: { searchParams: P
                         <div className="text-xs text-gray-400 font-mono" title="BC's unique ID">{r.uniqueId}</div>
                         {r.siteLink && <a href={`https://www.vectis.co.uk/${r.siteLink}`} target="_blank" rel="noreferrer" className="block text-xs font-sans text-violet-600 dark:text-violet-400 hover:underline" title="Open this lot on vectis.co.uk">vectis.co.uk ↗</a>}
                       </td>
-                      <td className="px-3 py-2 text-gray-900 dark:text-gray-100">
-                        {r.longDesc || r.shortDesc}
+                      <td className="px-3 py-2 text-gray-900 dark:text-gray-100 whitespace-pre-line">
+                        {/* The website's text was stored as HTML; cleaned here too in case a row hasn't been tidied yet (lib/html-text.ts). */}
+                        {r.longDesc ? htmlToText(r.longDesc) : r.shortDesc}
                         {!r.longDesc && <span className="ml-2 text-xs text-gray-400" title="BC's short description — the full one appears once the website pull reaches this sale">short</span>}
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap text-gray-600 dark:text-gray-400">{r.estimateLow == null && r.estimateHigh == null ? "—" : `${fmtGBP(r.estimateLow)} – ${fmtGBP(r.estimateHigh)}`}</td>

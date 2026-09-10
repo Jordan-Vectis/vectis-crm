@@ -23,6 +23,8 @@ import { uploadBufferToR2 } from "@/lib/r2"
 // ⚠ Be polite: one request every PAUSE ms, an honest User-Agent, only finished sales.
 
 const SITE = "https://www.vectis.co.uk"
+import { htmlToText } from "@/lib/html-text"
+
 export const SITE_IMAGES = "https://am-s3-bucket-assets.s3.eu-west-2.amazonaws.com/vectis/prod/"
 const UA = "VectisHub archive (IT@vectis.co.uk)"
 
@@ -206,7 +208,9 @@ export async function writeBcSale(auctionCode: string | null, lots: FeedLot[], s
   const hammer = (l: FeedLot) => (Number(l.sold) ? num(l.hammer_price) : null)
   const ids = rows.map(x => x.id)
   const lotNos = rows.map(x => (Number.isFinite(Number(x.l.lot_number)) ? String(Math.round(Number(x.l.lot_number))) : ""))
-  const descs = rows.map(x => String(x.l.description ?? "").trim())
+  // ⚠ Plain text, not the website's HTML (<p>, &nbsp;, &auml;…) — it spoilt the screen, Copy
+  // description and the search (Jordan, 2026-09-10). Older rows are cleaned by lib/search-words.ts.
+  const descs = rows.map(x => htmlToText(String(x.l.description ?? "")))
   const siteIds = rows.map(x => (Number.isFinite(Number(x.l.id)) ? String(Math.round(Number(x.l.id))) : ""))
   const links = rows.map(x => (str(x.l.sef_link) ?? "").replace(/^\/+/, ""))
   const photos = rows.map(x => str(x.l.image) ?? "")

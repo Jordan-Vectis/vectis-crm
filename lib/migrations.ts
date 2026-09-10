@@ -2069,6 +2069,25 @@ export const MIGRATIONS = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "FeedbackResponse_surveyId_userId_key" ON "FeedbackResponse"("surveyId", "userId")`,
   `CREATE INDEX IF NOT EXISTS "FeedbackResponse_userId_idx" ON "FeedbackResponse"("userId")`,
+
+  // 🔎 Website Search spelling help — every word in our lot descriptions with how often it appears, and a
+  // trigram index (pg_trgm) so a typo finds the real word. Built by lib/search-words.ts. ⚠ Prisma can't express
+  // the gin_trgm_ops index, so it lives only here.
+  `CREATE EXTENSION IF NOT EXISTS pg_trgm`,
+  `CREATE TABLE IF NOT EXISTS "SearchWord" (
+    "word" TEXT NOT NULL,
+    "n"    INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT "SearchWord_pkey" PRIMARY KEY ("word")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "SearchWord_word_trgm_idx" ON "SearchWord" USING gin ("word" gin_trgm_ops)`,
+  `CREATE TABLE IF NOT EXISTS "SearchWordState" (
+    "id"            TEXT NOT NULL,
+    "builtAt"       TIMESTAMP(3),
+    "words"         INTEGER NOT NULL DEFAULT 0,
+    "buildingSince" TIMESTAMP(3),
+    "error"         TEXT,
+    CONSTRAINT "SearchWordState_pkey" PRIMARY KEY ("id")
+  )`,
 ]
 
 // Fingerprint of every statement above. Changes the moment a migration is added,

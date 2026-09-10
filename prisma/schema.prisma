@@ -3004,3 +3004,19 @@ model FeedbackResponse {
   @@unique([surveyId, userId])
   @@index([userId])
 }
+
+// 🔎 Website Search's spelling help — every word in our lot descriptions (accents folded, lower case)
+// with how often it appears, so a typo can be matched to a real word. Rebuilt by lib/search-words.ts.
+// ⚠ Its trigram index (gin_trgm_ops, needs the pg_trgm extension) lives only in lib/migrations.ts.
+model SearchWord {
+  word String @id
+  n    Int    @default(0)
+}
+
+model SearchWordState {
+  id            String    @id // always "current"
+  builtAt       DateTime?
+  words         Int       @default(0)
+  buildingSince DateTime?
+  error         String?   @db.Text
+}

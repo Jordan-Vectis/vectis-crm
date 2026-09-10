@@ -5,6 +5,12 @@ import { Prisma } from "@/app/generated/prisma/client"
 import { hasAppAccess } from "@/lib/apps"
 import { getSignedImageUrl } from "@/lib/r2"
 import { SITE_IMAGES } from "@/lib/archive-site"
+import { htmlToText } from "@/lib/html-text"
+import {
+  FOLD_FROM, FOLD_TO, foldText, tokenise, pluralVariants,
+  spellingState, spellingVariants, kickWordListBuild,
+  type Correction, type SpellingState,
+} from "@/lib/search-words"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -21,13 +27,17 @@ export const maxDuration = 60
 //   hub — CatalogueLot: lots catalogued in the Hub that have NOT yet been through a BC sale (once
 //         they have, they're in "bc" with a result, so they'd only be doubles).
 //
+// FORGIVING (Jordan: "if I add a , anywhere it doesn't find that one lot — the search needs to be a
+// bit smarter"): the typed words are tidied — punctuation stripped, "&"/"and"/"the" ignored — accents
+// are folded on BOTH sides (Kämmer = Kammer), plurals count, and a word that looks misspelt also
+// searches its nearest real spellings from our own descriptions. All in lib/search-words.ts.
+//
 // ⚠ It never asks vectis.co.uk anything: the site answers the Hub's server with 202 and nothing
 // (RULES.md), so this searches OUR copies. They're as fresh as the last office collection.
 //
 // ⚠ Speed, measured on production 2026-09-10 with no text index: ~2.4 s for a search over all three
-// sources, results and counts together, even for "corgi" (115k matches). Fine for a research tool, so
-// no trigram index yet (pg_trgm is available on Neon; indexing ArchiveLot.description would add
-// roughly 500 MB) — the next step if it ever feels slow.
+// sources, results and counts together, even for "corgi" (115k matches). No trigram index on the
+// descriptions yet (it would add roughly 500 MB) — the next step if it ever feels slow; ask first.
 // A search must have a word, a sale or a category — an open-ended sort of 1.2 million rows is not a search.
 
 export type SearchSource = "abc" | "bc" | "hub"
@@ -42,6 +52,7 @@ export type SearchResult = {
   /** YYYY-MM-DD */
   saleDate: string | null
   lot: number | null
+  /** Plain text — the website's HTML is taken out (lib/html-text.ts). */
   description: string
   estimateLow: number | null
   estimateHigh: number | null
@@ -61,12 +72,16 @@ export type SearchResult = {
 
 export type SearchResponse = {
   results: SearchResult[]
-  /** Matches per source — page 1 only (the counts cost a second pass). */
+  /** Matches per source — page 1 only. */
   counts: Record<SearchSource, number> | null
   page: number
   hasMore: boolean
   /** Why a source was left out, in plain words (e.g. a hammer filter can't apply to unsold Hub lots). */
   notes: string[]
+  /** Words that looked misspelt and the real spellings searched as well — shown on screen. */
+  corrections: Correction[]
+  /** Whether the spelling list is there yet (it's built the first time it's needed). */
+  spelling: SpellingState
 }
 
 const PAGE = 30
@@ -88,16 +103,21 @@ const ORDERS: Record<string, Prisma.Sql> = {
 /** A LIKE pattern for one word — %, _ and \ in what they typed are matched literally. */
 const likeParam = (word: string) => "%" + word.replace(/[\\%_]/g, m => "\\" + m) + "%"
 
-/** Every word must appear in the lot's description (or the exact phrase, if asked); none of the "without"
- *  words may. The ID fields are searched too, but ONLY when the search looks like an ID.
- *  ⚠ Measured 2026-09-10: gluing description + IDs + sale name into one string per row made every search
- *  take ~6 s; matching the description alone is ~2.4 s. Sale names have their own filter. */
-function textConds(desc: Prisma.Sql, ids: Prisma.Sql, words: string[], phrase: string | null, without: string[], idLike: boolean): Prisma.Sql[] {
-  const hit = (p: string) => (idLike ? Prisma.sql`(${desc} ILIKE ${p} OR ${ids} ILIKE ${p})` : Prisma.sql`${desc} ILIKE ${p}`)
+/** Accent-folded text, with the same map as foldText() (lib/search-words.ts). */
+const fold = (e: Prisma.Sql) => Prisma.sql`translate(${e}, ${FOLD_FROM}, ${FOLD_TO})`
+
+/** Every word group must match the folded description — any one of its spellings will do (the word,
+ *  its plural/singular, a corrected spelling). None of the "without" words may appear. The ID fields
+ *  are searched too, but ONLY when the search looks like an ID.
+ *  ⚠ Measured 2026-09-10: gluing description + IDs + sale name into one string per row made every
+ *  search take ~6 s; the description alone is ~2.4 s. Sale names have their own filter. */
+function textConds(fd: Prisma.Sql, ids: Prisma.Sql, groups: string[][], without: string[], idLike: boolean): Prisma.Sql[] {
   const c: Prisma.Sql[] = []
-  if (phrase) c.push(hit(likeParam(phrase)))
-  else for (const w of words) c.push(hit(likeParam(w)))
-  for (const w of without) c.push(Prisma.sql`coalesce(${desc}, '') NOT ILIKE ${likeParam(w)}`)
+  for (const alts of groups) {
+    const ors = alts.map(a => (idLike ? Prisma.sql`(${fd} ILIKE ${likeParam(a)} OR ${ids} ILIKE ${likeParam(a)})` : Prisma.sql`${fd} ILIKE ${likeParam(a)}`))
+    c.push(ors.length === 1 ? ors[0] : Prisma.sql`(${Prisma.join(ors, " OR ")})`)
+  }
+  for (const w of without) c.push(Prisma.sql`${fd} NOT ILIKE ${likeParam(w)}`)
   return c
 }
 
@@ -123,10 +143,10 @@ export async function GET(req: NextRequest) {
     const sp = req.nextUrl.searchParams
     const q = (sp.get("q") ?? "").trim().slice(0, 200)
     const exact = sp.get("phrase") === "1"
-    // Single letters match almost everything and only slow the search down.
-    const words = q.split(/\s+/).filter(w => w.length >= 2).slice(0, MAX_WORDS)
-    const phrase = exact && q.length >= 2 ? q : null
-    const without = (sp.get("without") ?? "").trim().split(/\s+/).filter(w => w.length >= 2).slice(0, MAX_WORDS)
+    const words = tokenise(q, MAX_WORDS)
+    const phraseText = foldText(q).replace(/\s+/g, " ").trim()
+    const phrase = exact && phraseText.length >= 2 ? phraseText : null
+    const without = tokenise(sp.get("without") ?? "", MAX_WORDS)
     const sale = (sp.get("sale") ?? "").trim().slice(0, 100)
     const cat = (sp.get("cat") ?? "").trim().slice(0, 100)
     const sub = (sp.get("sub") ?? "").trim().slice(0, 100)
@@ -143,57 +163,87 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Type a word or two to search for (or pick a sale or a category)." }, { status: 400 })
     }
 
+    // The spelling list is built the first time it's needed (and refreshed weekly) — never waited for.
+    kickWordListBuild()
+    const spell = await spellingState()
+
     // Which sources can this search apply to at all?
     const notes: string[] = []
     let useAbc = asked.has("abc"), useBc = asked.has("bc"), useHub = asked.has("hub")
     if (useAbc && (cat || sub)) { useAbc = false; notes.push("ABC lots have no category, so a category filter leaves them out.") }
     if (useHub && (hmin != null || hmax != null || status)) { useHub = false; notes.push("Hub lots haven't been through a sale yet, so hammer and sold/unsold filters leave them out.") }
     if (!useAbc && !useBc && !useHub) {
-      return NextResponse.json({ results: [], counts: { abc: 0, bc: 0, hub: 0 }, page, hasMore: false, notes } satisfies SearchResponse)
+      return NextResponse.json({ results: [], counts: { abc: 0, bc: 0, hub: 0 }, page, hasMore: false, notes, corrections: [], spelling: spell.state } satisfies SearchResponse)
     }
 
+    const sv = !phrase && words.length && spell.state === "ready"
+      ? await spellingVariants(words)
+      : { extra: new Map<string, string[]>(), corrections: [] as Correction[] }
+    const groups: string[][] = phrase
+      ? [[phrase]]
+      : words.map(w => [...new Set([...pluralVariants(w), ...(sv.extra.get(w) ?? []).flatMap(pluralVariants)])])
+    const hasText = groups.length > 0 || without.length > 0
     // One word with a digit in it — F073116, R009030-1, a LotID — is probably an ID, so the ID fields are searched too.
     const idLike = !phrase && words.length === 1 && /\d/.test(words[0])
 
+    // ⚠ Each source folds its description ONCE per row, in a subquery (OFFSET 0 stops it being
+    // flattened, which would fold it again for every spelling tried). Skipped when there are no words.
     const branches: Prisma.Sql[] = []
     if (useAbc) {
-      const tc = textConds(Prisma.sql`a."description"`, Prisma.sql`coalesce(a."lotId", '')`, words, phrase, without, idLike)
+      const src = hasText
+        ? Prisma.sql`(SELECT a0.*, ${fold(Prisma.sql`coalesce(a0."description", '')`)} AS fd FROM "ArchiveLot" a0 OFFSET 0) a`
+        : Prisma.sql`"ArchiveLot" a`
+      const tc = hasText ? textConds(Prisma.sql`a.fd`, Prisma.sql`coalesce(a."lotId", '')`, groups, without, idLike) : []
       branches.push(Prisma.sql`
         SELECT 'abc'::text AS source, a."id", a."lotId" AS ident, a."auctionId"::text AS sale_code, a."saleTitle" AS sale_name,
                a."auctionDate"::date AS sale_date, a."lot" AS lot, a."description" AS description,
                a."estimateLow"::float8 AS est_low, a."estimateHigh"::float8 AS est_high, NULLIF(a."hammerPrice", 0)::float8 AS hammer,
                a."siteHammerPrice"::float8 AS site_hammer, a."photoKey" AS photo_key, a."photoXlKey" AS photo_xl_key,
                a."sitePhoto" AS site_photo, a."siteLink" AS site_link, NULL::text AS category, NULL::text AS subcategory, NULL::text[] AS images
-        FROM "ArchiveLot" a
+        FROM ${src}
         WHERE ${and(tc)}`)
     }
     if (useBc) {
-      const tc = textConds(Prisma.sql`COALESCE(b."description", w."description")`, Prisma.sql`(w."uniqueId" || ' ' || coalesce(w."barcode", ''))`, words, phrase, without, idLike)
-      const lotNo = Prisma.sql`NULLIF(regexp_replace(COALESCE(NULLIF(w."currentLotNo", '0'), w."lotNo"), '[^0-9]', '', 'g'), '')::int`
       // Same "has been through a sale that has happened" rule as Databases → BC Database.
       const base = Prisma.sql`w."auctionCode" IS NOT NULL AND w."auctionDate" IS NOT NULL AND w."auctionDate" <= to_char(now(), 'YYYY-MM-DD') AND COALESCE(NULLIF(w."currentLotNo", '0'), NULLIF(w."lotNo", '0')) IS NOT NULL`
-      branches.push(Prisma.sql`
-        SELECT 'bc'::text AS source, w."id", w."uniqueId" AS ident, w."auctionCode" AS sale_code, w."auctionName" AS sale_name,
-               CASE WHEN w."auctionDate" ~ '^\\d{4}-\\d{2}-\\d{2}' THEN to_date(substr(w."auctionDate", 1, 10), 'YYYY-MM-DD') END AS sale_date,
-               ${lotNo} AS lot, COALESCE(b."description", w."description") AS description,
-               w."lowEstimate"::float8 AS est_low, w."highEstimate"::float8 AS est_high, NULLIF(w."hammerPrice", 0)::float8 AS hammer,
-               b."siteHammerPrice"::float8 AS site_hammer, b."photoKey" AS photo_key, b."photoXlKey" AS photo_xl_key,
-               b."sitePhoto" AS site_photo, b."siteLink" AS site_link, w."category" AS category, w."subcategory" AS subcategory, NULL::text[] AS images
+      const inner = Prisma.sql`
+        SELECT w."id", w."uniqueId", w."barcode", w."auctionCode", w."auctionName", w."auctionDate", w."currentLotNo", w."lotNo",
+               w."description" AS w_desc, w."lowEstimate", w."highEstimate", w."hammerPrice", w."category", w."subcategory",
+               b."description" AS b_desc, b."siteHammerPrice", b."photoKey", b."photoXlKey", b."sitePhoto", b."siteLink",
+               ${hasText ? fold(Prisma.sql`COALESCE(b."description", w."description", '')`) : Prisma.sql`NULL::text`} AS fd
         FROM "WarehouseItem" w LEFT JOIN "BcLotWeb" b ON b."uniqueId" = upper(w."uniqueId")
-        WHERE ${base} AND ${and(tc)}`)
+        WHERE ${base}
+        OFFSET 0`
+      const lotNo = Prisma.sql`NULLIF(regexp_replace(COALESCE(NULLIF(x."currentLotNo", '0'), x."lotNo"), '[^0-9]', '', 'g'), '')::int`
+      const tc = hasText ? textConds(Prisma.sql`x.fd`, Prisma.sql`(x."uniqueId" || ' ' || coalesce(x."barcode", ''))`, groups, without, idLike) : []
+      branches.push(Prisma.sql`
+        SELECT 'bc'::text AS source, x."id", x."uniqueId" AS ident, x."auctionCode" AS sale_code, x."auctionName" AS sale_name,
+               CASE WHEN x."auctionDate" ~ '^\\d{4}-\\d{2}-\\d{2}' THEN to_date(substr(x."auctionDate", 1, 10), 'YYYY-MM-DD') END AS sale_date,
+               ${lotNo} AS lot, COALESCE(x.b_desc, x.w_desc) AS description,
+               x."lowEstimate"::float8 AS est_low, x."highEstimate"::float8 AS est_high, NULLIF(x."hammerPrice", 0)::float8 AS hammer,
+               x."siteHammerPrice"::float8 AS site_hammer, x."photoKey" AS photo_key, x."photoXlKey" AS photo_xl_key,
+               x."sitePhoto" AS site_photo, x."siteLink" AS site_link, x."category" AS category, x."subcategory" AS subcategory, NULL::text[] AS images
+        FROM (${inner}) x
+        WHERE ${and(tc)}`)
     }
     if (useHub) {
-      const tc = textConds(Prisma.sql`l."description"`, Prisma.sql`(coalesce(l."barcode", '') || ' ' || coalesce(l."receiptUniqueId", ''))`, words, phrase, without, idLike)
-      branches.push(Prisma.sql`
-        SELECT 'hub'::text AS source, l."id", COALESCE(l."barcode", l."receiptUniqueId") AS ident, a."code" AS sale_code, a."name" AS sale_name,
-               a."auctionDate"::date AS sale_date, NULL::int AS lot, l."description" AS description,
-               COALESCE(l."estimateLow", l."aiEstimateLow")::float8 AS est_low, COALESCE(l."estimateHigh", l."aiEstimateHigh")::float8 AS est_high,
-               NULL::float8 AS hammer, NULL::float8 AS site_hammer, l."imageUrls"[1] AS photo_key, NULL::text AS photo_xl_key,
-               NULL::text AS site_photo, NULL::text AS site_link, l."category" AS category, l."subCategory" AS subcategory, l."imageUrls" AS images
+      const inner = Prisma.sql`
+        SELECT l."id", l."barcode", l."receiptUniqueId", l."description", l."estimateLow", l."estimateHigh", l."aiEstimateLow", l."aiEstimateHigh",
+               l."imageUrls", l."category", l."subCategory", a."code" AS a_code, a."name" AS a_name, a."auctionDate" AS a_date,
+               ${hasText ? fold(Prisma.sql`l."description"`) : Prisma.sql`NULL::text`} AS fd
         FROM "CatalogueLot" l JOIN "CatalogueAuction" a ON a."id" = l."auctionId"
         WHERE l."description" <> ''
           AND NOT EXISTS (SELECT 1 FROM "WarehouseItem" w WHERE w."barcode" = l."barcode" AND w."auctionDate" IS NOT NULL AND w."auctionDate" <= to_char(now(), 'YYYY-MM-DD'))
-          AND ${and(tc)}`)
+        OFFSET 0`
+      const tc = hasText ? textConds(Prisma.sql`h.fd`, Prisma.sql`(coalesce(h."barcode", '') || ' ' || coalesce(h."receiptUniqueId", ''))`, groups, without, idLike) : []
+      branches.push(Prisma.sql`
+        SELECT 'hub'::text AS source, h."id", COALESCE(h."barcode", h."receiptUniqueId") AS ident, h.a_code AS sale_code, h.a_name AS sale_name,
+               h.a_date::date AS sale_date, NULL::int AS lot, h."description" AS description,
+               COALESCE(h."estimateLow", h."aiEstimateLow")::float8 AS est_low, COALESCE(h."estimateHigh", h."aiEstimateHigh")::float8 AS est_high,
+               NULL::float8 AS hammer, NULL::float8 AS site_hammer, h."imageUrls"[1] AS photo_key, NULL::text AS photo_xl_key,
+               NULL::text AS site_photo, NULL::text AS site_link, h."category" AS category, h."subCategory" AS subcategory, h."imageUrls" AS images
+        FROM (${inner}) h
+        WHERE ${and(tc)}`)
     }
     const union = Prisma.join(branches, " UNION ALL ")
 
@@ -220,27 +270,25 @@ export async function GET(req: NextRequest) {
       n_abc: number; n_bc: number; n_hub: number
     }
 
-    // ⚠ A cap on each query, so one pathological search can't tie up a database connection. Inside a
+    // ⚠ A cap on the query, so one pathological search can't tie up a database connection. Inside a
     // transaction because the pooler hands out a connection per transaction (SET LOCAL stays put).
-    const capped = <T,>(sql: Prisma.Sql) => prisma.$transaction(async tx => {
-      await tx.$executeRaw`SET LOCAL statement_timeout = 20000`
-      return tx.$queryRaw<T>(sql)
-    }, { timeout: 25_000, maxWait: 10_000 })
-
     // ⚠ ONE pass: the per-source counts ride along as window totals over EVERY match (computed before
-    // the LIMIT), so they cost nothing extra. A separate count query doubled the time (~6 s → ~2.4 s).
+    // the LIMIT), so they cost nothing extra — a separate count query doubled the time.
     // ⚠ FILTER per source, not PARTITION BY source — a partition only reports sources that happen to
     // have a row on this page, so Hub's count went missing whenever no Hub lot made the first 30.
-    const rows = await capped<Row[]>(Prisma.sql`
-      SELECT u.source, u.id, u.ident, u.sale_code, u.sale_name, to_char(u.sale_date, 'YYYY-MM-DD') AS sale_day, u.lot, u.description,
-             u.est_low, u.est_high, u.hammer, u.site_hammer, u.photo_key, u.photo_xl_key, u.site_photo, u.site_link,
-             u.category, u.subcategory, u.images,
-             (count(*) FILTER (WHERE u.source = 'abc') OVER ())::int AS n_abc,
-             (count(*) FILTER (WHERE u.source = 'bc')  OVER ())::int AS n_bc,
-             (count(*) FILTER (WHERE u.source = 'hub') OVER ())::int AS n_hub
-      FROM (${union}) u WHERE ${where}
-      ORDER BY ${orderBy}
-      LIMIT ${PAGE + 1} OFFSET ${(page - 1) * PAGE}`)
+    const rows = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SET LOCAL statement_timeout = 20000`
+      return tx.$queryRaw<Row[]>(Prisma.sql`
+        SELECT u.source, u.id, u.ident, u.sale_code, u.sale_name, to_char(u.sale_date, 'YYYY-MM-DD') AS sale_day, u.lot, u.description,
+               u.est_low, u.est_high, u.hammer, u.site_hammer, u.photo_key, u.photo_xl_key, u.site_photo, u.site_link,
+               u.category, u.subcategory, u.images,
+               (count(*) FILTER (WHERE u.source = 'abc') OVER ())::int AS n_abc,
+               (count(*) FILTER (WHERE u.source = 'bc')  OVER ())::int AS n_bc,
+               (count(*) FILTER (WHERE u.source = 'hub') OVER ())::int AS n_hub
+        FROM (${union}) u WHERE ${where}
+        ORDER BY ${orderBy}
+        LIMIT ${PAGE + 1} OFFSET ${(page - 1) * PAGE}`)
+    }, { timeout: 25_000, maxWait: 10_000 })
 
     const sign = (key: string) => getSignedImageUrl(key, 3600).catch(() => null)
     const results: SearchResult[] = await Promise.all(rows.slice(0, PAGE).map(async r => {
@@ -264,7 +312,8 @@ export async function GET(req: NextRequest) {
         saleName: r.sale_name,
         saleDate: r.sale_day,
         lot: r.lot,
-        description: r.description ?? "",
+        // Stored BC text is being cleaned of the website's HTML; this covers any row not done yet.
+        description: htmlToText(r.description),
         estimateLow: r.est_low,
         estimateHigh: r.est_high,
         hammer: r.hammer,
@@ -283,7 +332,9 @@ export async function GET(req: NextRequest) {
     const counts: SearchResponse["counts"] = page === 1
       ? { abc: Number(first?.n_abc ?? 0), bc: Number(first?.n_bc ?? 0), hub: Number(first?.n_hub ?? 0) }
       : null
-    return NextResponse.json({ results, counts, page, hasMore: rows.length > PAGE, notes } satisfies SearchResponse)
+    return NextResponse.json({
+      results, counts, page, hasMore: rows.length > PAGE, notes, corrections: sv.corrections, spelling: spell.state,
+    } satisfies SearchResponse)
   } catch (e: any) {
     const msg = String(e?.message ?? e)
     if (/statement timeout|57014|canceling statement/i.test(msg)) {

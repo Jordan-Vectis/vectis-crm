@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { SITE_IMAGES } from "@/lib/archive-site"
+import { htmlToText } from "@/lib/html-text"
 
 // Databases → BC Database → ⬇ Export data: every BC lot that has been through a sale,
 // streamed 5,000 rows a batch — BC's figures plus the website's full description,
@@ -40,7 +41,7 @@ export async function GET() {
       cursor = rows[rows.length - 1].id
       let out = ""
       for (const r of rows) {
-        out += [r.uniqueId, r.auctionCode, r.auctionDate, r.auctionName, r.lotNo, r.shortDesc, r.longDesc, r.lowEstimate, r.highEstimate, r.hammerPrice, r.siteHammerPrice, r.category,
+        out += [r.uniqueId, r.auctionCode, r.auctionDate, r.auctionName, r.lotNo, r.shortDesc, r.longDesc ? htmlToText(r.longDesc) : "", r.lowEstimate, r.highEstimate, r.hammerPrice, r.siteHammerPrice, r.category,
           r.siteLink ? "https://www.vectis.co.uk/" + r.siteLink : "", r.photoKey, r.photoXlKey, r.sitePhoto ? SITE_IMAGES + r.sitePhoto : ""].map(cell).join(",") + "\r\n"
       }
       c.enqueue(enc.encode(out))
