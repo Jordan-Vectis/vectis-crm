@@ -4315,6 +4315,8 @@ I (Jordan) never run the app locally — always a Railway URL. Any feature that 
 
 ⚠⚠ **I do my real work on PRODUCTION.** Measured 2026-09-02: I was on \`vectis-production.up.railway.app\` running a live sale all morning while Claude assumed staging and twice told me a fix was "live for you" when it was only on \`staging\`. **A push to staging does NOT reach me.** Check which environment I'm in before saying anything is live, and remember pushing to \`main\` still needs me to say so.
 
+⚠⚠ **When saves fail but pages load fine, it's the DATABASE — and Railway, Neon's billing page and Neon's status page will all look healthy.** 2026-09-09: production's Neon compute came up read-only (Postgres \`25006 cannot execute INSERT in a read-only transaction\`). Worse, after it recovered, Neon's connection pooler kept one poisoned connection: **7 of 25** pooled connections still refused writes while the same host with \`-pooler\` removed was 0 of 15 — so about a quarter of saves failed at random for hours. **The fix is Neon console → Computes → the production branch's compute → ⋯ → Restart.** ⚠ Test with 25+ connections, never one — Claude twice told me it had cleared off a single check that happened to land on the good connection. Neon project \`dry-union-89199657\`, endpoint \`ep-silent-thunder-ab27cv3x\` (eu-west-2), branches production / Staging / Sandbox.
+
 ---
 
 ## Tech stack
@@ -4363,6 +4365,10 @@ Key config notes:
 ## Database migrations
 
 Whenever a new Prisma migration is added, ALSO add the equivalent SQL (\`CREATE TABLE IF NOT EXISTS\` / \`ALTER TABLE ... ADD COLUMN IF NOT EXISTS\`) to the \`MIGRATIONS\` array in \`app/api/admin/run-migrations/route.ts\`. The Run Migrations button on /admin is the one-click fix for Railway — \`prisma migrate deploy\` is unreliable there.
+
+⚠⚠ **A migration FILE on its own does nothing on Railway — only the array does.** Proved 2026-09-09: \`BcLotWeb.siteSaleId\` had a Prisma migration but was missing from the array, so staging had the column, production didn't, and the fault showed on production ONLY — which reads exactly like a failed deploy or a broken button. The same Run Migrations press applied two other columns perfectly.
+
+⚠ **\`prisma.x.update()\` reads the whole row back afterwards**, so it names every column in the model — a column that has shipped in code but isn't in the database yet breaks an update that never touched it (the BC photo job died on \`siteSaleId\` while writing only photo keys). Any update in a job that must survive a pending migration gets a minimal \`select\`.
 
 ---
 
@@ -4664,7 +4670,7 @@ About, Users & Permissions, Roles & Defaults, Home Page (drag-to-reorder), Depar
 
 ### Databases (/databases)
 Customers, Receipts, Totes, Lots, Bids editors + Browse Any Table (read-only explorer, ~30 models, row counts + 3 sample rows).
-Two sold-lot databases sit beside them (2026-09-07), same layout each — summary tiles, search (description · sale · year · hammer range), 100 a page, thumbnails, "vectis.co.uk ↗" link, amber "site £N" where the website's hammer differs, admin Export & handover (streamed CSV + R2 naming):
+Two sold-lot databases sit beside them (2026-09-07), same layout each — summary tiles, search (description · sale · year · hammer range · LotID / unique ID), filters on screen, every column sortable, admin tools as small chips, 100 a page, thumbnails, "vectis.co.uk ↗" link, amber "site £N" where the website's hammer differs, admin Export & handover (streamed CSV + R2 naming):
 - **ABC Database** (/databases/archive, tables ArchiveLot/ArchiveImport/ArchiveSale/ArchiveJob): every lot sold through ABC, the system before Business Central, 1999–2023 — imported from the Crystal report's CSV ("Lot Export (Claude version).csv", 956k rows, STREAMED from R2). ⚠ Identity is the LotID (unique on lotId; sale+lot repeats). ⚠ The website pull is ANNOTATE-ONLY for ABC (link, site lot id, photo path, site hammer beside ours) — Jordan: "the website has errors", nothing is created from it.
 - **BC Database** (/databases/bc, table BcLotWeb ⟕ WarehouseItem on upper(uniqueId)): every Business Central lot that has been through a sale — BC sync figures + the website's FULL description/photo/link (BC's API has NO long description). Rows in BcLotWeb ARE created from the site (it never touches WarehouseItem).
 - Jobs (lib/archive-site.ts, ArchiveJob "site"/"photos"): one website walk covers both databases; the photo job copies the site's "large" (display) AND "xlarge" (full-size backup, ~250 KB) into R2 archive-photos/… / bc-photos/…. Jobs survive the tab closing, NOT a redeploy — the button resumes. See lot_archive.md + bc_database.md on this page.
@@ -4703,7 +4709,20 @@ Core sync rules (full detail on the reference card):
 
 ---
 
-## Recent work (2026-09-01/03) — ON STAGING, not yet pushed to main
+## Recent work (2026-09-09) — ALL ON PRODUCTION (main = 03394766, main = staging)
+
+- **⚠⚠ The read-only database day** — see the ⚠⚠ block under "The app", and the read-only-database-day memory. Refused writes create no rows, so nothing was recoverable; the only rescue is a cataloguer whose wizard tab is still open with the lot on screen.
+- **The lot wizard now STOPS people working into a wall.** When the database refuses a save, a modal that can't be clicked away says the lot is NOT saved, is still on screen, and not to clear anything, with **Check again**. \`createLot\` RETURNS the condition instead of throwing — production redacts thrown messages, which is why cataloguers saw "the specific message is omitted in production builds". \`lib/db-readonly.ts\` walks the error's cause chain; \`/api/health/db-writable\` READS the setting (never inserts a probe row) and answers \`null\`, never \`false\`, when it can't ask.
+- **⚠⚠ The phantom tote row.** BC has 7 totes booked twice onto the same receipt (two line numbers); the dropdown keyed rows on \`toteNo|receiptNo\`, React stranded one row's DOM node, and it sat at the top of the list **still clickable, wired to the wrong customer**. React's duplicate-key warning is development-only — it never appears in production. Deduped at source (\`dedupeByToteAndReceipt\`).
+- **Lot wizard banners** — the warning boxes sit at the FOOT of the step now; **Different tote** moved to the LEFT (it was right under Next and people kept hitting it) and asks first; the banners match the form's width. A **Contents:** line shows BC's own tote description (\`EVA_TOT_ContentsDescription\`, confirmed in the BC API Viewer). ⚠ The Active Totes feed only publishes totes NOT ticked catalogued.
+- **ABC Database matches the BC one** — tools as chips, sortable columns, filters on screen; the search covers the LotID.
+- **Run Migrations** gained the missing \`siteSaleId\` (it was also added straight to production at my request); both photo-copy jobs \`select\`-hardened.
+
+⚠ **Working-style notes from this session:** test a database fix with many connections, not one; check the DATE and REGION of anything on a status page before blaming it; and \`createdAt\` is stored as naive UTC, so convert it as \`("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London'\` — a single \`AT TIME ZONE\` goes the wrong way and put hour-by-hour figures an hour out.
+
+---
+
+## Recent work (2026-09-01/03) — ON PRODUCTION (swept up by the 2026-09-09 merges)
 
 ⚠ Two of these were faults that had been **silently losing or mangling work for weeks**, both found
 by reading the change log rather than guessing. If a report and the catalogue disagree, read the log.

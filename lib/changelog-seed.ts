@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"0339476639c62ace991aa0f419aeaa7475b3baf8","author":"Jordan Orange","date":"2026-09-09T16:56:03+01:00","subject":"ABC Database: the same UI the BC page got — chips, sortable columns, filters on screen"},
   {"sha":"965c74b2936a90c2e06863bdd1707ce777234e2e","author":"Jordan Orange","date":"2026-09-09T16:28:00+01:00","subject":"Memory: the read-only database day, and the phantom tote row"},
   {"sha":"0e505342cd77616af2c78c76d2a39632298b9ac7","author":"Jordan Orange","date":"2026-09-09T16:19:54+01:00","subject":"Run Migrations was missing BcLotWeb.siteSaleId, so production never got the column"},
   {"sha":"d82927412fb5368cf409c30f560fbafbf878f594","author":"Jordan Orange","date":"2026-09-09T15:50:29+01:00","subject":"Stop cataloguing when the database is refusing writes, instead of losing an hour a lot at a time"},
