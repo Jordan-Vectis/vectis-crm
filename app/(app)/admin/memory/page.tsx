@@ -16,6 +16,31 @@ const JORDAN_ONLY = new Set(["jordan_secret_menu.md"])
 
 const ENTRIES: Entry[] = [
   {
+    filename: "reference_website_search.md",
+    content: `---
+name: website-search-tablet
+description: Website Search in the tablet cataloguing header (left of Lens), built 2026-09-10 — one search over ABC, BC and Hub lots with photos, hammer prices, links and filters. It REPLACED Description Finder, which is deleted. Read before touching it or adding another research tool.
+metadata:
+  type: reference
+---
+
+# Website Search — built 2026-09-10
+
+Jordan: "the ultimate search bar to help them research. Our own website's search bar is rubbish." A button in the tablet cataloguing screen's header, just left of Lens (app/(app)/tools/cataloguing/auctions/[id]/website-search-button.tsx, rendered by the tablet screen). Route app/api/website-search/route.ts.
+
+It REPLACED Description Finder (Jack, 2026-07-13) at Jordan's request - page, API route, home card and the DESCRIPTION_FINDER app key are all deleted. Description Finder only text-searched Hub lots and BC's SHORT description, with no photos, prices or links. Don't bring it back as a separate tool.
+
+His decisions: ABC + BC + Hub lots; as many filters as sensible; tapping a result shows the big photo, full description, the vectis.co.uk link and Copy description; ONE button, in the tablet cataloguing screen only.
+
+How it works:
+- ABC = ArchiveLot (1999-2023); BC = WarehouseItem joined to BcLotWeb (lots through a PAST sale, the same rule as Databases -> BC Database); Hub = CatalogueLot NOT yet through a BC sale (otherwise a double of its BC row). One UNION ALL, one global sort, 30 a page.
+- Filters: sources, sale, year range, hammer range, estimate range, sold/unsold, category/subcategory, "leave out lots mentioning", exact phrase, photo only. Sorts: newest, oldest, hammer and estimate both ways.
+- Every word must appear in the DESCRIPTION; the ID fields (LotID, unique ID, barcode) are searched only when the search is one word with a digit in it.
+- SPEED, measured on production: gluing description + IDs + sale name per row took ~6 s; description-only matching with the counts as window totals in ONE query is ~2.4 s, even for "corgi" (115k matches). The counts use count(*) FILTER (WHERE source = ...) OVER () - PARTITION BY lost the count of any source with no row on the page.
+- No trigram index yet (pg_trgm is available on Neon; ~500 MB on ArchiveLot) - ask Jordan before adding one.
+- It searches OUR copies: vectis.co.uk refuses the Hub's server, so it is as fresh as the last office "Update the BC lots" collection.`,
+  },
+  {
     filename: "reference_hub_feedback.md",
     content: `---
 name: hub-feedback-surveys

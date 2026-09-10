@@ -117,8 +117,8 @@ If you can still see a code, that person's missing from the list. Tell IT.`,
     title: "It won't show you the description",
     body: `Only the short title.
 
-If you need the finished description, use Description Finder instead.`,
-    notes: "Worth saying, because the column is headed \"Item\" and a blank title reads as \"No description yet\", which looks like it is showing you a description. Description Finder searches the full text by barcode, title or wording.",
+If you need the finished description, use Website Search on the tablet cataloguing screen instead.`,
+    notes: "Worth saying, because the column is headed \"Item\" and a blank title reads as \"No description yet\", which looks like it is showing you a description. Website Search searches the full text by barcode, ID or wording, with photos and prices.",
   },
   {
     layout: "TITLE",

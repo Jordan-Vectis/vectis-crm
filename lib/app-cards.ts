@@ -160,19 +160,8 @@ export const APP_CARD_DEFS: AppCardDef[] = [
     group:              "BUSINESS_CENTRAL",
     appKey:             "SALE_STATISTICS",
   },
-  {
-    key:                "DESCRIPTION_FINDER",
-    href:               "/tools/description-finder",
-    defaultLabel:       "Description Finder",
-    defaultDescription: "Search every past description we've written — type a set number, model code, product name or barcode and pull up how the item was catalogued before, ready to copy and reuse.",
-    icon:               "🔎",
-    border:             "border-sky-500",
-    iconBg:             "text-sky-400",
-    btnBg:              "bg-sky-600 hover:bg-sky-500",
-    glow:               "hover:shadow-sky-900/40",
-    group:              "CATALOGUING_AI",
-    appKey:             "DESCRIPTION_FINDER",
-  },
+  // Description Finder was removed 2026-09-10 (Jordan): its search is now part of 🔎 Website Search
+  // in the tablet cataloguing screen, which adds photos, hammer prices and the website link.
   {
     key:                "BC_WAREHOUSE",
     href:               "/tools/bc-warehouse",

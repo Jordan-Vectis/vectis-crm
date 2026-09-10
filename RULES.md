@@ -1246,6 +1246,29 @@ questions about the Hub, including what features people want, and sends them as 
   `APP_CARD_DEFS` and help-map `DESTINATIONS`. Open-ended only — never yes/no or rate-1-to-5.
 - Shapes in `lib/feedback-types.ts` (client-safe), rules in `lib/feedback.ts` (server).
 
+## 🔎 Website Search — tablet cataloguing (2026-09-10)
+
+The **🔎 Website Search** button in the tablet cataloguing screen's header, just left of Lens
+(Jordan: *"the ultimate search bar to help them research. Our own website's search bar is rubbish"*).
+It **replaced Description Finder**, which is gone — page, route, home card and app key
+(`DESCRIPTION_FINDER`). Don't bring it back as a separate tool.
+
+- ONE search over three sources, sorted as one list (`/api/website-search`):
+  **ABC** (`ArchiveLot`, 1999–2023) · **BC** (`WarehouseItem` ⟕ `BcLotWeb` — lots through a past sale,
+  the same rule as Databases → BC Database) · **Hub** (`CatalogueLot` NOT yet through a BC sale — once
+  sold they'd only be doubles of their BC row).
+- ⚠ It searches OUR copies — vectis.co.uk refuses the Hub's server — so it's as fresh as the last office
+  collection ("Update the BC lots").
+- Every word must appear in the **description**; ID fields only when the search looks like an ID (one
+  word with a digit). ⚠ Gluing description + IDs + sale name per row took ~6 s; description-only is
+  ~2.4 s (measured on production). Counts come from window totals in the SAME query — ⚠ per-source
+  `FILTER`, not `PARTITION BY`, or a source with no row on the page loses its count.
+- A search needs a word, a sale or a category. Hammer/sold filters leave out Hub lots; a category
+  leaves out ABC lots (they have none) — the response says so in `notes`.
+- Each query runs with `SET LOCAL statement_timeout` inside a transaction (the pooler's unit).
+- If it ever feels slow: a pg_trgm index on `ArchiveLot.description` (~500 MB) is the next step — ask first.
+- Gate: the Cataloguing app, read fresh from the database.
+
 ## Hardcoded Constants
 
 | Constant | Value | Location |

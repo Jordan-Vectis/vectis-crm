@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"78346871c7fdbfabb0843e778f4baf0a412d9a32","author":"Jordan Orange","date":"2026-09-10T15:55:32+01:00","subject":"Memory: Hub Feedback — no Feedback button in the tablet cataloguing screen (Jordan's call)"},
   {"sha":"59c717bbbe593dc666ec0761da980bf60e0458b5","author":"Jordan Orange","date":"2026-09-10T15:54:08+01:00","subject":"Hub Feedback: ask the cataloguers what they think of the Hub, as a popup"},
   {"sha":"492819a26197da2cbffa8a9bae5b9198c747033d","author":"Jordan Orange","date":"2026-09-10T15:08:01+01:00","subject":"Memory: the Vectis Jo instruction family, and Sports, Collectables & Vintage Toys joins it"},
   {"sha":"cdccd9c3e2bb10f24191dc41c69bfebfdcd58586","author":"Jordan Orange","date":"2026-09-10T14:55:11+01:00","subject":"Memory: Jordan works in IT - short answers, not non-technical"},
