@@ -1286,6 +1286,11 @@ It **replaced Description Finder**, which is gone — page, route, home card and
   clean, the spelling-list build cleans old rows first, and every screen/export that shows them cleans
   on the way out too.
 - If it ever feels slow: a pg_trgm index on `ArchiveLot.description` (~500 MB) is the next step — ask first.
+- **Lens checks the same data** (2026-09-10): `findComparables(id, { everywhere: true })` in
+  `lib/comparables.ts` — ABC + BC full descriptions, the same spellings, and ONE `rank()` shared with
+  Valuations. ⚠ Valuations and Lotting Up stay on the quick BC-only default: they run it once per item
+  in a list, and the wide search is two scans of a million rows. Lens's "See every match" opens this
+  panel through a `hub:website-search` window event.
 - Gate: the Cataloguing app, read fresh from the database.
 
 ## Hardcoded Constants

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import type { Comparable } from "@/app/api/catalogue/lens/route"
+import type { Comparable, ComparableSummary } from "@/app/api/catalogue/lens/route"
 
 // "Lens" for the tablet cataloguing screen — photograph an item, get back what it
 // is (Gemini + Google Search) and what WE have sold the same thing for.
@@ -31,9 +31,23 @@ type Source = { title: string; uri: string }
 type Result = {
   identification: Identification
   comparables: Comparable[]
+  /** Middle half of single-lot sales + the typical figure; null when none. */
+  summary: ComparableSummary | null
+  /** "number" = the summary is from the lots with the same catalogue number only. */
+  summaryBasis: "number" | "all"
+  /** What "See every match in Website Search" searches for. */
+  searchText: string
   searchQueries: string[]
   sources: Source[]
 }
+
+// The same colours as Website Search beside it, so a BC or ABC lot reads the same in both.
+const SOURCE_BADGE: Record<"bc" | "abc", { label: string; cls: string }> = {
+  bc:  { label: "BC",  cls: "bg-violet-500/20 text-violet-200 border-violet-400/50" },
+  abc: { label: "ABC", cls: "bg-amber-500/20 text-amber-200 border-amber-400/50" },
+}
+
+const gbp = (n: number) => "£" + n.toLocaleString("en-GB", { maximumFractionDigits: 0 })
 
 const CONFIDENCE: Record<string, { label: string; cls: string }> = {
   high:   { label: "High confidence",   cls: "text-emerald-400 border-emerald-700/60 bg-emerald-950/30" },
@@ -43,6 +57,39 @@ const CONFIDENCE: Record<string, { label: string; cls: string }> = {
 
 const fmtDate = (d: string | null) =>
   d ? new Date(d).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "—"
+
+/** One of our sold lots: photo, price, where and when, and the description. Tapping it opens
+ *  the lot on vectis.co.uk when we hold its link. */
+function ComparableRow({ c, muted = false }: { c: Comparable; muted?: boolean }) {
+  const badge = c.source ? SOURCE_BADGE[c.source] : null
+  const body = (
+    <>
+      <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg border border-gray-800 bg-black/40">
+        {c.photo
+          ? <img src={c.photo} alt="" loading="lazy" className="h-full w-full object-cover" />
+          : <div className="flex h-full items-center justify-center text-[10px] text-gray-600">No photo</div>}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className={`font-bold tabular-nums ${muted ? "text-gray-400" : "text-white"}`}>{gbp(c.hammerPrice)}</span>
+          {badge && <span className={`rounded border px-1.5 py-px text-[10px] font-semibold ${badge.cls}`}>{badge.label}</span>}
+          {c.exact && <span className="rounded border border-emerald-500/50 bg-emerald-500/15 px-1.5 py-px text-[10px] font-semibold text-emerald-300">Same No.</span>}
+          <span className="text-gray-500">{[fmtDate(c.auctionDate), c.auctionName].filter(Boolean).join(" · ")}</span>
+        </div>
+        <p className={`mt-0.5 line-clamp-2 ${muted ? "text-gray-500" : "text-gray-400"}`}>{c.description}</p>
+      </div>
+      {c.link && <span className="flex-shrink-0 self-center text-sm" style={{ color: ACCENT }}>↗</span>}
+    </>
+  )
+  const cls = "flex items-start gap-3 rounded-lg px-1 py-1.5 text-xs border-b border-gray-800/60 last:border-0"
+  return c.link ? (
+    <a href={c.link} target="_blank" rel="noopener noreferrer" style={{ touchAction: "manipulation" }} className={`${cls} hover:bg-white/5`}>
+      {body}
+    </a>
+  ) : (
+    <div className={cls}>{body}</div>
+  )
+}
 
 // Downscale before upload — iPad photos are ~4MB and the long edge is far more
 // detail than identification needs. Same reasoning as the smart-scan upload.
@@ -160,6 +207,15 @@ export default function LensButton({ tablet = false }: { tablet?: boolean }) {
     setTimeout(() => setCopied(""), 2000)
   }
 
+  // Hands the search to Website Search beside it. Lens is closed WITHOUT resetting, so
+  // opening it again shows this same result — nothing is lost going back and forth.
+  function openInSearch() {
+    const q = result?.searchText?.trim()
+    if (!q) return
+    setOpen(false)
+    window.dispatchEvent(new CustomEvent("hub:website-search", { detail: { q } }))
+  }
+
   const id      = result?.identification
   // The identification as one line, exactly as the card shows it — what the
   // Copy button beside the confidence badge puts on the clipboard.
@@ -172,8 +228,8 @@ export default function LensButton({ tablet = false }: { tablet?: boolean }) {
     : ""
   const singles = (result?.comparables ?? []).filter(c => !c.grouped)
   const groups  = (result?.comparables ?? []).filter(c => c.grouped)
-  const prices  = singles.map(c => c.hammerPrice).sort((a, b) => a - b)
-  const range   = prices.length > 0 ? { low: prices[0], high: prices[prices.length - 1] } : null
+  const summary = result?.summary ?? null
+  const sameNo  = singles.filter(c => c.exact)
 
   return (
     <>
@@ -194,7 +250,7 @@ export default function LensButton({ tablet = false }: { tablet?: boolean }) {
           onClick={() => { setOpen(false); reset() }}
         >
           <div
-            className="bg-[#1C1C1E] border border-gray-700 rounded-2xl w-full max-w-2xl my-4"
+            className="bg-[#1C1C1E] border border-gray-700 rounded-2xl w-full max-w-3xl my-4"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
@@ -374,14 +430,35 @@ export default function LensButton({ tablet = false }: { tablet?: boolean }) {
               {/* ── What we've made on them ── */}
               {result && (
                 <div className="rounded-xl border border-gray-700 bg-black/20 p-4">
-                  <div className="flex items-baseline justify-between gap-3 mb-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <h3 className="text-sm font-bold text-gray-200">What we&apos;ve sold them for</h3>
-                    {range && (
+                    {summary && (
                       <span className="text-sm font-bold" style={{ color: ACCENT }}>
-                        £{range.low} – £{range.high}
+                        {summary.low === summary.high ? gbp(summary.low) : `${gbp(summary.low)} – ${gbp(summary.high)}`}
                       </span>
                     )}
                   </div>
+                  {summary && (
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {summary.count >= 4 ? "The middle half of " : "From "}{summary.count} single-lot sale{summary.count === 1 ? "" : "s"}
+                      {result.summaryBasis === "number" && id?.catalogueNumber ? ` with the same number (${id.catalogueNumber})` : ""}
+                      {" "}· typically {gbp(summary.median)}
+                      {summary.groupedExcluded > 0 ? ` · ${summary.groupedExcluded} group lot${summary.groupedExcluded === 1 ? "" : "s"} set aside` : ""}
+                    </p>
+                  )}
+                  {/* One sale with the same number is worth saying out loud — measured: Kämmer &
+                      Reinhardt 102 "Walter" made £43,000, while the similar dolls around it that
+                      set the range made £80–£140. */}
+                  {result.summaryBasis === "all" && sameNo.length === 1 && id?.catalogueNumber && (
+                    <p className="text-xs text-emerald-300 mt-1">
+                      Only one sale with the same number ({id.catalogueNumber}): <b>{gbp(sameNo[0].hammerPrice)}</b>
+                      {sameNo[0].auctionDate ? `, ${fmtDate(sameNo[0].auctionDate)}` : ""}
+                      {summary ? " — the range above is from similar lots." : ""}
+                    </p>
+                  )}
+                  <p className="text-[11px] text-gray-600 mt-0.5 mb-2">
+                    Checked against our BC sales and the ABC archive (1999–2023). Tap a lot to open it on vectis.co.uk.
+                  </p>
 
                   {singles.length === 0 && groups.length === 0 ? (
                     <p className="text-sm text-gray-500">
@@ -390,14 +467,8 @@ export default function LensButton({ tablet = false }: { tablet?: boolean }) {
                       its own — the wording in old descriptions may simply differ.
                     </p>
                   ) : (
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                      {singles.slice(0, 8).map((c, i) => (
-                        <div key={`s${i}`} className="flex items-start gap-3 text-xs border-b border-gray-800/60 pb-1.5 last:border-0">
-                          <span className="font-bold text-white w-14 flex-shrink-0 tabular-nums">£{c.hammerPrice}</span>
-                          <span className="text-gray-400 flex-1 min-w-0">{c.description.slice(0, 150)}</span>
-                          <span className="text-gray-600 flex-shrink-0">{fmtDate(c.auctionDate)}</span>
-                        </div>
-                      ))}
+                    <div className="max-h-80 overflow-y-auto">
+                      {singles.slice(0, 12).map((c, i) => <ComparableRow key={`s${i}`} c={c} />)}
                     </div>
                   )}
 
@@ -408,15 +479,22 @@ export default function LensButton({ tablet = false }: { tablet?: boolean }) {
                       <summary className="text-xs text-gray-500 cursor-pointer">
                         {groups.length} group lot{groups.length === 1 ? "" : "s"} also matched — kept out of the range
                       </summary>
-                      <div className="space-y-1.5 mt-2 max-h-48 overflow-y-auto">
-                        {groups.slice(0, 8).map((c, i) => (
-                          <div key={`g${i}`} className="flex items-start gap-3 text-xs">
-                            <span className="font-semibold text-gray-400 w-14 flex-shrink-0 tabular-nums">£{c.hammerPrice}</span>
-                            <span className="text-gray-500 flex-1 min-w-0">{c.description.slice(0, 150)}</span>
-                          </div>
-                        ))}
+                      <div className="mt-2 max-h-64 overflow-y-auto">
+                        {groups.slice(0, 8).map((c, i) => <ComparableRow key={`g${i}`} c={c} muted />)}
                       </div>
                     </details>
+                  )}
+
+                  {/* Everything else that matches — with filters, sorting and paging — is one tap away. */}
+                  {result.searchText && (
+                    <button
+                      type="button"
+                      onClick={openInSearch}
+                      style={{ touchAction: "manipulation", color: ACCENT, border: `1px solid ${ACCENT}66` }}
+                      className="mt-3 w-full min-h-[44px] rounded-xl px-3 text-sm font-semibold hover:bg-white/5"
+                    >
+                      🔎 See every match in Website Search — “{result.searchText}”
+                    </button>
                   )}
 
                   {result.searchQueries.length > 0 && (

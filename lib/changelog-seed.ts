@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"3e5e1ef9ebf6e41812eaf06f029141873dfe17d1","author":"Jordan Orange","date":"2026-09-10T17:11:06+01:00","subject":"Website Search: fix the time-outs — plain matching again, accents via the spelling list"},
   {"sha":"d43064203ca69cc70879281bedea33dcaafd4074","author":"Jordan Orange","date":"2026-09-10T16:52:34+01:00","subject":"Website Search: forgiving matching, spelling help, and BC descriptions without HTML"},
   {"sha":"02cbf52a210f5af1b6520aaeb933eb9a25e7ca25","author":"Jordan Orange","date":"2026-09-10T16:25:34+01:00","subject":"Website Search in tablet cataloguing — replaces Description Finder"},
   {"sha":"78346871c7fdbfabb0843e778f4baf0a412d9a32","author":"Jordan Orange","date":"2026-09-10T15:55:32+01:00","subject":"Memory: Hub Feedback — no Feedback button in the tablet cataloguing screen (Jordan's call)"},

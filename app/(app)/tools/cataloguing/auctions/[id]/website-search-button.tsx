@@ -264,6 +264,24 @@ export default function WebsiteSearchButton({ tablet = false }: { tablet?: boole
     return () => window.removeEventListener("keydown", onKey)
   }, [open, detail])
 
+  // Lens beside it hands a search over ("See every match in Website Search"): open with that
+  // search, everything else back to the defaults, and run it straight away.
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const q = String((e as CustomEvent<{ q?: string }>).detail?.q ?? "").trim()
+      if (!q) return
+      const next: Filters = { ...EMPTY, q }
+      setF(next)
+      setDetail(null)
+      setMounted(true)
+      setOpen(true)
+      void run(next, 1)
+    }
+    window.addEventListener("hub:website-search", onAsk)
+    return () => window.removeEventListener("hub:website-search", onAsk)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => () => ctl.current?.abort(), [])
 
   async function run(filters: Filters, pageNo: number) {

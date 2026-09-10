@@ -5,7 +5,7 @@ import { getToolModel } from "@/lib/ai-models"
 // ⚠ The comparables search lives in lib/comparables.ts and is SHARED with the
 // Valuations tool. Don't fork it back into this file — the scoring was measured,
 // and a second copy will drift.
-import { findComparables, type Comparable } from "@/lib/comparables"
+import { findComparables, summariseComparables, websiteSearchText, type Comparable, type ComparableSummary } from "@/lib/comparables"
 import { GEMINI_SAFETY_SETTINGS } from "@/lib/ai-safety"
 
 export const maxDuration = 120
@@ -20,8 +20,11 @@ export const maxDuration = 120
 //     /api/auction-ai/chat-grounded, which is proven for this). Grounding matters
 //     because catalogue numbers recalled from training data are frequently wrong;
 //     a live search checks them.
-//  2. COMPARABLES — what Google Lens can't do: search our OWN sold items.
-//     WarehouseItem holds 192k+ rows with a real hammerPrice and an auction date.
+//  2. COMPARABLES — what Google Lens can't do: search our OWN sold items. Since
+//     2026-09-10 the WIDE search (Jordan: "use this new search and database to improve
+//     the lens as that is supposed to check our own lot"): BC sales with the website's
+//     full descriptions AND the ABC archive, 1999–2023, with photos and links, and
+//     Website Search's forgiving spellings. lib/comparables.ts, { everywhere: true }.
 //
 // ⚠ SUGGESTION ONLY. Nothing here writes to a lot. Gemini identifies boxed/marked
 // items well and confidently guesses at unmarked ones, so the UI shows confidence
@@ -103,7 +106,7 @@ function parseJson(text: string): Identification | null {
   }
 }
 
-export type { Comparable }
+export type { Comparable, ComparableSummary }
 
 export async function POST(req: NextRequest) {
   try {
@@ -181,12 +184,22 @@ export async function POST(req: NextRequest) {
     // Comparables are a bonus: a failure here must not lose the identification.
     let comparables: Comparable[] = []
     try {
-      comparables = await findComparables(id)
+      comparables = await findComparables(id, { everywhere: true })
     } catch (e) {
       console.error("catalogue/lens comparables error:", e)
     }
+    // The headline: the middle half of single-lot sales and the typical figure — group lots set
+    // aside, the same summary Valuations uses. A plain lowest–highest let one freak result set it.
+    // ⚠ Taken from the lots with the SAME catalogue number when there are at least two: measured on
+    // production, Hornby R3514's neighbouring Class 800 lots made ~£100 while the R3514 itself made
+    // £190–£300 — averaging the neighbours in understated it by half.
+    const sameNumber = comparables.filter(c => c.exact)
+    const summaryBasis: "number" | "all" = sameNumber.filter(c => !c.grouped).length >= 2 ? "number" : "all"
+    const summary: ComparableSummary | null = summariseComparables(summaryBasis === "number" ? sameNumber : comparables)
+    // What to hand Website Search for "See every match".
+    const searchText = id.identified ? websiteSearchText(id) : ""
 
-    return NextResponse.json({ identification: id, comparables, searchQueries, sources })
+    return NextResponse.json({ identification: id, comparables, summary, summaryBasis, searchText, searchQueries, sources })
   } catch (e: unknown) {
     console.error("catalogue/lens error:", e)
     return NextResponse.json({ error: e instanceof Error ? e.message : "Lens failed" }, { status: 500 })
