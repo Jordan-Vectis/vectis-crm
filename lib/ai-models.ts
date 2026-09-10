@@ -23,23 +23,23 @@ export const GLOBAL_FALLBACK_MODEL = "gemini-3-flash-preview"
 export const AI_TOOLS: AiTool[] = [
   // ── Cataloguing / Auction AI ──
   { slot: "catalogue_batch",        group: "Cataloguing",  label: "Batch run (descriptions + estimates)", default: "gemini-3-flash-preview" },
-  { slot: "catalogue_kpcheck",      group: "Cataloguing",  label: "Key Points Check",                     default: "gemini-2.5-flash-preview-04-17" },
-  { slot: "catalogue_doublecheck",  group: "Cataloguing",  label: "Double Check",                         default: "gemini-2.5-flash-preview-04-17" },
+  { slot: "catalogue_kpcheck",      group: "Cataloguing",  label: "Key Points Check",                     default: "gemini-3-flash-preview" },
+  { slot: "catalogue_doublecheck",  group: "Cataloguing",  label: "Double Check",                         default: "gemini-3-flash-preview" },
   { slot: "catalogue_upgrade",      group: "Cataloguing",  label: "AI Upgrade (rewrite descriptions)",    default: "gemini-3-flash-preview" },
   { slot: "catalogue_flags",        group: "Cataloguing",  label: "Flag auto-fix & re-check",             default: "gemini-3-flash-preview" },
-  { slot: "catalogue_lotting_up",   group: "Cataloguing",  label: "Lotting Up (group items from a photo)", default: "gemini-2.5-flash-preview-04-17" },
+  { slot: "catalogue_lotting_up",   group: "Cataloguing",  label: "Lotting Up (group items from a photo)", default: "gemini-3-flash-preview" },
   { slot: "catalogue_smart_scan",   group: "Cataloguing",  label: "Smart scan (label detection fallback)", default: "gemini-3-flash-preview" },
-  { slot: "catalogue_lot_history",  group: "Cataloguing",  label: "Lot History summary",                  default: "gemini-2.5-flash-preview-04-17", claudeOk: true },
+  { slot: "catalogue_lot_history",  group: "Cataloguing",  label: "Lot History summary",                  default: "gemini-3-flash-preview", claudeOk: true },
   { slot: "catalogue_lens",         group: "Cataloguing",  label: "Lens (identify an item from a photo)", default: "gemini-3-flash-preview" },
   { slot: "research_valuation",     group: "Cataloguing",  label: "Valuations (price a customer's photos)", default: "gemini-3-flash-preview" },
   { slot: "catalogue_chat",         group: "Auction AI",   label: "Chat",                                 default: "gemini-3-flash-preview" },
   { slot: "catalogue_chat_grounded",group: "Auction AI",   label: "Chat with Google Search",              default: "gemini-3-flash-preview" },
   // ── BC Marketing ──
   { slot: "vendor_country",         group: "BC Reports",   label: "Vendor Locations (work out the country from an address)", default: "gemini-3-flash-preview", claudeOk: true },
-  { slot: "marketing_article",      group: "BC Marketing", label: "Content Generator (articles)",         default: "gemini-2.5-flash-preview-04-17" },
-  { slot: "marketing_article_text", group: "BC Marketing", label: "Paste & Generate",                     default: "gemini-2.5-flash-preview-04-17" },
-  { slot: "marketing_web",          group: "BC Marketing", label: "Web descriptions",                     default: "gemini-2.5-flash-preview-04-17" },
-  { slot: "marketing_social",       group: "BC Marketing", label: "Social posts",                         default: "gemini-2.5-flash-preview-04-17" },
+  { slot: "marketing_article",      group: "BC Marketing", label: "Content Generator (articles)",         default: "gemini-3-flash-preview" },
+  { slot: "marketing_article_text", group: "BC Marketing", label: "Paste & Generate",                     default: "gemini-3-flash-preview" },
+  { slot: "marketing_web",          group: "BC Marketing", label: "Web descriptions",                     default: "gemini-3-flash-preview" },
+  { slot: "marketing_social",       group: "BC Marketing", label: "Social posts",                         default: "gemini-3-flash-preview" },
   // ── Marketing Reports ──
   { slot: "marketing_plan",         group: "Marketing Reports", label: "Business plan suggestions",       default: "gemini-3-flash-preview", claudeOk: true },
   // ── IT ──
@@ -109,6 +109,10 @@ const RETIRED_MODELS = new Set([
   "gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash-002",
   "gemini-1.5-pro", "gemini-1.5-pro-latest", "gemini-1.5-pro-002",
   "gemini-pro", "gemini-pro-vision",
+  // Found by the Status Centre's first run (2026-09-10): Google no longer offers it, yet it was the
+  // built-in default for 8 tools AND the starting choice the BC Marketing, Lot History and Lotting Up
+  // screens still send from the browser — so those screens failed unless someone picked another model.
+  "gemini-2.5-flash-preview-04-17",
 ])
 
 // The model a given tool should use. Pass the client's requested model (a user's
