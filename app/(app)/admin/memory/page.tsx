@@ -40,7 +40,9 @@ Traps:
 - Answers are stored with the question WORDING they answered, so editing a question after sending never changes an answer's meaning.
 - It answers as the REAL signed-in user, never the impersonated one; the role is read fresh from the database.
 - The popup waits while any other [data-hub-popup] is showing (the patch-notes popup has it) — give any new app-wide popup the attribute too.
-- A SUBMITTED response can never go back to LATER.`,
+- A SUBMITTED response can never go back to LATER.
+- The tablet cataloguing screen (tablet-tabs.tsx, a full-screen overlay) covers the top bar, so the "Feedback to finish" button can't be seen there. Jordan chose NOT to add a copy of it to the tablet cataloguing section (2026-09-10) — don't add one. The popup itself still appears there.
+- Defaults he didn't object to: submitted answers are final (no editing); the popup shows on any device for someone in the audience; half-typed "later" answers stay private until submitted.`,
   },
   {
     filename: "reference_status_centre.md",
