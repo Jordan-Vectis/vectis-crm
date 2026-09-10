@@ -68,6 +68,7 @@ export default async function AppLayout({
         userName={effective?.user.name ?? session.user.name}
         isAdmin={session.user.role === "ADMIN"}
         hasDashboard={hasDashboard}
+        feedbackEnabled={!needsTerms}
       />
       <div className="flex flex-1 overflow-hidden">
         <CrmSidebar />

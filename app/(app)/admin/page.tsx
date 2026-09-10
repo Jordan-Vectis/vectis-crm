@@ -13,6 +13,12 @@ const GROUPS: { label: string; cards: Card[] }[] = [
     ],
   },
   {
+    label: "Feedback",
+    cards: [
+      { href: "/admin/feedback", label: "Hub Feedback", description: "Ask the cataloguers what they think of the Hub and what they'd like it to do — write or AI-draft the questions, send them as a popup, and read the answers.", icon: "📝" },
+    ],
+  },
+  {
     label: "People & Access",
     cards: [
       { href: "/admin/users",         label: "Users & Permissions", description: "Add and remove users, set roles and control which apps each person can access.", icon: "👤" },

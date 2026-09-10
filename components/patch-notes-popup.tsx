@@ -54,7 +54,8 @@ export default function PatchNotesPopup() {
   }
 
   return (
-    <div className="fixed inset-0 z-[190] bg-black/70 flex items-center justify-center p-3 sm:p-6">
+    // data-hub-popup: the feedback survey popup waits while this is on screen rather than stacking on it.
+    <div data-hub-popup="patch-notes" className="fixed inset-0 z-[190] bg-black/70 flex items-center justify-center p-3 sm:p-6">
       <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-gray-200 dark:border-gray-800 w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center justify-between gap-3">

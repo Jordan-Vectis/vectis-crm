@@ -1225,6 +1225,27 @@ in the `hub` group are "inside the Hub", everything else is a supplier.
 - ⚠ **The `MIGRATIONS` array now lives in `lib/migrations.ts`** (moved the same day, so the Hub light
   can compare `MIGRATIONS_HASH` — a Next route file may only export its handlers). New SQL goes there.
 
+## 📝 Hub Feedback — surveys for the cataloguers (2026-09-10)
+
+`/admin/feedback` — the **Feedback** section on the Admin page. Jordan writes (or has the AI draft)
+questions about the Hub, including what features people want, and sends them as a popup.
+
+- **Jordan's decisions:** written answers only · **named**, not anonymous (the popup says so) · the
+  audience is chosen **per survey** — roles and/or named people · **"Fill it out later" never pops up
+  again**: it keeps what they typed and shows a temporary 📝 button in THEIR top bar until they submit
+  or the survey closes.
+- Tables `FeedbackSurvey` (questions as JSON `[{id,text}]`, status DRAFT/OPEN/CLOSED, audience) and
+  `FeedbackResponse` (one row per person per survey, LATER or SUBMITTED). ⚠ Answers are stored WITH
+  the wording of the question they answered (`AnswerSnapshot`), so editing a question after sending
+  never changes what someone was asked. ⚠ A SUBMITTED response never goes back to LATER.
+- The popup answers as the **REAL** signed-in user, never the impersonated one, and reads their role
+  fresh from the database — nobody may answer on someone else's behalf.
+- ⚠ It waits while any other `[data-hub-popup]` is on screen (the patch-notes popup carries it) — two
+  stacked modals on an iPad is a mess. Any new app-wide popup should carry the attribute too.
+- AI questions: slot `feedback_questions` (Admin → AI Models), context built from the Hub's own
+  `APP_CARD_DEFS` and help-map `DESTINATIONS`. Open-ended only — never yes/no or rate-1-to-5.
+- Shapes in `lib/feedback-types.ts` (client-safe), rules in `lib/feedback.ts` (server).
+
 ## Hardcoded Constants
 
 | Constant | Value | Location |

@@ -72,6 +72,7 @@ export const AI_TOOLS: AiTool[] = [
   { slot: "condition_suggest",      group: "Cataloguing",  label: "Suggest a condition from photos",      default: "gemini-3-flash-preview", claudeOk: true },
   { slot: "patch_notes_draft",      group: "Other",        label: "Patch notes draft (summarise a deploy)", default: "gemini-3-flash-preview", claudeOk: true },
   { slot: "changes_summary",        group: "Other",        label: "Patches & Changes — report for managers", default: "gemini-3-flash-preview", claudeOk: true },
+  { slot: "feedback_questions",     group: "Other",        label: "Feedback surveys — suggest questions",  default: "gemini-3-flash-preview", claudeOk: true },
   { slot: "jordan_fun",             group: "Other",        label: "Jordan's secret menu (chat, cooking, air fryer)", default: "gemini-3-flash-preview" },
   // Reading an uploaded CV and writing tailored applications. Its own slot because it is a
   // long-document job — quite unlike the short chat the fun slot serves — so the model can be

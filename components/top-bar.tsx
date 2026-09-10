@@ -8,6 +8,7 @@ import ThemeToggle from "@/components/theme-toggle"
 import BcStatusButton from "@/components/bc-status-button"
 import NotificationBell from "@/components/notification-bell"
 import HelpButton from "@/components/help-button"
+import FeedbackPrompt from "@/components/feedback-prompt"
 import { signOutAction } from "@/lib/actions/auth"
 
 interface TopBarProps {
@@ -15,9 +16,12 @@ interface TopBarProps {
   isAdmin?: boolean
   /** Whether this person has Manager Portal → Dashboard. Hides the switch for everyone else. */
   hasDashboard?: boolean
+  /** Hub feedback surveys (popup + the "📝 Feedback to finish" button). Off while the iPad policy
+   *  still needs signing — that comes first, and two stacked modals would be a mess. */
+  feedbackEnabled?: boolean
 }
 
-export default function TopBar({ userName, isAdmin, hasDashboard }: TopBarProps) {
+export default function TopBar({ userName, isAdmin, hasDashboard, feedbackEnabled }: TopBarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const onDashboard = pathname.startsWith("/tools/manager-portal")
@@ -68,6 +72,9 @@ export default function TopBar({ userName, isAdmin, hasDashboard }: TopBarProps)
       </div>
 
       <div className="flex items-center gap-4">
+        {/* Hub feedback: pops a survey up, and shows "📝 Feedback to finish" only while this person
+            has one they put off. Renders nothing otherwise. */}
+        {feedbackEnabled && <FeedbackPrompt />}
         {/* Ask where to find things. Knows only about the tools this person can open. */}
         <HelpButton />
         <EnvSelector />

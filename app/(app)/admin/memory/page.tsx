@@ -16,6 +16,33 @@ const JORDAN_ONLY = new Set(["jordan_secret_menu.md"])
 
 const ENTRIES: Entry[] = [
   {
+    filename: "reference_hub_feedback.md",
+    content: `---
+name: hub-feedback-surveys
+description: Admin → Hub Feedback (/admin/feedback), built 2026-09-10 — written-answer surveys for the cataloguers, AI-drafted questions, a popup for a chosen audience, "Fill it out later" = a temporary top-bar button (never a re-popup), named answers stored with the question wording. Read before touching it.
+metadata:
+  type: reference
+---
+
+# Hub Feedback — built 2026-09-10
+
+The job (Jordan): gather feedback on the Hub from the cataloguers and let them ask for features. He writes questions or has the AI draft them, edits and adds his own, sends the survey out as a popup (mostly the tablets), and reads the stored answers.
+
+His decisions (asked, not assumed):
+- Audience chosen PER SURVEY — roles and/or named people.
+- Answers are NAMED, so a feature request can be followed up; the popup says so.
+- WRITTEN ANSWERS ONLY — no ratings, choices or yes/no.
+- "Fill it out later" does NOT pop up again: a temporary button appears in that person's top bar, only while they have a survey they put off, until they submit or it closes. (His own idea.)
+
+Where things are: lib/feedback-types.ts (client-safe shapes and limits) and lib/feedback.ts (server rules); tables FeedbackSurvey and FeedbackResponse (one per person per survey, LATER or SUBMITTED); /admin/feedback list and /admin/feedback/[id] editor and answers, actions in lib/actions/feedback.ts, a CSV export; the AI question writer at /api/admin/feedback/suggest (slot feedback_questions); the person's side at /api/feedback/mine and /api/feedback/respond, components/feedback-form.tsx (also the admin Preview) and components/feedback-prompt.tsx (popup plus top-bar button). Socket event feedback:changed on send and close.
+
+Traps:
+- Answers are stored with the question WORDING they answered, so editing a question after sending never changes an answer's meaning.
+- It answers as the REAL signed-in user, never the impersonated one; the role is read fresh from the database.
+- The popup waits while any other [data-hub-popup] is showing (the patch-notes popup has it) — give any new app-wide popup the attribute too.
+- A SUBMITTED response can never go back to LATER.`,
+  },
+  {
     filename: "reference_status_centre.md",
     content: `---
 name: status-centre

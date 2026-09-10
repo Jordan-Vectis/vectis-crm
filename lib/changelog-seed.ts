@@ -19,6 +19,7 @@
 export type SeedCommit = { sha: string; author: string; date: string; subject: string }
 
 export const CHANGELOG_SEED: SeedCommit[] = [
+  {"sha":"492819a26197da2cbffa8a9bae5b9198c747033d","author":"Jordan Orange","date":"2026-09-10T15:08:01+01:00","subject":"Memory: the Vectis Jo instruction family, and Sports, Collectables & Vintage Toys joins it"},
   {"sha":"cdccd9c3e2bb10f24191dc41c69bfebfdcd58586","author":"Jordan Orange","date":"2026-09-10T14:55:11+01:00","subject":"Memory: Jordan works in IT - short answers, not non-technical"},
   {"sha":"e82d685b96f057fe52e2393b50d3ba1eb5632e55","author":"Jordan Orange","date":"2026-09-10T14:46:00+01:00","subject":"Status Centre: \"us or a supplier\" follows the fix, not the logo"},
   {"sha":"6f0cd593918f2d29f5baf896d89ab23b8c2b6b10","author":"Jordan Orange","date":"2026-09-10T14:42:52+01:00","subject":"Stop a dropped idle DB connection crashing the whole server"},

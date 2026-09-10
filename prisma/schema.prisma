@@ -2963,3 +2963,44 @@ model NotificationSeen {
   userId String   @id
   seenAt DateTime
 }
+
+// 📝 Feedback surveys (Admin → Feedback, /admin/feedback). Jordan, 2026-09-10: written questions
+// about the Hub — feature requests included — sent as a popup to chosen roles and/or people.
+model FeedbackSurvey {
+  id              String    @id @default(cuid())
+  title           String
+  intro           String?   @db.Text
+  questions       Json      @default("[]") // [{ id, text }] — written answers only
+  status          String    @default("DRAFT") // DRAFT | OPEN | CLOSED
+  audienceRoles   String[]  @default([])
+  audienceUserIds String[]  @default([])
+  createdById     String?
+  createdByName   String?
+  openedAt        DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  responses       FeedbackResponse[]
+
+  @@index([status])
+}
+
+// One row per person per survey. LATER = they pressed "Fill it out later" (their typed draft is kept
+// and a temporary top-bar button appears for them); SUBMITTED = done. Answers are stored WITH the
+// question wording they answered, so editing a question afterwards never changes what was asked.
+// ⚠ userId is a plain string, not a relation: a relation would add a field to User (RULES.md).
+model FeedbackResponse {
+  id          String         @id @default(cuid())
+  surveyId    String
+  survey      FeedbackSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  userId      String
+  userName    String?
+  status      String // LATER | SUBMITTED
+  answers     Json           @default("[]") // [{ questionId, question, answer }]
+  submittedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([surveyId, userId])
+  @@index([userId])
+}
